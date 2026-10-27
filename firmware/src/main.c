@@ -174,7 +174,7 @@ static void fm1_main(void)
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
 #endif
-    palette_set(UI_GREY_INDEX);                         /* gfx.c / build/gen/ui_palettes.h: GREY GREEN AMBER ICE .. */
+    palette_set(UI_PALETTE);                            /* ui.c; build/gen/ui_palettes.h: GREY GREEN AMBER ICE .. */
     lcd_init();
     draw_splash();
     if (felucca_dbg.magic != DBG_MAGIC) {

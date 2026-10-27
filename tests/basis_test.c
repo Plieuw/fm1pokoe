@@ -80,15 +80,15 @@ static int sent(uint32_t i, uint32_t status, uint32_t note, uint32_t vel)
     return i < out_n && ((p >> 8) & 0xFFu) == status && ((p >> 16) & 0x7Fu) == note && ((p >> 24) & 0x7Fu) == vel;
 }
 
-static double measure_hz(uint32_t note, uint32_t wave)   /* sine / tri: upward zero crossings over 1 s */
+/* upward zero crossings of the output over 1 s: the pitch of a periodic regime */
+static double measure_hz(uint32_t note)
 {
     uint32_t frames = 0, cross = 0, i;
     int32_t prev = 0;
     synth_kill();
-    sys.wave = (uint8_t)wave;
     sys.attack = 0;
     synth_note_on(note, 127);
-    run_ms(20);
+    run_ms(300);                                 /* (onto the cycle, the DC blocker settled) */
     while (frames < FS) {
         synth_render(buf, CTL);
         for (i = 0; i < CTL; i++, frames++) {
@@ -99,6 +99,18 @@ static double measure_hz(uint32_t note, uint32_t wave)   /* sine / tri: upward z
     }
     synth_kill();
     return cross;
+}
+
+/* the same solver in double precision: the fixed-point one must follow it */
+static void ref_step(double *s, double h, double a, double b)
+{
+    double m[3], dx, dy, dz;
+#define G(x) (fabs(x) < 1 ? -8.0 / 7 * (x) : fabs(x) < 3 ? ((x) < 0 ? -1 : 1) * (-8.0 / 7 - 5.0 / 7 * (fabs(x) - 1)) \
+                                                       : ((x) < 0 ? -1 : 1) * (-8.0 / 7 - 10.0 / 7 + 2 * (fabs(x) - 3)))
+    dx = h * a * (s[1] - s[0] - G(s[0])); dy = h * (s[0] - s[1] + s[2]); dz = -h * b * s[1];
+    m[0] = s[0] + dx / 2; m[1] = s[1] + dy / 2; m[2] = s[2] + dz / 2;
+    s[0] += h * a * (m[1] - m[0] - G(m[0])); s[1] += h * (m[0] - m[1] + m[2]); s[2] += -h * b * m[1];
+#undef G
 }
 
 static void wav_hdr(FILE *f, uint32_t frames)
@@ -201,24 +213,82 @@ int main(int argc, char **argv)
     run_ms(10);
     check("a key held from boot: no note, no MIDI, not even on release", out_n == 0 && sounding() == 0);
 
-    /* every key at once: NVOICE voices, no more */
+    /* every key at once: NVOICE voices, no more, in every regime */
     fm1_in.notes = (1u << NKEYS) - 1u;
     peak = 0;
-    for (w = 0; w < W_COUNT; w++) {
-        sys.wave = (uint8_t)w;
-        run_ms(200);
+    for (k = 0; k < 128u; k += 16u) {
+        sys.chaos = (uint8_t)k;
+        run_ms(100);
     }
     check("27 keys at once: 8 voices sound, the output stays within 16 bits", sounding() == NVOICE && peak <= 32767);
     fm1_in.notes = 0;
     run_ms(3000);
     check("... all released", sounding() == 0);
 
-    /* pitch */
+    /* the circuit: fixed point against double precision, the same midpoint solver, the same start; 2 time units
+     * (chaos parts the two exponentially after that: then only the statistics can agree) */
     {
-        double a4 = measure_hz(69, W_SINE), c2 = measure_hz(36, W_TRI), top = measure_hz(127, W_SINE);
-        check("A4 sine: 440 Hz", fabs(a4 - 440.0) <= 1.0);
-        check("C2 triangle: 65.4 Hz", fabs(c2 - 65.4) <= 1.0);
-        check("G9 (note 127) sine: 12544 Hz (within 0.2 %)", fabs(top - 12543.9) <= 25.0);
+        static const uint8_t KN[][2] = {{4, 64}, {40, 64}, {54, 20}, {85, 76}, {124, 40}, {100, 127}};
+        double worst = 0;
+        for (k = 0; k < sizeof KN / sizeof KN[0]; k++) {
+            chua_t s = {C1 * 3 / 2, C1 / 10, -C1};
+            double r[3] = {1.5, 0.1, -1.0}, a, b, h = 0.01;
+            int32_t hs = (int32_t)(h * (1 << 24) + 0.5), ahs, bhs;
+            sys.chaos = KN[k][0];
+            sys.shape = KN[k][1];
+            cc.valid = 0;
+            chua_params();
+            a = cc.alpha / 65536.0;
+            b = cc.beta / 65536.0;
+            ahs = (int32_t)(((int64_t)cc.alpha * hs) >> 16);
+            bhs = (int32_t)(((int64_t)cc.beta * hs) >> 16);
+            for (w = 0; w < 200u; w++) {
+                double e;
+                chua_step(&s, hs, ahs, bhs);
+                ref_step(r, h, a, b);
+                e = fabs(s.x / 1048576.0 - r[0]) + fabs(s.y / 1048576.0 - r[1]) + fabs(s.z / 1048576.0 - r[2]);
+                worst = e > worst ? e : worst;
+            }
+        }
+        printf("   (largest difference over 2 time units: %.2e)\n", worst);
+        check("fixed-point circuit follows the double-precision one (< 1e-3)", worst < 1e-3);
+    }
+
+    /* every regime, shape and range of notes: the solver stays in range (no restarts), the output in 16 bits */
+    {
+        static const uint8_t NOTES[] = {24, 48, 60, 72, 96, 120};
+        uint32_t c, sh, ni;
+        chua_restarts = 0;
+        peak = 0;
+        sys.attack = 0;
+        for (c = 0; c < 128u; c += 8u)
+            for (sh = 0; sh < 128u; sh += 42u) {
+                sys.chaos = (uint8_t)c;
+                sys.shape = (uint8_t)sh;
+                for (ni = 0; ni < sizeof NOTES; ni++)
+                    synth_note_on(NOTES[ni], 127);
+                run_ms(150);
+                synth_kill();
+            }
+        printf("   (restarts %u, peak %d)\n", chua_restarts, peak);
+        check("CHAOS x SHAPE x notes 24..120: no solver restart, output within 16 bits", chua_restarts == 0 && peak <= 32767);
+    }
+
+    /* pitch: in the CYCLE regime the circuit is periodic, and the tables' time scale puts it on the note */
+    {
+        double a3, a4, c2;
+        sys.chaos = 4;
+        sys.output = 64;                         /* y: the cleanest */
+        for (k = 0; k < 128u; k += 63u) {
+            char what[80];
+            sys.shape = (uint8_t)k;
+            a3 = measure_hz(57);
+            a4 = measure_hz(69);
+            c2 = measure_hz(36);
+            snprintf(what, sizeof what, "CYCLE regime, SHAPE %3u: A3 %.0f, A4 %.0f, C2 %.1f Hz (within 2 %%)", k, a3, a4, c2);
+            check(what, fabs(a3 / 220 - 1) < 0.02 && fabs(a4 / 440 - 1) < 0.02 && fabs(c2 / 65.41 - 1) < 0.02);
+        }
+        sys.output = 0;
     }
 
     /* MASTER at 0: silence */
@@ -230,21 +300,27 @@ int main(int argc, char **argv)
     synth_kill();
     sys.master_q12 = 4096;
 
-    /* a short render to listen to: a C major arpeggio, each wave in turn */
+    /* a render to listen to: per preset of ui.c, an arpeggio then a held chord */
     if (argc > 1 && (wav = fopen(argv[1], "wb")) != 0) {
-        static const uint8_t ARP[] = {60, 64, 67, 72, 67, 64};
+        static const uint8_t ARP[] = {48, 55, 60, 63, 67, 72, 67, 63};
+        static const struct { uint8_t chaos, shape, output, attack, release; } P[] = {
+            {85, 76, 0, 2, 40}, {6, 64, 64, 4, 30}, {38, 64, 32, 2, 36}, {54, 56, 64, 2, 44},
+            {110, 64, 96, 2, 50}, {124, 40, 64, 0, 30}, {70, 110, 127, 70, 100}, {96, 16, 0, 0, 18},
+        };
         wav_hdr(wav, 0);
-        sys.attack = 4;
-        sys.release = 50;
-        for (w = 0; w < W_COUNT; w++) {
-            sys.wave = (uint8_t)w;
+        for (w = 0; w < sizeof P / sizeof P[0]; w++) {
+            sys.chaos = P[w].chaos; sys.shape = P[w].shape; sys.output = P[w].output;
+            sys.attack = P[w].attack; sys.release = P[w].release;
             for (k = 0; k < sizeof ARP; k++) {
                 fm1_in.notes = 1u << key_of(ARP[k]);
-                run_ms(150);
+                run_ms(170);
                 fm1_in.notes = 0;
-                run_ms(50);
+                run_ms(30);
             }
-            run_ms(300);
+            fm1_in.notes = 1u << key_of(60) | 1u << key_of(63) | 1u << key_of(67);
+            run_ms(1200);
+            fm1_in.notes = 0;
+            run_ms(900);
         }
         fseek(wav, 0, SEEK_SET);
         wav_hdr(wav, wav_frames);

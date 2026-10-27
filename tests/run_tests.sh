@@ -4,9 +4,11 @@
 # Host tests of the sources (no hardware). Run from the repo root:
 #   tests/run_tests.sh
 # Without build/felucca.fwsc (no ./build.sh yet) the two tests that need the package are skipped.
-#   basis        the keyboard and the synth (keys.c, synth.c): notes, octave, MIDI in / out, voices, pitch, levels;
-#                also with ASan / UBSan; writes build/host/basis.wav (a short render to listen to)
-#   screen       ui.c and gfx.c drawn into a framebuffer: build/host/ui/*.png, nothing off the screen (needs build/gen)
+#   basis        the keyboard and the CHUA synth (keys.c, synth.c): notes, octave, MIDI in / out, voices; the circuit in
+#                fixed point against double precision, every regime x shape x note range in range, pitch in the CYCLE
+#                regime; also with ASan / UBSan; writes build/host/basis.wav (every preset, to listen to)
+#   screen       ui.c and gfx.c drawn into a framebuffer with the synth running: every view and preset as PNGs in
+#                build/host/ui (sheet.png: all of them), nothing off the screen
 #   storage      the flash store (storage.c): A/B copies, torn writes, bit rot, object map
 #   input        the key / button debounce and the encoders of hal/fm1_input.h against the TIMER5 scan
 #   MIDI         the TRS MIDI parser and its DMA ring (midi_uart.c); the USB descriptors and USB audio (usb.c)
@@ -27,13 +29,13 @@ fail=0
 run() { echo "== $1"; shift; "$@" || fail=1; }
 
 $CC -o "$OUT/basis_test" tests/basis_test.c -lm
-run "keyboard and synth: keys, octave, MIDI in / out, voices, pitch, levels" "$OUT/basis_test" "$OUT/basis.wav"
+run "keyboard and CHUA synth: keys, octave, MIDI, voices, the circuit vs double precision, ranges, pitch" "$OUT/basis_test" "$OUT/basis.wav"
 ${CC%% *} -O1 -g -w -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
     -o "$OUT/basis_test_san" tests/basis_test.c -lm
 run "keyboard and synth under ASan / UBSan" "$OUT/basis_test_san"
 
-mkdir -p "$OUT/ui"
-$CC -Ibuild/gen -o "$OUT/ui_shot" tests/ui_shot.c
+rm -rf "$OUT/ui" && mkdir -p "$OUT/ui"
+$CC -Ibuild/gen -o "$OUT/ui_shot" tests/ui_shot.c -lm
 run "screen: every line on the screen, settings round trip (PNGs in $OUT/ui)" "$OUT/ui_shot" "$OUT/ui"
 python3 tests/ui_shot.py "$OUT/ui" || true
 

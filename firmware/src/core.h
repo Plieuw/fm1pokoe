@@ -27,15 +27,16 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 /* What the main loop and the audio interrupt share. Single writer per field:
- *   main loop writes:  octave, wave, attack, release, master_q12
+ *   main loop writes:  octave, chaos, shape, output, attack, release, master_q12, view, preset
  *   audio ISR writes:  last_note, last_vel, cpu_q8, voices */
 static volatile struct {
     int8_t octave;               /* OCT- / OCT+: -3..+3 */
-    uint8_t wave;                /* synth.c W_* */
+    uint8_t chaos, shape, output;   /* synth.c: the circuit's knobs, 0..127 */
     uint8_t attack, release;     /* 0..127 */
     uint16_t master_q12;         /* MASTER pot: 0..4096 */
     uint8_t last_note, last_vel; /* the last note started (keys or MIDI); 0xFF = none yet */
     uint8_t voices;              /* voices sounding */
     uint32_t cpu_q8;             /* audio load, 256 = 100 % */
     int32_t batt_raw;            /* battery ADC, smoothed (main loop) */
-} sys = {0, 1, 2, 40, 2048, 0xFF, 0, 0, 0, 0};
+    uint8_t view, preset;        /* ui.c: the screen's view, the last preset loaded */
+} sys = {0, 85, 76, 0, 2, 40, 2048, 0xFF, 0, 0, 0, 0, 0, 0};

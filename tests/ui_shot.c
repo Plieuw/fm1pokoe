@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* The screen without the hardware: firmware/src/ui.c and gfx.c (the real drawing code) against a 240 x 240
- * framebuffer instead of the LCD, a few states drawn and saved as raw RGB565 (tests/ui_shot.py makes PNGs).
+ * framebuffer instead of the LCD, with synth.c running (the attractor's trace), a few states drawn and saved as raw
+ * RGB565 (tests/ui_shot.py makes PNGs): every view, every regime, the presets, the widest values.
  * Also checks that no line is drawn outside the screen.
  *   tests/ui_shot OUT_DIR      (run_tests.sh: PNGs in build/host/ui) */
 #include <stdint.h>
@@ -43,6 +44,7 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 /* ------------------------------------------------- what ui.c reads --- */
 #define FELUCCA_VERSION "v0.1"
 #include "../firmware/src/core.h"
+static uint32_t fm1_ms_frac;
 #define FM1_NCOL 11u
 static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {      /* as hal/fm1_input.h */
     {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
@@ -71,9 +73,30 @@ static void irq_restore(uint32_t f) { (void)f; }
 static uint32_t fl_jedec(void) { return 0x856014u; }
 #define FL_FAR(f) fl_jedec
 #include "../firmware/src/panel.c"
-enum { W_SINE, W_TRI, W_SAW, W_SQUARE, W_COUNT };
-static const char *const WAVE_NAME[W_COUNT] = {"SINE", "TRI", "SAW", "SQUARE"};
+#include "../firmware/src/synth.c"
 #include "../firmware/src/ui.c"
+
+static int32_t abuf_[2 * CTL];
+static void run_ms(uint32_t ms)                  /* the audio for ms, the clock with it */
+{
+    uint32_t n = ms * FS / 1000u / CTL + 1u;
+    while (n--) {
+        synth_render(abuf_, CTL);
+        fm1_ms_frac += CTL;
+        while (fm1_ms_frac >= FS / 1000u) {
+            fm1_ms_frac -= FS / 1000u;
+            fm1_ms++;
+        }
+    }
+}
+
+static void frames(uint32_t n)                  /* n UI frames, 40 ms of audio each (the scales settle) */
+{
+    while (n--) {
+        run_ms(40);
+        ui_draw();
+    }
+}
 
 static int shot(const char *dir, const char *name)
 {
@@ -91,45 +114,52 @@ int main(int argc, char **argv)
 {
     const char *dir = argc > 1 ? argv[1] : ".";
     int bad = 0;
-    palette_set(UI_GREY_INDEX);
+    uint32_t i;
+    char name[32];
+    palette_set(UI_PALETTE);
 
     draw_splash();
-    bad |= shot(dir, "splash");
+    bad |= shot(dir, "a_splash");
 
-    ui_force = 1;
-    fm1_ms = 0;
-    ui_draw();
-    bad |= shot(dir, "home");
+    ui_force = 1;                        /* power-on: the ghost circuit, DOUBLE SCROLL, every view */
+    run_ms(1500);
+    for (i = 0; i < V_COUNT; i++) {
+        sys.view = (uint8_t)i;
+        frames(12);
+        snprintf(name, sizeof name, "b_view_%u_%s", i, VIEW_NAME[i]);
+        for (char *c = name; *c; c++)
+            if (*c == '-') *c = '_';
+        bad |= shot(dir, name);
+    }
 
-    sys.last_note = 61;                  /* C#4, octave +2, a knob turned, a button, the widest values */
-    sys.octave = 2;
-    sys.wave = W_SQUARE;
-    sys.attack = 127;
+    sys.view = V_XY;                     /* every preset, as the PRESETS encoder loads them, a note held */
+    synth_note_on(48, 100);
+    for (i = 0; i < NPRESETS; i++) {
+        enc_steps[panel.enc[EN_PRESET]] = i ? 1 : 0;
+        ui_input();
+        run_ms(700);
+        frames(12);
+        snprintf(name, sizeof name, "c_preset_%u", i);
+        bad |= shot(dir, name);
+    }
+    synth_kill();
+
+    sys.octave = 2;                      /* the widest values: a knob just turned, a message */
     sys.release = 127;
     sys.cpu_q8 = 255;
-    sys.voices = 8;
-    k4_count = -1234;
-    enc_steps[panel.enc[EN_PRESET]] = -12;
+    enc_steps[panel.enc[EN_K2]] = 127;
     ui_input();
-    ui_draw();
-    bad |= shot(dir, "playing");
-
     edges = btn_bit(B_SAVE);
     ui_input();
-    ui_draw();
-    bad |= shot(dir, "saved");
-
-    sys.octave = -3;
-    sys.last_note = 0;
-    edges = btn_bit(B_ARP);
-    ui_input();
-    ui_draw();
-    bad |= shot(dir, "low");
+    frames(8);
+    bad |= shot(dir, "d_saved");
+    sys.octave = -3;                     /* (after the save: the round trip below must give +2) */
 
     {   /* settings: SAVE wrote them, a power-on reads them back */
-        sys.octave = 0; sys.wave = 0; sys.attack = 0; sys.release = 0;
+        uint8_t sh = sys.shape;
+        sys.octave = 0; sys.shape = 0; sys.release = 0;
         settings_boot();
-        if (sys.octave != 2 || sys.wave != W_SQUARE || sys.attack != 127 || sys.release != 127) {
+        if (sys.octave != 2 || sys.shape != sh || sys.release != 127) {
             printf("settings round trip FAIL\n");
             bad = 1;
         }

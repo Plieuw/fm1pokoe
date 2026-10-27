@@ -17,8 +17,10 @@ for raw in sorted(d.glob("*.rgb565")):
     img.save(raw.with_suffix(".png"))
     shots.append(img)
 if shots:
-    sheet = Image.new("RGB", (len(shots) * 490 - 10, 480), (128, 128, 128))
+    cols = min(5, len(shots))
+    rows = (len(shots) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * 490 - 10, rows * 490 - 10), (128, 128, 128))
     for i, s in enumerate(shots):
-        sheet.paste(s, (i * 490, 0))
+        sheet.paste(s, (i % cols * 490, i // cols * 490))
     sheet.save(d / "sheet.png")
     print(f"ui shots: {len(shots)} PNGs and sheet.png in {d}")

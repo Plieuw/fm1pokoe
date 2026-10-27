@@ -68,8 +68,10 @@ Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`):
 tests/run_tests.sh
 ```
 
-Host tests, no hardware needed (a C compiler and Python 3): the keyboard and the synth (`tests/basis_test.c`, also
-under ASan / UBSan; it writes `build/host/basis.wav`, a short render to listen to), the flash store, the key / button
+Host tests, no hardware needed (a C compiler and Python 3): the keyboard and the CHUA synth (`tests/basis_test.c`, also
+under ASan / UBSan: the circuit in fixed point against double precision, every regime in range, pitch; it writes
+`build/host/basis.wav`, every preset to listen to), the screen with the synth running (`tests/ui_shot.c`: every view
+and preset as PNGs in `build/host/ui`), the flash store, the key / button
 debounce and the encoders, the TRS MIDI parser, the USB descriptors and USB audio, the command-line installer against a
 simulated FM-1; after `./build.sh` also the update entry and the update loader against the package just built.
 
