@@ -190,28 +190,49 @@ static uint32_t note_inc(uint32_t note)      /* the note's frequency / FS, Q32 *
     return NOTE_INC_TOP[note % 12u] >> (10u - note / 12u);
 }
 
+/* ---- the envelope and the low pass gate (lpg_tables.h: tools/gen_lpg_tables.py)
+ * ADSR: a linear attack, then an exponential fall towards the sustain level (DECAY), held there while the note is,
+ * an exponential RELEASE. The ADSR drives a low pass gate as a vactrol does: its control follows the envelope, fast
+ * up (~2 ms) and slower down (~30 ms), and sets both the gate's level and its filter's cutoff (25 Hz .. 15 kHz,
+ * exponential). The filter is a resonant state-variable low pass (zero-delay feedback, Simper's form: stable at any
+ * cutoff and resonance) with the circuit going in after the gate's level, so with RING up it rings: a ping as the
+ * gate opens, and a tail that rings on after the note (TAIL) until the filter is quiet. */
+#include "lpg_tables.h"
 #define ENV_MAX (1u << 30)
-enum { ST_OFF, ST_ATTACK, ST_SUSTAIN, ST_RELEASE };
+enum { ST_OFF, ST_ATTACK, ST_SUSTAIN, ST_RELEASE, ST_TAIL };   /* (ST_SUSTAIN: the decay towards the sustain level) */
+#define LPG_RISE 189813u                         /* the control's one-pole coefficients (Q24): ~2 ms up, */
+#define LPG_FALL 12672u                          /* ~30 ms down: 1 - exp(-1 / (t FS)) */
+#define LPG_EVERY 8u                             /* frames between filter coefficient updates (0.18 ms) */
+#define LPG_QUIET 8192                           /* the TAIL ends when the filter's states are below this (Q23: -60 dB) */
 typedef struct {
     chua_t s;
     uint32_t inc;                /* the note's frequency / FS, Q32 */
-    uint32_t env, step;          /* 0..ENV_MAX; the attack's or the release's step per frame */
+    uint32_t env;                /* the ADSR, 0..ENV_MAX */
+    uint32_t ctl;                /* the gate's control (the vactrol), 0..ENV_MAX */
     uint32_t age;                /* started at (voice clock): the oldest is stolen first */
     int32_t dc;                  /* the DC blocker's state (Q15 << 8) */
+    int32_t ic1, ic2;            /* the filter's states (Q23) */
+    int32_t a1, a2, a3;          /* its coefficients for the cutoff now (Q28) */
     uint32_t trace_t;            /* time since its last trace point (Q24) */
     uint16_t amp;                /* velocity, Q15 */
     uint8_t note, stage, fresh;  /* fresh: the DC blocker starts at the first sample */
+    uint8_t lpg_n;               /* frames until the next coefficient update */
 } voice_t;
 static voice_t voice[NVOICE];
 static uint32_t voice_clock;
 static chua_t ghost = {C1 / 10, 0, 0};          /* the circuit at the current settings, one substep per block */
 static uint32_t chua_restarts;                   /* voices restarted because the solver left the range (a diagnostic) */
 
-/* 0..127 -> frames for a full rise / fall: ~1 ms .. ~3 s, squared for finer control at the short end */
-static uint32_t env_step(uint32_t v)
+/* the knobs' envelope and ring, per block (read by both cores while they render: written before) */
+static struct { uint32_t att, dec, sus, rel; int32_t k, comp; } eg;
+static void env_params(void)
 {
-    uint32_t ms = 1u + (v * v * 3000u) / (127u * 127u);
-    return ENV_MAX / (ms * (FS / 1000u));
+    eg.att = ENV_MAX / ENV_FRAMES[sys.attack & 127u];
+    eg.dec = ENV_COEF[sys.decay & 127u];
+    eg.sus = (uint32_t)(sys.sustain & 127u) * (ENV_MAX / 127u);
+    eg.rel = ENV_COEF[sys.release & 127u];
+    eg.k = (int32_t)LPG_K[sys.ring & 127u];
+    eg.comp = LPG_COMP[sys.ring & 127u];
 }
 
 static void synth_note_on(uint32_t note, uint32_t vel)
@@ -224,29 +245,32 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     for (i = 0; i < NVOICE && !v; i++)              /* a free voice */
         if (voice[i].stage == ST_OFF)
             v = &voice[i];
-    if (!v) {                                       /* steal: the oldest released voice, else the oldest */
-        voice_t *rel = 0, *old = &voice[0];
-        for (i = 0; i < NVOICE; i++) {
-            if (voice[i].stage == ST_RELEASE && (!rel || voice[i].age < rel->age))
-                rel = &voice[i];
-            if (voice[i].age < old->age)
-                old = &voice[i];
-        }
-        v = rel ? rel : old;
-        v->env = 0;
+    if (!v) {                                       /* steal: the oldest ringing tail, else released, else the oldest */
+        voice_t *best = 0;
+        uint32_t s;
+        for (s = ST_TAIL; s >= ST_RELEASE && !best; s--)
+            for (i = 0; i < NVOICE; i++)
+                if (voice[i].stage == s && (!best || voice[i].age < best->age))
+                    best = &voice[i];
+        if (!best)
+            for (i = 0, best = &voice[0]; i < NVOICE; i++)
+                if (voice[i].age < best->age)
+                    best = &voice[i];
+        v = best;
     }
     if (v->stage == ST_OFF) {                       /* a new circuit: where the ghost is (on the attractor), nudged a */
         v->s = ghost;                               /* little so that voices in a chord do not run in lockstep */
         v->s.x += (int32_t)(rng() & 0x3FFFu) - 0x2000;
         v->s.y += (int32_t)(rng() & 0x0FFFu) - 0x0800;
-        v->env = 0;
+        v->env = v->ctl = 0;
+        v->ic1 = v->ic2 = 0;
+        v->lpg_n = 0;
         v->fresh = 1;
     }
     v->note = (uint8_t)note;
     v->inc = note_inc(note);
     v->amp = (uint16_t)(vel * 258u);                /* 127 -> 32766 */
-    v->step = env_step(sys.attack);
-    v->stage = ST_ATTACK;
+    v->stage = ST_ATTACK;                           /* (a retrigger: the attack from where the envelope is) */
     v->age = ++voice_clock;
     sys.last_note = (uint8_t)note;
     sys.last_vel = (uint8_t)vel;
@@ -256,20 +280,16 @@ static void synth_note_off(uint32_t note)
 {
     uint32_t i;
     for (i = 0; i < NVOICE; i++)
-        if (voice[i].note == note && (voice[i].stage == ST_ATTACK || voice[i].stage == ST_SUSTAIN)) {
+        if (voice[i].note == note && (voice[i].stage == ST_ATTACK || voice[i].stage == ST_SUSTAIN))
             voice[i].stage = ST_RELEASE;
-            voice[i].step = env_step(sys.release);
-        }
 }
 
 static void synth_all_off(void)
 {
     uint32_t i;
     for (i = 0; i < NVOICE; i++)
-        if (voice[i].stage == ST_ATTACK || voice[i].stage == ST_SUSTAIN) {
+        if (voice[i].stage == ST_ATTACK || voice[i].stage == ST_SUSTAIN)
             voice[i].stage = ST_RELEASE;
-            voice[i].step = env_step(sys.release);
-        }
 }
 
 static void synth_kill(void)
@@ -277,6 +297,74 @@ static void synth_kill(void)
     uint32_t i;
     for (i = 0; i < NVOICE; i++)
         voice[i].stage = ST_OFF;
+}
+
+/* the ADSR and the gate's control, one frame; 1 = the voice is done */
+static int env_frame(voice_t *v)
+{
+    switch (v->stage) {
+    case ST_ATTACK:
+        if (ENV_MAX - v->env <= eg.att) {
+            v->env = ENV_MAX;
+            v->stage = ST_SUSTAIN;
+        } else
+            v->env += eg.att;
+        break;
+    case ST_SUSTAIN:
+        v->env = (uint32_t)((int32_t)v->env - (int32_t)(((int64_t)((int32_t)v->env - (int32_t)eg.sus) * eg.dec) >> 24));
+        break;
+    case ST_RELEASE:
+        v->env -= (uint32_t)(((uint64_t)v->env * eg.rel) >> 24) + 1u;
+        if (v->env < (ENV_MAX >> 14) || v->env > ENV_MAX) {   /* (-84 dB) */
+            v->env = 0;
+            v->stage = ST_TAIL;
+        }
+        break;
+    }
+    {
+        int32_t d = (int32_t)v->env - (int32_t)v->ctl;
+        v->ctl = (uint32_t)((int32_t)v->ctl + (int32_t)(((int64_t)d * (d > 0 ? LPG_RISE : LPG_FALL)) >> 24));
+    }
+    if (v->stage == ST_TAIL && v->ctl < (ENV_MAX >> 4)) {   /* the gate nearly shut (cutoff < ~40 Hz): a ring down there */
+        v->ic1 -= v->ic1 >> 8;                          /* is felt, not heard; let it die in ~6 ms */
+        v->ic2 -= v->ic2 >> 8;
+    }
+    if (v->stage == ST_TAIL && v->ctl < (ENV_MAX >> 12) &&
+        v->ic1 < LPG_QUIET && v->ic1 > -LPG_QUIET && v->ic2 < LPG_QUIET && v->ic2 > -LPG_QUIET) {
+        v->stage = ST_OFF;
+        return 1;
+    }
+    return 0;
+}
+
+/* the gate's filter coefficients for its control now: g = tan(pi fc / FS), k = 1 / Q; Q28 (the tables are Q24).
+ * Fine enough for the lowest cutoff (g ~ 0.0018: g^2 ~ 850 in Q28), where the ring's decay is slowest */
+static void lpg_coefs(voice_t *v)
+{
+    int64_t g = (int64_t)LPG_G[v->ctl >> 22 > 255u ? 255u : v->ctl >> 22] << 4, k = (int64_t)eg.k << 4;
+    uint32_t d = (uint32_t)((1 << 28) + ((g * (g + k)) >> 28));               /* 1 + g (g + k): 1 .. ~8, Q28 */
+    v->a1 = (int32_t)(((1u << 31) / (d >> 13)) << 12);                         /* 1 / d (32-bit division) */
+    v->a2 = (int32_t)((g * v->a1) >> 28);
+    v->a3 = (int32_t)((g * v->a2) >> 28);
+}
+
+/* one frame through the gate: x the circuit's output (Q15), the gate's level and filter -> Q15. The states are Q23
+ * (a full-scale input rung up 40 times still fits), the products rounded (no bias: a ring decays to nothing) */
+#define LPG_R (1ll << 27)
+static int32_t lpg_frame(voice_t *v, int32_t x)
+{
+    int32_t v0, v1, v2, v3, lvl = (int32_t)(((v->ctl >> 15) * v->amp) >> 15);   /* Q15 */
+    if (!v->lpg_n--) {
+        v->lpg_n = LPG_EVERY - 1u;
+        lpg_coefs(v);
+    }
+    v0 = (int32_t)(((int64_t)x * lvl) >> 7);                                   /* Q23 */
+    v3 = v0 - v->ic2;
+    v1 = (int32_t)(((int64_t)v->a1 * v->ic1 + (int64_t)v->a2 * v3 + LPG_R) >> 28);
+    v2 = v->ic2 + (int32_t)(((int64_t)v->a2 * v->ic1 + (int64_t)v->a3 * v3 + LPG_R) >> 28);
+    v->ic1 = 2 * v1 - v->ic1;
+    v->ic2 = 2 * v2 - v->ic2;
+    return (int32_t)(((int64_t)v2 * eg.comp) >> 20);                         /* Q23 x Q12 -> Q15 */
 }
 
 static int32_t soft_clip(int32_t x)              /* Q15 in +-1.5 -> +-1: x - 4/27 x^3 */
@@ -314,23 +402,8 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
     bhs = (int32_t)(((int64_t)cc.beta * hs) >> 16);
     h_all = (uint32_t)hs * ns;
     for (i = 0; i < n; i++) {
-        int32_t s, g;
-        switch (v->stage) {
-        case ST_ATTACK:
-            if (ENV_MAX - v->env <= v->step) {
-                v->env = ENV_MAX;
-                v->stage = ST_SUSTAIN;
-            } else
-                v->env += v->step;
-            break;
-        case ST_RELEASE:
-            if (v->env <= v->step) {
-                v->env = 0;
-                v->stage = ST_OFF;
-            } else
-                v->env -= v->step;
-            break;
-        }
+        int32_t s;
+        int done = env_frame(v);
         for (j = 0; j < ns; j++)
             chua_step(&v->s, hs, ahs, bhs);
         if (chua_out_of_range(&v->s)) {                 /* (the solver lost it: start over on the attractor) */
@@ -346,8 +419,7 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
         }
         v->dc += (s * 256 - v->dc) >> 9;                /* DC blocker, ~14 Hz */
         s -= v->dc >> 8;
-        g = (int32_t)(((v->env >> 15) * v->amp) >> 15);   /* Q15 */
-        sum[i] += (int32_t)(((int64_t)s * g) >> 15) >> 1;
+        sum[i] += lpg_frame(v, s) >> 1;
         if (v == render_tv) {
             v->trace_t += h_all;
             if (v->trace_t >= CHUA_TRACE_DT) {
@@ -357,7 +429,7 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
                 trace_put(&v->s);
             }
         }
-        if (v->stage == ST_OFF)
+        if (done)
             break;
     }
 }
@@ -392,6 +464,7 @@ static void synth_render(int32_t *out, uint32_t n)
     voice_t *tv = 0;
     int inner;
     chua_params();
+    env_params();
     inner = chua_regime(cc.chaos) != REG_OUTER;
     for (i = 0; i < n; i++)
         sum[i] = 0;
@@ -401,6 +474,8 @@ static void synth_render(int32_t *out, uint32_t n)
             tv = &voice[k];
         }
     render_tv = tv;
+    sys.env_view = tv ? (uint8_t)(tv->ctl >> 22 > 255u ? 255u : tv->ctl >> 22) : 0u;   /* (ui.c: the ENV page's dot) */
+    sys.env_stage = tv ? tv->stage : (uint8_t)ST_OFF;
     {   /* the ghost: one substep a block (~34 time units a second, ~20 rotations) */
         int32_t hs = (int32_t)(CHUA_HMAX + CHUA_HMAX / 4u);
         chua_step(&ghost, hs, (int32_t)(((int64_t)cc.alpha * hs) >> 16), (int32_t)(((int64_t)cc.beta * hs) >> 16));

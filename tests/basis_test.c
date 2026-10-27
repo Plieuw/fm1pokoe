@@ -356,6 +356,77 @@ int main(int argc, char **argv)
         check("second core (at once, a thread, one that gives up): the same output bit for bit", same && blocks > 1000u);
     }
 
+    /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */
+    {
+        voice_t v;
+        uint32_t f = 0, ok = 1;
+        memset(&v, 0, sizeof v);
+        sys.attack = 40; sys.decay = 50; sys.sustain = 64; sys.release = 50; sys.ring = 100;
+        env_params();
+        v.stage = ST_ATTACK;
+        while (v.stage == ST_ATTACK && f < 100000u) { env_frame(&v); f++; }
+        ok &= f >= ENV_FRAMES[40] - 1u && f <= ENV_FRAMES[40] + 1u;
+        for (f = 0; f < 8u * ENV_FRAMES[50]; f++) env_frame(&v);
+        ok &= v.stage == ST_SUSTAIN && v.env > eg.sus - ENV_MAX / 100u && v.env < eg.sus + ENV_MAX / 100u;
+        v.stage = ST_RELEASE;
+        for (f = 0; f < 20u * ENV_FRAMES[50] && v.stage == ST_RELEASE; f++) env_frame(&v);
+        ok &= v.stage == ST_TAIL && f > 8u * ENV_FRAMES[50];
+        for (f = 0; f < FS && v.stage == ST_TAIL; f++) env_frame(&v);
+        ok &= v.stage == ST_OFF;
+        check("ADSR: attack on time, decay settles on sustain, release -> tail -> off", ok);
+    }
+
+    /* the low pass gate's ring: an impulse into the filter held at ~1 kHz; RING 0 dies at once, RING 127 rings on */
+    {
+        uint32_t r, len[2];
+        for (r = 0; r < 2u; r++) {
+            voice_t v;
+            uint32_t f, last = 0;
+            memset(&v, 0, sizeof v);
+            sys.ring = (uint8_t)(r ? 127 : 0);
+            env_params();
+            v.ctl = (uint32_t)(ENV_MAX * 0.666);          /* index ~170: 25 Hz x 600^(170/255) ~ 1.8 kHz */
+            v.amp = 32767;
+            for (f = 0; f < 20000u; f++) {
+                int32_t y = lpg_frame(&v, f == 0 ? 32767 : 0);
+                if (y > 33 || y < -33)                    /* above -60 dB of the impulse */
+                    last = f;
+            }
+            len[r] = last;
+        }
+        printf("   (impulse at ~1.8 kHz rings for %u frames with RING 0, %u with RING 127)\n", len[0], len[1]);
+        check("RING 127 rings: an impulse lasts > 30x longer than with RING 0", len[1] > 30u * (len[0] + 1u) && len[1] > 400u);
+    }
+
+    /* the gate in every corner: every RING, plucks and holds, every regime, low to high notes: bounded, quiet after */
+    {
+        static const uint8_t NOTES[] = {24, 60, 96, 120};
+        uint32_t r, c, ni, b, okk = 1;
+        int32_t big = 0;
+        peak = 0;
+        for (r = 0; r < 128u; r += 21u)
+            for (c = 0; c < 128u; c += 32u) {
+                sys.ring = (uint8_t)r; sys.chaos = (uint8_t)c; sys.shape = 64; sys.output = 64;
+                sys.attack = 0; sys.decay = 40; sys.sustain = (uint8_t)(c & 64u ? 127 : 0); sys.release = 30;
+                for (ni = 0; ni < sizeof NOTES; ni++)
+                    synth_note_on(NOTES[ni], 127);
+                for (b = 0; b < 200u; b++) {
+                    block();
+                    for (ni = 0; ni < NVOICE; ni++) {
+                        int32_t a = voice[ni].ic1 < 0 ? -voice[ni].ic1 : voice[ni].ic1;
+                        big = a > big ? a : big;
+                    }
+                }
+                synth_all_off();
+                for (b = 0; b < 2000u && sounding(); b++)
+                    block();
+                okk &= sounding() == 0;
+                synth_kill();
+            }
+        printf("   (largest filter state %d of 2^31, peak %d)\n", big, peak);
+        check("low pass gate: every RING x regime x note range bounded, every voice ends", okk && big < (1 << 29) && peak <= 32767);
+    }
+
     /* MASTER at 0: silence */
     sys.master_q12 = 0;
     peak = 0;
@@ -368,14 +439,17 @@ int main(int argc, char **argv)
     /* a render to listen to: per preset of ui.c, an arpeggio then a held chord */
     if (argc > 1 && (wav = fopen(argv[1], "wb")) != 0) {
         static const uint8_t ARP[] = {48, 55, 60, 63, 67, 72, 67, 63};
-        static const struct { uint8_t chaos, shape, output, attack, release; } P[] = {
-            {85, 76, 0, 2, 40}, {6, 64, 64, 4, 30}, {38, 64, 32, 2, 36}, {54, 56, 64, 2, 44},
-            {110, 64, 96, 2, 50}, {124, 40, 64, 0, 30}, {70, 110, 127, 70, 100}, {96, 16, 0, 0, 18},
+        static const struct { uint8_t chaos, shape, output, attack, decay, sustain, release, ring; } P[] = {   /* ui.c PRESETS */
+            {85, 76, 0, 6, 80, 110, 70, 90}, {85, 90, 64, 0, 62, 0, 66, 124}, {6, 64, 64, 10, 70, 120, 64, 60},
+            {38, 64, 32, 4, 60, 90, 66, 100}, {54, 56, 64, 2, 64, 80, 72, 110}, {30, 100, 32, 0, 50, 0, 52, 112},
+            {110, 64, 96, 2, 76, 100, 74, 104}, {124, 40, 64, 0, 56, 60, 60, 80}, {70, 110, 127, 92, 96, 110, 100, 116},
+            {96, 16, 0, 0, 54, 70, 50, 70},
         };
         wav_hdr(wav, 0);
         for (w = 0; w < sizeof P / sizeof P[0]; w++) {
             sys.chaos = P[w].chaos; sys.shape = P[w].shape; sys.output = P[w].output;
-            sys.attack = P[w].attack; sys.release = P[w].release;
+            sys.attack = P[w].attack; sys.decay = P[w].decay; sys.sustain = P[w].sustain;
+            sys.release = P[w].release; sys.ring = P[w].ring;
             for (k = 0; k < sizeof ARP; k++) {
                 fm1_in.notes = 1u << key_of(ARP[k]);
                 run_ms(170);

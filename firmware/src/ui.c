@@ -1,10 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* CHUA UI (main loop only): the attractor drawn live, the knobs, presets, LEDs, the settings in flash.
  *
- *   KNOB 1  CHAOS   the regime: cycle, period 2, spiral, double scroll, outer cycle
- *   KNOB 2  SHAPE   beta: slow round spirals .. tight fast ones
- *   KNOB 3  OUTPUT  which voltage you hear: X, X+Y, Y, Y+Z, Z
- *   KNOB 4  RELEASE                          SELECT     ATTACK
+ * Two pages; ENV switches between them (its LED lit on the ENV page):
+ *   CIRCUIT  KNOB 1 CHAOS   the regime: cycle, period 2, spiral, double scroll, outer cycle
+ *            KNOB 2 SHAPE   beta: slow round spirals .. tight fast ones
+ *            KNOB 3 OUTPUT  which voltage you hear: X, X+Y, Y, Y+Z, Z
+ *            KNOB 4 RING    the low pass gate's resonance
+ *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
+ *   SELECT   RING (on either page)
  *   PRESETS the presets                      ALGORITHM  the view: 3D (turning), X-Y, X-Z, Y-Z, TIME
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO          2ND CORE on / off (saved at once; from the next power-on: the core starts only at boot)
@@ -25,16 +28,19 @@ enum { V_3D, V_XY, V_XZ, V_YZ, V_TIME, V_COUNT };
 static const char *const VIEW_NAME[V_COUNT] = {"3D", "X-Y", "X-Z", "Y-Z", "TIME"};
 
 /* ------------------------------------------------------------- presets --- */
-typedef struct { const char *name; uint8_t chaos, shape, output, attack, release; } preset_t;
+/* ADSR times: 0 = 0.5 ms .. 127 = 10 s (exponential: 40 ~11 ms, 64 ~74 ms, 80 ~250 ms, 100 ~1.2 s); RING: 0 none .. 127 Q 40 */
+typedef struct { const char *name; uint8_t chaos, shape, output, attack, decay, sustain, release, ring; } preset_t;
 static const preset_t PRESETS[] = {
-    {"DOUBLE SCROLL", 85, 76, 0, 2, 40},     /* the classic: alpha ~15.6, beta ~28 territory, x (the scroll jumps) */
-    {"PURE CYCLE", 6, 64, 64, 4, 30},        /* just past the Hopf point: a clean periodic orbit, y */
-    {"PERIOD TWO", 38, 64, 32, 2, 36},       /* the first period doubling: a sub-octave appears */
-    {"SPIRAL", 54, 56, 64, 2, 44},           /* Roessler-like chaos on one scroll: pitched, rough */
-    {"CRISIS EDGE", 110, 64, 96, 2, 50},     /* the double scroll about to break out */
-    {"OUTER LOOP", 124, 40, 64, 0, 30},      /* the saturated circuit's big cycle: loud, buzzy */
-    {"SLOW BLOOM", 70, 110, 127, 70, 100},   /* z, fast spirals, slow envelope: a pad */
-    {"GRIT BASS", 96, 16, 0, 0, 18},         /* x at low beta: slow, deep switching */
+    {"DOUBLE SCROLL", 85, 76, 0, 6, 80, 110, 70, 90},     /* the classic double scroll, x (the scroll jumps) */
+    {"RING PLUCK", 85, 90, 64, 0, 62, 0, 66, 124},        /* the gate pinged: the filter rings on the spiral */
+    {"PURE CYCLE", 6, 64, 64, 10, 70, 120, 64, 60},       /* just past the Hopf point: a clean periodic orbit, y */
+    {"PERIOD TWO", 38, 64, 32, 4, 60, 90, 66, 100},       /* the first period doubling: a sub-octave appears */
+    {"SPIRAL", 54, 56, 64, 2, 64, 80, 72, 110},           /* Roessler-like chaos on one scroll: pitched, rough */
+    {"BONGO GATE", 30, 100, 32, 0, 50, 0, 52, 112},       /* a short gate on a clean cycle: a wooden ring */
+    {"CRISIS EDGE", 110, 64, 96, 2, 76, 100, 74, 104},    /* the double scroll about to break out */
+    {"OUTER LOOP", 124, 40, 64, 0, 56, 60, 60, 80},       /* the saturated circuit's big cycle: loud, buzzy */
+    {"SLOW BLOOM", 70, 110, 127, 92, 96, 110, 100, 116},  /* z, fast spirals, slow envelope, ringing gate: a pad */
+    {"GRIT BASS", 96, 16, 0, 0, 54, 70, 50, 70},          /* x at low beta: slow, deep switching */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -46,21 +52,24 @@ static void preset_load(uint32_t i)
     sys.shape = p->shape;
     sys.output = p->output;
     sys.attack = p->attack;
+    sys.decay = p->decay;
+    sys.sustain = p->sustain;
     sys.release = p->release;
+    sys.ring = p->ring;
 }
 static int preset_edited(void)
 {
     const preset_t *p = &PRESETS[sys.preset % NPRESETS];
     return sys.chaos != p->chaos || sys.shape != p->shape || sys.output != p->output || sys.attack != p->attack ||
-           sys.release != p->release;
+           sys.decay != p->decay || sys.sustain != p->sustain || sys.release != p->release || sys.ring != p->ring;
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485532u      /* "CHU2": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485533u      /* "CHU3": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
-    uint8_t chaos, shape, output, attack, release, view, preset, cpu2;
+    uint8_t chaos, shape, output, attack, release, view, preset, cpu2, decay, sustain, ring;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -78,6 +87,9 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.output = (uint8_t)(s.output & 127u);
         sys.attack = (uint8_t)(s.attack & 127u);
         sys.release = (uint8_t)(s.release & 127u);
+        sys.decay = (uint8_t)(s.decay & 127u);
+        sys.sustain = (uint8_t)(s.sustain & 127u);
+        sys.ring = (uint8_t)(s.ring & 127u);
         sys.view = (uint8_t)(s.view % V_COUNT);
         sys.preset = (uint8_t)(s.preset % NPRESETS);
         sys.cpu2 = (uint8_t)(s.cpu2 != 0);
@@ -97,6 +109,9 @@ static int settings_save(void)     /* 0 = saved */
     s.output = sys.output;
     s.attack = sys.attack;
     s.release = sys.release;
+    s.decay = sys.decay;
+    s.sustain = sys.sustain;
+    s.ring = sys.ring;
     s.view = sys.view;
     s.preset = sys.preset;
     s.cpu2 = sys.cpu2;
@@ -273,6 +288,96 @@ static void draw_plot(void)
     cv_blit(0, PLOT_Y);                                      /* (DMA: runs on while the next frame is prepared) */
 }
 
+/* an ADSR time as text: 0.5 ms .. 10 s */
+static void env_time(char *b, uint32_t n, uint32_t v)
+{
+    uint32_t us = ENV_FRAMES[v & 127u] * 1000u / 44u;        /* (frames / 44.1 kHz, close enough to show) */
+    char d[12];
+    if (us < 10000u) {                                       /* 0.5 .. 9.9 ms */
+        fmt_int(d, (int32_t)(us / 1000u));
+        str_cpy(b, d, n);
+        ui_cat(b, n, ".");
+        fmt_int(d, (int32_t)(us / 100u % 10u));
+        ui_cat(b, n, d);
+        ui_cat(b, n, " ms");
+    } else if (us < 1000000u) {
+        fmt_int(d, (int32_t)(us / 1000u));
+        str_cpy(b, d, n);
+        ui_cat(b, n, " ms");
+    } else {
+        fmt_int(d, (int32_t)(us / 1000000u));
+        str_cpy(b, d, n);
+        ui_cat(b, n, ".");
+        fmt_int(d, (int32_t)(us / 100000u % 10u));
+        ui_cat(b, n, d);
+        ui_cat(b, n, " s");
+    }
+}
+
+/* the ENV page's picture: the ADSR on a log-time axis (each segment as wide as its knob is far), the sustain held a
+ * while, filled; the newest voice's gate level as a line, and the cutoff it sets */
+static void draw_env(void)
+{
+    const int32_t top = 10, bot = PLOT_H - 14, hh = bot - top;
+    int32_t wa = 8 + sys.attack * 2 / 5, wd = 8 + sys.decay * 2 / 5, wr = 8 + sys.release * 2 / 5, ws = 40;
+    int32_t x0 = (240 - (wa + wd + ws + wr)) / 2, x, prev = bot, sus = bot - (int32_t)sys.sustain * hh / 127;
+    uint16_t fill = ux_mix(T_BG, T_THEME, 18);
+    cv_begin(240, PLOT_H, T_BG);
+    cv_rect(8, bot, 224, 1, T_LINE);
+    for (x = 0; x < wa + wd + ws + wr; x++) {                /* the curve, column by column */
+        int32_t y;
+        if (x < wa)
+            y = bot - hh * x / wa;
+        else if (x < wa + wd) {                              /* exponential: ~4 time constants across */
+            int32_t t = (x - wa) * 4096 / wd, e = 4096;
+            int32_t k;
+            for (k = 0; k < 4; k++)                          /* e = exp(-4 t) by four steps of (1 - t)^... */
+                e = e * (4096 - t) / 4096;
+            y = sus - (sus - top) * e / 4096;
+        } else if (x < wa + wd + ws)
+            y = sus;
+        else {
+            int32_t t = (x - wa - wd - ws) * 4096 / wr, e = 4096, k;
+            for (k = 0; k < 4; k++)
+                e = e * (4096 - t) / 4096;
+            y = bot - (bot - sus) * e / 4096;
+        }
+        cv_rect(x0 + x, y, 1, bot - y, fill);
+        if (x)
+            cv_line(x0 + x - 1, prev, x0 + x, y, T_THEME);
+        prev = y;
+    }
+    {
+        static const char *const L[4] = {"A", "D", "S", "R"};
+        const int32_t xs[4] = {x0 + wa / 2, x0 + wa + wd / 2, x0 + wa + wd + ws / 2, x0 + wa + wd + ws + wr / 2};
+        int32_t i;
+        for (i = 0; i < 4; i++)
+            cv_text(xs[i] - 3, bot + 1, &AF_S, L[i], T_MID);
+    }
+    if (sys.env_stage != 0u) {                               /* a voice sounds: its gate's level, and the cutoff */
+        int32_t y = bot - (int32_t)sys.env_view * hh / 255;
+        uint32_t i = sys.env_view, hz = 25u, k;
+        char b[16], d[12];
+        for (k = 0; k < i; k++)                              /* 25 Hz x 600^(i / 255): x 1.0254 a step */
+            hz = hz + (hz * 26u + 512u) / 1024u;
+        cv_rect(8, y, 224, 1, T_ACCENT);
+        if (hz < 1000u) {
+            fmt_int(d, (int32_t)hz);
+            str_cpy(b, d, sizeof b);
+            ui_cat(b, sizeof b, " Hz");
+        } else {
+            fmt_int(d, (int32_t)(hz / 1000u));
+            str_cpy(b, d, sizeof b);
+            ui_cat(b, sizeof b, ".");
+            fmt_int(d, (int32_t)(hz / 100u % 10u));
+            ui_cat(b, sizeof b, d);
+            ui_cat(b, sizeof b, " kHz");
+        }
+        cv_text_r(232, y > top + 16 ? y - 16 : y + 3, &AF_S, b, T_ACCENT, T_BG);
+    }
+    cv_blit(0, PLOT_Y);
+}
+
 static void ui_draw(void)
 {
     char a[40], b[24], v[12];
@@ -290,35 +395,49 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    str_cpy(a, "1 CHAOS ", sizeof a);
-    fmt_int(v, sys.chaos);
-    ui_cat(a, sizeof a, v);
-    ui_cell(T_C1, a, REG_NAME[reg]);
-    {   /* beta with one decimal */
-        int32_t bq = chua_beta_q16(sys.shape), t = (bq * 10 + 32768) >> 16;
-        fmt_int(v, t / 10);
-        str_cpy(b, "BETA ", sizeof b);
-        ui_cat(b, sizeof b, v);
-        ui_cat(b, sizeof b, ".");
-        fmt_int(v, t % 10);
-        ui_cat(b, sizeof b, v);
+    if (sys.page == 0u) {
+        str_cpy(a, "1 CHAOS ", sizeof a);
+        fmt_int(v, sys.chaos);
+        ui_cat(a, sizeof a, v);
+        ui_cell(T_C1, a, REG_NAME[reg]);
+        {   /* beta with one decimal */
+            int32_t bq = chua_beta_q16(sys.shape), t = (bq * 10 + 32768) >> 16;
+            fmt_int(v, t / 10);
+            str_cpy(b, "BETA ", sizeof b);
+            ui_cat(b, sizeof b, v);
+            ui_cat(b, sizeof b, ".");
+            fmt_int(v, t % 10);
+            ui_cat(b, sizeof b, v);
+        }
+        ui_cell(T_C2, "2 SHAPE", b);
+        {
+            uint32_t o = sys.output;
+            ui_cell(T_C3, "3 OUTPUT", o < 16u ? "X" : o < 48u ? "X + Y" : o < 80u ? "Y" : o < 112u ? "Y + Z" : "Z");
+        }
+        fmt_int(v, sys.ring);
+        ui_cell(T_C4, "4 RING", v);
+    } else {
+        env_time(b, sizeof b, sys.attack);
+        ui_cell(T_C1, "1 ATTACK", b);
+        env_time(b, sizeof b, sys.decay);
+        ui_cell(T_C2, "2 DECAY", b);
+        fmt_int(v, (int32_t)(sys.sustain * 100u / 127u));
+        str_cpy(b, v, sizeof b);
+        ui_cat(b, sizeof b, " %");
+        ui_cell(T_C3, "3 SUSTAIN", b);
+        env_time(b, sizeof b, sys.release);
+        ui_cell(T_C4, "4 RELEASE", b);
     }
-    ui_cell(T_C2, "2 SHAPE", b);
-    {
-        uint32_t o = sys.output;
-        ui_cell(T_C3, "3 OUTPUT", o < 16u ? "X" : o < 48u ? "X + Y" : o < 80u ? "Y" : o < 112u ? "Y + Z" : "Z");
-    }
-    fmt_int(v, sys.release);
-    ui_cell(T_C4, "4 RELEASE", v);
 
     if (ui_event_ms && fm1_ms - ui_event_ms < 2000u)
         ui_status(ui_event);
     else {
-        str_cpy(a, "ATK ", sizeof a);
-        fmt_int(v, sys.attack);
+        str_cpy(a, sys.page ? "ENV   RING " : "RING ", sizeof a);
+        fmt_int(v, sys.ring);
         ui_cat(a, sizeof a, v);
         ui_cat(a, sizeof a, "   ");
-        ui_cat(a, sizeof a, VIEW_NAME[sys.view % V_COUNT]);
+        if (!sys.page)
+            ui_cat(a, sizeof a, VIEW_NAME[sys.view % V_COUNT]);
         ui_cat(a, sizeof a, "   OCT ");
         if (sys.octave > 0)
             ui_cat(a, sizeof a, "+");
@@ -330,7 +449,10 @@ static void ui_draw(void)
         ui_cat(a, sizeof a, C1_ON() ? "% x2" : "%");
         ui_status(a);
     }
-    draw_plot();
+    if (sys.page)
+        draw_env();
+    else
+        draw_plot();
     ui_force = 0;
 }
 
@@ -371,6 +493,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_OCTDN]);
     if (sys.octave > 0)
         led_on(nl, panel.btn[B_OCTUP]);
+    if (sys.page)
+        led_on(nl, panel.btn[B_ENV]);
     for (i = 0; i < FM1_NCOL; i++)
         fm1_led[i] = nl[i];
 }
@@ -417,6 +541,10 @@ static void ui_input(void)
         case B_SAVE:
             ui_say(settings_save() == 0 ? "SAVED" : flash_ok ? "SAVE FAILED" : "NO FLASH");
             break;
+        case B_ENV:                                     /* the ENV page and back */
+            sys.page = (uint8_t)!sys.page;
+            ui_force = 1;
+            break;
         case B_GLO:
             sys.cpu2 = (uint8_t)!sys.cpu2;
             settings_save();
@@ -430,18 +558,25 @@ static void ui_input(void)
             break;
         }
     }
-    knob(&sys.chaos, EN_K1, 0);
-    knob(&sys.shape, EN_K2, 1);
-    knob(&sys.output, EN_K3, 2);
-    knob(&sys.release, EN_K4, 3);
+    if (sys.page == 0u) {
+        knob(&sys.chaos, EN_K1, 0);
+        knob(&sys.shape, EN_K2, 1);
+        knob(&sys.output, EN_K3, 2);
+        knob(&sys.ring, EN_K4, 3);
+    } else {
+        knob(&sys.attack, EN_K1, 0);
+        knob(&sys.decay, EN_K2, 1);
+        knob(&sys.sustain, EN_K3, 2);
+        knob(&sys.release, EN_K4, 3);
+    }
     if ((s = panel_enc(EN_SELECT)) != 0) {
-        sys.attack = (uint8_t)clamp(sys.attack + s, 0, 127);
-        str_cpy(t, "ATTACK ", sizeof t);
-        fmt_int(v, sys.attack);
+        sys.ring = (uint8_t)clamp(sys.ring + s, 0, 127);
+        str_cpy(t, "RING ", sizeof t);
+        fmt_int(v, sys.ring);
         ui_cat(t, sizeof t, v);
         ui_say(t);
     }
-    if ((s = panel_enc(EN_ALGO)) != 0) {
+    if ((s = panel_enc(EN_ALGO)) != 0 && !sys.page) {
         sys.view = (uint8_t)((sys.view + V_COUNT * 8 + s) % V_COUNT);
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);

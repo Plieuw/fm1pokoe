@@ -37,10 +37,11 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 1 — CHAOS | α: CYCLE 0 · PERIOD 2 32 · SPIRAL 48 · DBL SCROLL 60 · OUTER 112 |
 | KNOB 2 — SHAPE | β 10..34: lage waarden trage, ronde spiralen; hoge waarden snelle, strakke |
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
-| KNOB 4 — RELEASE | uitklinktijd |
-| SELECT | attack |
+| KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 40 (rinkelt lang door) |
+| ENV | wisselt naar de ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
+| SELECT | RING (op beide pagina's) |
 | ALGORITHM | weergave: 3D (draaiend), X-Y, X-Z, Y-Z, TIME |
-| PRESETS | DOUBLE SCROLL, PURE CYCLE, PERIOD TWO, SPIRAL, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS |
+| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | tweede core aan/uit (vanaf de volgende start) |
@@ -48,6 +49,12 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | MIDI in (USB en TRS) | note on/off op elk kanaal, CC 123 = all notes off |
 | USB | class-compliant MIDI + USB-audio-ingang (opnemen in je DAW) |
 | OCT- + OCT+ 5 s ingedrukt | UBOOT (update-modus) |
+
+**De low pass gate.** De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt
+de envelope snel omhoog (~2 ms) en trager omlaag (~30 ms), en zet zowel het volume als de cutoff (25 Hz .. 15 kHz). Het
+filter is een resonant state-variable low pass (zero-delay feedback, stabiel bij elke cutoff en resonantie). Met RING
+hoog rinkelt het: een "ping" als de gate opengaat, en een staart die doorklinkt terwijl hij dichtgaat. Probeer RING
+PLUCK of BONGO GATE (sustain 0: elke noot is een aanslag).
 
 Het scherm toont de toestand (x, y, z) van de nieuwste stem; speelt er niets, dan een "spookcircuit" dat op de huidige
 instellingen meedraait. Dat spookcircuit levert ook de beginstand van nieuwe stemmen (al op de attractor, met een kleine
@@ -60,6 +67,7 @@ Alles wordt als één bestand gecompileerd: `firmware/src/felucca.c` bepaalt de 
 | Bestand | Wat |
 | --- | --- |
 | `firmware/src/synth.c` | het Chua-circuit: diode, RK2-solver in Q20 fixed point, stemmen, uitgang, de trace voor het scherm |
+| `firmware/src/lpg_tables.h` | gegenereerd door `tools/gen_lpg_tables.py`: ADSR-tijden, cutoff, resonantie |
 | `firmware/src/chua_tables.h` | gegenereerd door `tools/gen_chua_tables.c`: α, omlooptijd en RMS per (SHAPE, CHAOS) |
 | `firmware/src/ui.c` | de attractor tekenen, knoppen, presets, LEDs, instellingen opslaan |
 | `firmware/src/keys.c` | toetsen en MIDI in → noten (draait in de audio-interrupt, elke 32 samples) |

@@ -144,6 +144,22 @@ int main(int argc, char **argv)
     }
     synth_kill();
 
+    sys.page = 1;                        /* the ENV page: a held note (its gate's level and cutoff), then a pluck */
+    preset_load(0);
+    synth_note_on(55, 100);
+    frames(10);
+    bad |= shot(dir, "e_env_held");
+    preset_load(1);
+    sys.release = 100;
+    enc_steps[panel.enc[EN_K2]] = 30;    /* (DECAY turned: its cell lit) */
+    ui_input();
+    synth_note_on(60, 100);
+    frames(3);
+    bad |= shot(dir, "e_env_pluck");
+    synth_kill();
+    sys.page = 0;
+    ui_force = 1;
+
     sys.octave = 2;                      /* the widest values: a knob just turned, a message */
     sys.release = 127;
     sys.cpu_q8 = 255;
