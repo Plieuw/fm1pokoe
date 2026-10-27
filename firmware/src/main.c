@@ -169,6 +169,9 @@ static uint32_t crash_seen __attribute__((section(".noinit")));   /* fm1_crash.c
 static void fm1_main(void)
 {
     uint32_t ms, boot_clean;
+#if FELUCCA_CPU2
+    uint8_t c1_told = 0;                                /* 2ND CORE STOPPED shown (and the setting cleared) */
+#endif
     settings_boot();                                    /* flash check, the saved settings */
 #if FELUCCA_OTA
     if (flash_ok)
@@ -191,6 +194,16 @@ static void fm1_main(void)
     keys_init();
     master_boot();
     kb_boot_hold = 1;                               /* no notes from the keys under the splash */
+#if FELUCCA_CPU2
+    if (sys.cpu2 && !bootguard.failed) {
+        /* the second core (hal/fm1_cpu1.h; synth.c renders half the voices on it), at power-on, before the audio and
+         * the timers (started later it never reaches its entry). It starts in the chip's ROM: the PC limits open
+         * meanwhile. 2ND CORE OFF (GLO), a failed boot just before, or no answer: one core */
+        fm1_guard_pc_open();
+        fm1_cpu1_start();
+        fm1_guard_enable(FM1_GUARD_PC);
+    }
+#endif
     audio_init();
     usb_start();
 #if FELUCCA_UART
@@ -230,6 +243,16 @@ static void fm1_main(void)
         }
         master_poll();
         uboot_combo();
+#if FELUCCA_CPU2
+        if (*(volatile uint8_t *)&fm1_c1_gave_up && !c1_told) {   /* (the audio ISR's) */
+            c1_told = 1;                                /* core 1 misread or stopped answering on this FM-1: one core */
+            if (sys.cpu2) {                             /* from now on (GLO switches it on again for the next boot) */
+                sys.cpu2 = 0;
+                settings_save();
+            }
+            ui_say("2ND CORE STOPPED: OFF");
+        }
+#endif
 #if FELUCCA_OTA
         ota_service();                                  /* M-UPGRADE handshake */
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */

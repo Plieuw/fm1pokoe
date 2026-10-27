@@ -34,6 +34,33 @@ static void midi_in(uint32_t st, uint32_t d1, uint32_t d2)
     mi_w++;
 }
 
+/* the second core: off (0), run at once (1), a real second thread (2: under ThreadSanitizer, a race between the two
+ * halves of a block shows), or one that never answers (3: C1_WAIT gives up, this core renders its voices) */
+#include <pthread.h>
+static int c1_mode;
+static void (*c1_fn)(uint32_t);
+static uint32_t c1_arg;
+static pthread_t c1_thread;
+static void *c1_thread_main(void *p) { (void)p; c1_fn(c1_arg); return 0; }
+static int c1_run(void (*fn)(uint32_t), uint32_t arg)
+{
+    c1_fn = fn;
+    c1_arg = arg;
+    if (c1_mode == 1)
+        fn(arg);
+    else if (c1_mode == 2)
+        pthread_create(&c1_thread, 0, c1_thread_main, 0);
+    return 1;
+}
+static int c1_wait(void)
+{
+    if (c1_mode == 2)
+        pthread_join(c1_thread, 0);
+    return c1_mode == 3 ? -1 : 0;
+}
+#define C1_ON() (c1_mode != 0)
+#define C1_RUN(fn, arg) c1_run(fn, arg)
+#define C1_WAIT() c1_wait()
 #include "../firmware/src/synth.c"
 #include "../firmware/src/keys.c"
 
@@ -289,6 +316,44 @@ int main(int argc, char **argv)
             check(what, fabs(a3 / 220 - 1) < 0.02 && fabs(a4 / 440 - 1) < 0.02 && fabs(c2 / 65.41 - 1) < 0.02);
         }
         sys.output = 0;
+    }
+
+    /* the second core: the same output, bit for bit, whichever core renders which voice */
+    {
+        static int32_t ref[2 * CTL * 2000];
+        static const uint8_t CH[] = {48, 52, 55, 59, 62, 65, 69, 72};
+        int mode, same = 1;
+        uint32_t blocks = 0;
+        for (mode = 0; mode < 4; mode++) {
+            uint32_t b, j;
+            synth_kill();
+            memset(voice, 0, sizeof voice);
+            ghost.x = C1 / 10; ghost.y = ghost.z = 0;
+            rng_state = 0x1234567u;
+            voice_clock = 0;
+            c1_blocks = 0;
+            c1_mode = mode;
+            sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30;
+            for (b = 0; b < 2000u; b++) {
+                if (b % 250u == 0u)
+                    for (j = 0; j < sizeof CH; j++)
+                        (b / 250u + j) & 1u ? synth_note_on(CH[j] + b / 250u, 100) : synth_note_off(CH[j] + b / 250u - 1u);
+                if (b == 1000u)
+                    sys.chaos = 120;
+                synth_render(buf, CTL);
+                for (j = 0; j < 2u * CTL; j++) {
+                    if (mode == 0)
+                        ref[b * 2u * CTL + j] = buf[j];
+                    else
+                        same &= ref[b * 2u * CTL + j] == buf[j];
+                }
+            }
+            if (mode == 1)
+                blocks = c1_blocks;
+        }
+        c1_mode = 0;
+        printf("   (blocks with voices on the second core: %u of 2000)\n", blocks);
+        check("second core (at once, a thread, one that gives up): the same output bit for bit", same && blocks > 1000u);
     }
 
     /* MASTER at 0: silence */

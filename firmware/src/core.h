@@ -27,7 +27,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 /* What the main loop and the audio interrupt share. Single writer per field:
- *   main loop writes:  octave, chaos, shape, output, attack, release, master_q12, view, preset
+ *   main loop writes:  octave, chaos, shape, output, attack, release, master_q12, view, preset, cpu2
  *   audio ISR writes:  last_note, last_vel, cpu_q8, voices */
 static volatile struct {
     int8_t octave;               /* OCT- / OCT+: -3..+3 */
@@ -39,4 +39,5 @@ static volatile struct {
     uint32_t cpu_q8;             /* audio load, 256 = 100 % */
     int32_t batt_raw;            /* battery ADC, smoothed (main loop) */
     uint8_t view, preset;        /* ui.c: the screen's view, the last preset loaded */
-} sys = {0, 85, 76, 0, 2, 40, 2048, 0xFF, 0, 0, 0, 0, 0, 0};
+    uint8_t cpu2;                /* 2ND CORE: start the second core at power-on (main.c; GLO toggles it) */
+} sys = {0, 85, 76, 0, 2, 40, 2048, 0xFF, 0, 0, 0, 0, 0, 0, 1};

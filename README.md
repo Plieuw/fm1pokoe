@@ -43,6 +43,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | PRESETS | DOUBLE SCROLL, PURE CYCLE, PERIOD TWO, SPIRAL, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
+| GLO | tweede core aan/uit (vanaf de volgende start) |
 | MASTER | volume |
 | MIDI in (USB en TRS) | note on/off op elk kanaal, CC 123 = all notes off |
 | USB | class-compliant MIDI + USB-audio-ingang (opnemen in je DAW) |
@@ -76,9 +77,12 @@ Regels van het huis (uit Felucca, en `tools/build.py` controleert ze): registert
 audio-interrupt is fixed point (geen 64-bit delingen: die heeft de toolchain niet), en de audio-interrupt moet binnen
 ~2,9 ms klaar zijn.
 
-**CPU.** Niet op hardware gemeten. Op een pc kost 8 stemmen ~250 ns per sample in het middenregister en ~560 ns bij
-hoge noten (4 substappen). Geschat komt dat op de FM-1 uit op 20–50 %. Het scherm toont de belasting (CPU onderaan); kom
-je boven ~80 %, zet dan `NVOICE` in `core.h` op 6 of 4, of `CHUA_NSUB` in `synth.c` op 2.
+**CPU en de tweede core.** Met 8 stemmen op één core staat de belasting op ~80 %. De AC79 heeft een tweede core; CHUA
+verdeelt de stemmen (om en om) over beide. De tweede core start alleen bij het opstarten, dus **GLO** zet hem aan of
+uit voor de volgende start (meteen opgeslagen; standaard aan). Onderaan het scherm staat dan `CPU …% x2`. Op sommige
+FM-1's leest de tweede core verkeerd (zo gevonden door X0X en Jangada): dan merkt de firmware dat, gaat verder op één
+core en zet de instelling uit (`2ND CORE STOPPED: OFF`). De uitvoer is bit voor bit gelijk, met één of twee cores
+(getest, ook als echte thread onder ThreadSanitizer). Is het nog te zwaar, zet dan `NVOICE` in `core.h` op 6.
 
 **Tabellen opnieuw maken** (na een andere diode of ander bereik), ~1 minuut:
 

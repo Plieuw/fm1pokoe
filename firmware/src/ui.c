@@ -7,6 +7,7 @@
  *   KNOB 4  RELEASE                          SELECT     ATTACK
  *   PRESETS the presets                      ALGORITHM  the view: 3D (turning), X-Y, X-Z, Y-Z, TIME
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
+ *   GLO          2ND CORE on / off (saved at once; from the next power-on: the core starts only at boot)
  *   MASTER pot   volume
  *
  * The picture: synth.c keeps a ring of the circuit's state (chua_trace: the newest voice, or the ghost circuit when
@@ -55,11 +56,11 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485531u      /* "CHU1": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485532u      /* "CHU2": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
-    uint8_t chaos, shape, output, attack, release, view, preset;
+    uint8_t chaos, shape, output, attack, release, view, preset, cpu2;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -79,6 +80,7 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.release = (uint8_t)(s.release & 127u);
         sys.view = (uint8_t)(s.view % V_COUNT);
         sys.preset = (uint8_t)(s.preset % NPRESETS);
+        sys.cpu2 = (uint8_t)(s.cpu2 != 0);
     }
 }
 
@@ -97,6 +99,7 @@ static int settings_save(void)     /* 0 = saved */
     s.release = sys.release;
     s.view = sys.view;
     s.preset = sys.preset;
+    s.cpu2 = sys.cpu2;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -324,7 +327,7 @@ static void ui_draw(void)
         ui_cat(a, sizeof a, "   CPU ");
         fmt_int(v, (int32_t)(sys.cpu_q8 * 100u / 256u));
         ui_cat(a, sizeof a, v);
-        ui_cat(a, sizeof a, "%");
+        ui_cat(a, sizeof a, C1_ON() ? "% x2" : "%");
         ui_status(a);
     }
     draw_plot();
@@ -413,6 +416,11 @@ static void ui_input(void)
             break;
         case B_SAVE:
             ui_say(settings_save() == 0 ? "SAVED" : flash_ok ? "SAVE FAILED" : "NO FLASH");
+            break;
+        case B_GLO:
+            sys.cpu2 = (uint8_t)!sys.cpu2;
+            settings_save();
+            ui_say(sys.cpu2 ? "2ND CORE ON: RESTART" : "2ND CORE OFF: RESTART");
             break;
         default:
             str_cpy(t, "BUTTON ", sizeof t);

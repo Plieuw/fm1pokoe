@@ -52,6 +52,9 @@
 #include "fm1_guard.h"
 #if FELUCCA_CPU2
 #include "fm1_cpu1.h"
+#define C1_ON() fm1_c1_on                    /* synth.c synth_render: a second core is answering */
+#define C1_RUN(fn, arg) fm1_cpu1_run(fn, arg)
+#define C1_WAIT() fm1_cpu1_wait()
 #endif
 #include "fm1_input.h"
 #include "fm1_timer.h"

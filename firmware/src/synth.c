@@ -303,21 +303,104 @@ static uint32_t voice_h(const voice_t *v, int32_t *hs)
     return n;
 }
 
+/* one voice's block into sum[0..n-1] (mono); restarts: the counter of the core it runs on */
+static voice_t *render_tv;                       /* the voice the trace follows (set before the voices render) */
+static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restarts)
+{
+    int32_t hs, ahs, bhs;
+    uint32_t ns, i, j, h_all;
+    ns = voice_h(v, &hs);
+    ahs = (int32_t)(((int64_t)cc.alpha * hs) >> 16);
+    bhs = (int32_t)(((int64_t)cc.beta * hs) >> 16);
+    h_all = (uint32_t)hs * ns;
+    for (i = 0; i < n; i++) {
+        int32_t s, g;
+        switch (v->stage) {
+        case ST_ATTACK:
+            if (ENV_MAX - v->env <= v->step) {
+                v->env = ENV_MAX;
+                v->stage = ST_SUSTAIN;
+            } else
+                v->env += v->step;
+            break;
+        case ST_RELEASE:
+            if (v->env <= v->step) {
+                v->env = 0;
+                v->stage = ST_OFF;
+            } else
+                v->env -= v->step;
+            break;
+        }
+        for (j = 0; j < ns; j++)
+            chua_step(&v->s, hs, ahs, bhs);
+        if (chua_out_of_range(&v->s)) {                 /* (the solver lost it: start over on the attractor) */
+            (*restarts)++;
+            v->s = ghost;
+            v->fresh = 1;
+        }
+        s = (int32_t)(((int64_t)(v->s.x >> 8) * cc.gx + (int64_t)(v->s.y >> 8) * cc.gy +
+                       (int64_t)(v->s.z >> 8) * cc.gz) >> 12);
+        if (v->fresh) {
+            v->fresh = 0;
+            v->dc = s * 256;
+        }
+        v->dc += (s * 256 - v->dc) >> 9;                /* DC blocker, ~14 Hz */
+        s -= v->dc >> 8;
+        g = (int32_t)(((v->env >> 15) * v->amp) >> 15);   /* Q15 */
+        sum[i] += (int32_t)(((int64_t)s * g) >> 15) >> 1;
+        if (v == render_tv) {
+            v->trace_t += h_all;
+            if (v->trace_t >= CHUA_TRACE_DT) {
+                v->trace_t -= CHUA_TRACE_DT;
+                if (v->trace_t > CHUA_TRACE_DT)
+                    v->trace_t = 0;
+                trace_put(&v->s);
+            }
+        }
+        if (v->stage == ST_OFF)
+            break;
+    }
+}
+
+/* ---- the second core (hal/fm1_cpu1.h; the job hand-over after Felucca's fx.c mix_block): it renders every other
+ * sounding voice into its own sum while this core renders the rest, then this core adds it in. A voice's render
+ * touches only that voice; what they share (the knobs' circuit cc, the ghost, the trace's choice) is settled before
+ * the split, and only the trace's voice writes the trace. The sums are integers, so the output is bit for bit one
+ * core's (tests/basis_test.c checks it). Without a second core (the host tests, 2ND CORE OFF, one that did not answer
+ * or stopped: then it is held for good) C1_RUN takes nothing and this core renders them all. */
+#ifndef C1_RUN
+#define C1_ON() 0                                /* a second core is answering */
+#define C1_RUN(fn, arg) 0                        /* hand it fn(arg): 1 = taken */
+#define C1_WAIT() 0                              /* wait for it: 0 = done */
+#endif
+static int32_t c1_sum[CTL];
+static uint32_t c1_restarts, c1_blocks;          /* (diagnostics) */
+static void c1_voices(uint32_t arg)              /* arg: the voices (bit k = voice k) | n << 8 */
+{
+    uint32_t k, n = arg >> 8;
+    for (k = 0; k < n; k++)
+        c1_sum[k] = 0;
+    for (k = 0; k < NVOICE; k++)
+        if (arg >> k & 1u)
+            render_voice(&voice[k], n, c1_sum, &c1_restarts);
+}
+
 static void synth_render(int32_t *out, uint32_t n)
 {
-    uint32_t i, k, busy = 0, newest = 0;
-    int32_t m = (int32_t)sys.master_q12;
+    uint32_t i, k, busy = 0, newest = 0, mask = 0, own = 0;
+    int32_t m = (int32_t)sys.master_q12, sum[CTL];
     voice_t *tv = 0;
     int inner;
     chua_params();
     inner = chua_regime(cc.chaos) != REG_OUTER;
     for (i = 0; i < n; i++)
-        out[2u * i] = 0;
+        sum[i] = 0;
     for (k = 0; k < NVOICE; k++)                        /* the trace follows the newest voice sounding */
         if (voice[k].stage != ST_OFF && voice[k].age >= newest) {
             newest = voice[k].age;
             tv = &voice[k];
         }
+    render_tv = tv;
     {   /* the ghost: one substep a block (~34 time units a second, ~20 rotations) */
         int32_t hs = (int32_t)(CHUA_HMAX + CHUA_HMAX / 4u);
         chua_step(&ghost, hs, (int32_t)(((int64_t)cc.alpha * hs) >> 16), (int32_t)(((int64_t)cc.beta * hs) >> 16));
@@ -331,69 +414,33 @@ static void synth_render(int32_t *out, uint32_t n)
     }
     for (k = 0; k < NVOICE; k++) {
         voice_t *v = &voice[k];
-        int32_t hs, ahs, bhs;
-        uint32_t ns, j, h_all;
         if (v->stage == ST_OFF)
             continue;
-        busy++;
         if (inner && chua_on_outer(&v->s)) {            /* (CHAOS came down from OUTER: back to the inner attractor) */
             v->s = ghost;
             v->fresh = 1;
         }
-        ns = voice_h(v, &hs);
-        ahs = (int32_t)(((int64_t)cc.alpha * hs) >> 16);
-        bhs = (int32_t)(((int64_t)cc.beta * hs) >> 16);
-        h_all = (uint32_t)hs * ns;
-        for (i = 0; i < n; i++) {
-            int32_t s, g;
-            switch (v->stage) {
-            case ST_ATTACK:
-                if (ENV_MAX - v->env <= v->step) {
-                    v->env = ENV_MAX;
-                    v->stage = ST_SUSTAIN;
-                } else
-                    v->env += v->step;
-                break;
-            case ST_RELEASE:
-                if (v->env <= v->step) {
-                    v->env = 0;
-                    v->stage = ST_OFF;
-                } else
-                    v->env -= v->step;
-                break;
-            }
-            for (j = 0; j < ns; j++)
-                chua_step(&v->s, hs, ahs, bhs);
-            if (chua_out_of_range(&v->s)) {             /* (the solver lost it: start over on the attractor) */
-                chua_restarts++;
-                v->s = ghost;
-                v->fresh = 1;
-            }
-            s = (int32_t)(((int64_t)(v->s.x >> 8) * cc.gx + (int64_t)(v->s.y >> 8) * cc.gy +
-                           (int64_t)(v->s.z >> 8) * cc.gz) >> 12);
-            if (v->fresh) {
-                v->fresh = 0;
-                v->dc = s * 256;
-            }
-            v->dc += (s * 256 - v->dc) >> 9;            /* DC blocker, ~14 Hz */
-            s -= v->dc >> 8;
-            g = (int32_t)(((v->env >> 15) * v->amp) >> 15);   /* Q15 */
-            out[2u * i] += (int32_t)(((int64_t)s * g) >> 15) >> 1;
-            if (v == tv) {
-                v->trace_t += h_all;
-                if (v->trace_t >= CHUA_TRACE_DT) {
-                    v->trace_t -= CHUA_TRACE_DT;
-                    if (v->trace_t > CHUA_TRACE_DT)
-                        v->trace_t = 0;
-                    trace_put(&v->s);
-                }
-            }
-            if (v->stage == ST_OFF)
-                break;
-        }
+        if (busy++ & 1u)                                /* every other sounding voice: the second core's */
+            mask |= 1u << k;
+        else
+            own |= 1u << k;
+    }
+    if (!C1_ON() || !mask || !C1_RUN(c1_voices, mask | n << 8)) {
+        own |= mask;
+        mask = 0;
+    }
+    c1_blocks += mask != 0;
+    for (k = 0; k < NVOICE; k++)                        /* (decided above: nothing of the other core's voices read) */
+        if (own >> k & 1u)
+            render_voice(&voice[k], n, sum, &chua_restarts);
+    if (mask) {
+        if (C1_WAIT())                                  /* it stopped answering (held from now on): its voices here */
+            c1_voices(mask | n << 8);
+        for (i = 0; i < n; i++)
+            sum[i] += c1_sum[i];
     }
     for (i = 0; i < n; i++) {
-        int32_t s = clamp(soft_clip(out[2u * i]) * m >> 12, -32767, 32767);
+        int32_t s = clamp(soft_clip(sum[i]) * m >> 12, -32767, 32767);
         out[2u * i] = out[2u * i + 1u] = s;
     }
     sys.voices = (uint8_t)busy;
