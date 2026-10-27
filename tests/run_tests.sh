@@ -26,17 +26,27 @@ OUT=build/host
 mkdir -p "$OUT"
 CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
-run() { echo "== $1"; shift; "$@" || fail=1; }
+run() {                                     # (on GitHub Actions a failure is also an annotation on the run)
+    name=$1; shift
+    echo "== $name"
+    if ! "$@"; then
+        fail=1
+        [ -n "$GITHUB_ACTIONS" ] && echo "::error title=test failed::$name"
+    fi
+    return 0
+}
 
 $CC -o "$OUT/basis_test" tests/basis_test.c -lm -pthread
 run "keyboard and CHUA synth: keys, octave, MIDI, voices, the circuit vs double precision, ranges, pitch" "$OUT/basis_test" "$OUT/basis.wav"
 ${CC%% *} -O1 -g -w -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
     -o "$OUT/basis_test_san" tests/basis_test.c -lm -pthread
 run "keyboard and synth under ASan / UBSan" "$OUT/basis_test_san"
-if ${CC%% *} -O1 -g -w -fsanitize=thread -o "$OUT/basis_test_tsan" tests/basis_test.c -lm -pthread 2>/dev/null; then
+printf 'int main(void){return 0;}\n' > "$OUT/tsan_probe.c"
+if ${CC%% *} -fsanitize=thread -o "$OUT/tsan_probe" "$OUT/tsan_probe.c" 2>/dev/null && "$OUT/tsan_probe" 2>/dev/null &&
+   ${CC%% *} -O1 -g -w -fsanitize=thread -o "$OUT/basis_test_tsan" tests/basis_test.c -lm -pthread 2>/dev/null; then
     run "keyboard and synth, the second core as a real thread, under ThreadSanitizer" "$OUT/basis_test_tsan"
 else
-    echo "== skip ThreadSanitizer (not available with this compiler)"
+    echo "== skip ThreadSanitizer (not available here: the compiler, or the memory layout of this machine)"
 fi
 
 rm -rf "$OUT/ui" && mkdir -p "$OUT/ui"
