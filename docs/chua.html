@@ -1,0 +1,771 @@
+<title>CHUA Circuit Synth</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a bench notebook. The live attractor is the hero beside the controls; under it the circuit, its diode and
+   the bifurcation map, each a figure with a caption, all drawn from the same tables the FM-1 firmware uses. */
+:root {
+  --paper: #edf0f2;            /* drafting paper, cool */
+  --sheet: #f7f8f9;            /* figure ground */
+  --ink: #1a2330;
+  --muted: #5b6878;
+  --rule: #c9d1da;
+  --grid: rgba(40, 70, 110, 0.08);
+  --trace: #c0620c;            /* the scope's amber, darkened for paper */
+  --trace-2: #187576;          /* the second channel */
+  --hot: #b3261e;
+  --band-a: rgba(24, 117, 118, 0.07);
+  --band-b: rgba(192, 98, 12, 0.08);
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --f-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e141c; --sheet: #121a24; --ink: #dfe6ee; --muted: #8796a8; --rule: #263241;
+    --grid: rgba(150, 190, 240, 0.06); --trace: #f2a03d; --trace-2: #5cc6c2; --hot: #ff7a6b;
+    --band-a: rgba(92, 198, 194, 0.07); --band-b: rgba(242, 160, 61, 0.08); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e141c; --sheet: #121a24; --ink: #dfe6ee; --muted: #8796a8; --rule: #263241;
+  --grid: rgba(150, 190, 240, 0.06); --trace: #f2a03d; --trace-2: #5cc6c2; --hot: #ff7a6b;
+  --band-a: rgba(92, 198, 194, 0.07); --band-b: rgba(242, 160, 61, 0.08); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font: 15px/1.6 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); line-height: 1.02; font-weight: 700; }
+h2 { font-size: 1.35rem; font-weight: 700; }
+p { margin: 0; max-width: 65ch; }
+.eyebrow { font: 500 0.72rem/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+code, .eq { font-family: var(--f-mono); font-size: 0.92em; }
+
+/* ---- hero: scope + controls */
+.hero { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+.scope {
+  position: relative; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; overflow: hidden;
+  aspect-ratio: 1 / 1; max-width: 100%; touch-action: none;
+}
+.scope canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.scope canvas:active { cursor: grabbing; }
+.scope .hud { position: absolute; inset: 12px 14px auto; display: flex; justify-content: space-between; gap: 12px;
+  pointer-events: none; font: 500 0.75rem/1.3 var(--f-mono); color: var(--muted); }
+.scope .hud b { color: var(--ink); font-weight: 500; }
+.views { position: absolute; inset: auto 12px 12px auto; display: flex; gap: 4px; }
+.views button { font: 500 0.72rem/1 var(--f-mono); padding: 6px 8px; }
+
+.panel { display: grid; gap: 22px; }
+.intro { display: grid; gap: 12px; }
+.intro p { color: var(--muted); }
+.regime { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.regime .name { font: 700 1.6rem/1 var(--f-display); color: var(--trace); }
+.regime .sub { font: 0.8rem/1.2 var(--f-mono); color: var(--muted); }
+
+.knobs { display: grid; gap: 14px; }
+.knob { display: grid; grid-template-columns: 7.2rem minmax(0, 1fr) 4.2rem; gap: 10px; align-items: center; }
+.knob label { font: 500 0.78rem/1.2 var(--f-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.knob label small { display: block; color: var(--muted); letter-spacing: 0; text-transform: none; font-weight: 400; }
+.knob output { font: 500 0.85rem/1 var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--trace); }
+.ticks { grid-column: 2; display: flex; justify-content: space-between; font: 0.62rem/1 var(--f-mono); color: var(--muted);
+  margin-top: -8px; position: relative; height: 0.8rem; }
+.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
+button {
+  font: 500 0.8rem/1 var(--f-body); color: var(--ink); background: transparent; border: 1px solid var(--rule);
+  border-radius: 4px; padding: 7px 10px; cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--trace); outline-offset: 2px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets button { font: 500 0.72rem/1 var(--f-mono); letter-spacing: 0.04em; }
+
+.play { display: grid; gap: 10px; }
+.play .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#power { font-weight: 500; padding: 9px 14px; border-color: var(--trace); color: var(--trace); }
+#power[aria-pressed="true"] { background: var(--trace); color: var(--paper); }
+.keys { display: flex; position: relative; height: 92px; user-select: none; touch-action: none; overflow-x: auto; }
+.keys .w, .keys .b { border: 1px solid var(--rule); border-radius: 0 0 4px 4px; cursor: pointer; padding: 0; }
+.keys .w { flex: 1 0 22px; background: var(--sheet); height: 100%; }
+.keys .b { position: absolute; width: 16px; height: 58%; background: var(--ink); z-index: 1; border-color: var(--ink); }
+.keys .on { background: var(--trace) !important; border-color: var(--trace); }
+.hint { font: 0.72rem/1.4 var(--f-mono); color: var(--muted); }
+
+/* ---- figures */
+.figs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+@media (max-width: 760px) { .figs { grid-template-columns: minmax(0, 1fr); } }
+figure { margin: 0; display: grid; gap: 10px; align-content: start; min-width: 0; }
+figure.wide { grid-column: 1 / -1; }
+.plate { background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; overflow-x: auto; }
+.plate svg, .plate canvas { display: block; width: 100%; height: auto; }
+figcaption { display: grid; gap: 6px; }
+figcaption p { color: var(--muted); font-size: 0.9rem; }
+.fignum { font: 500 0.72rem/1 var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--trace); }
+
+.eqs { display: grid; gap: 4px; padding: 14px 16px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px;
+  font: 0.92rem/1.5 var(--f-mono); overflow-x: auto; }
+.eqs span { color: var(--muted); }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 0.7rem/1 var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-family: var(--f-mono); white-space: nowrap; }
+.tablewrap { overflow-x: auto; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .two { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+<div class="wrap">
+  <header class="intro">
+    <span class="eyebrow">FM-1 firmware · oscillator study</span>
+    <h1>CHUA, a synthesizer made of one chaotic circuit</h1>
+  </header>
+
+  <section class="hero" aria-label="Live circuit">
+    <div class="scope" id="scope">
+      <canvas id="att" width="900" height="900" aria-label="The circuit's trajectory in state space"></canvas>
+      <div class="hud"><span>α <b id="h-a">–</b> · β <b id="h-b">–</b></span><span>x <b id="h-x">–</b> y <b id="h-y">–</b> z <b id="h-z">–</b></span></div>
+      <div class="views" role="group" aria-label="View">
+        <button data-view="3d" aria-pressed="true">3D</button>
+        <button data-view="xy" aria-pressed="false">X-Y</button>
+        <button data-view="xz" aria-pressed="false">X-Z</button>
+        <button data-view="yz" aria-pressed="false">Y-Z</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="intro">
+        <p>Two capacitors, an inductor, a resistor and one nonlinear part. That is enough for the state to spiral around one
+          equilibrium, get thrown to the other, and never repeat. Each voice of the FM-1 firmware runs its own copy of this
+          circuit; the knobs below are the same knobs, mapped through the same tables.</p>
+      </div>
+      <div class="regime"><span class="name" id="regime">DOUBLE SCROLL</span><span class="sub" id="regime-sub">both equilibria, chaotic</span></div>
+
+      <div class="knobs">
+        <div class="knob">
+          <label for="k-chaos">Chaos<small>knob 1 · α</small></label>
+          <input type="range" id="k-chaos" min="0" max="127" value="85">
+          <output id="o-chaos" for="k-chaos">85</output>
+          <div class="ticks" aria-hidden="true">
+            <span style="left:12.6%">cycle</span><span style="left:31.5%">p2</span><span style="left:42.5%">spiral</span>
+            <span style="left:67.7%">double scroll</span><span style="left:93%">outer</span>
+          </div>
+        </div>
+        <div class="knob">
+          <label for="k-shape">Shape<small>knob 2 · β</small></label>
+          <input type="range" id="k-shape" min="0" max="127" value="76">
+          <output id="o-shape" for="k-shape">24.4</output>
+        </div>
+        <div class="knob">
+          <label for="k-out">Output<small>knob 3 · mix</small></label>
+          <input type="range" id="k-out" min="0" max="127" value="0">
+          <output id="o-out" for="k-out">X</output>
+        </div>
+        <div class="knob">
+          <label for="k-rel">Release<small>knob 4</small></label>
+          <input type="range" id="k-rel" min="0" max="127" value="40">
+          <output id="o-rel" for="k-rel">40</output>
+        </div>
+      </div>
+
+      <div class="presets" id="presets" role="group" aria-label="Presets"></div>
+
+      <div class="play">
+        <div class="row">
+          <button id="power" aria-pressed="false">Start sound</button>
+          <button id="oct-dn" aria-label="Octave down">OCT −</button>
+          <span class="mono" id="oct">C3</span>
+          <button id="oct-up" aria-label="Octave up">OCT +</button>
+        </div>
+        <div class="keys" id="keys" aria-label="Keyboard"></div>
+        <span class="hint">Play with the mouse or the computer keys A W S E D F T G Y H U J K O L P. Drag the scope to turn it.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="two">
+    <div class="intro">
+      <span class="eyebrow">The equations</span>
+      <h2>Three state variables, one bent line</h2>
+      <p>Made dimensionless, the circuit is three coupled equations. <code>x</code> is the voltage over C1,
+        <code>y</code> the voltage over C2, <code>z</code> the current through the inductor. All the chaos comes from
+        <code>g(x)</code>, the Chua diode's current: a negative resistance that pumps energy in near zero.</p>
+    </div>
+    <div class="eqs" aria-label="Chua's equations">
+      <div>dx/dt = α (y − x − g(x))</div>
+      <div>dy/dt = x − y + z</div>
+      <div>dz/dt = −β y</div>
+      <div><span>g(x) slope −8/7 for |x| &lt; 1, −5/7 to |x| = 3, +2 beyond (the op-amps saturate)</span></div>
+      <div><span>pitch: the solver advances h = f<sub>note</sub> · T<sub>rotation</sub> / 44 100 per sample</span></div>
+    </div>
+  </section>
+
+  <section class="figs">
+    <figure>
+      <div class="plate">
+        <svg viewBox="0 0 520 260" role="img" aria-label="Schematic of Chua's circuit">
+          <g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--ink)">
+            <path d="M60 50 H200 M300 50 H450 M60 210 H450"/>
+            <path d="M60 50 V82 M60 178 V210"/>
+            <path d="M60 82 a10 12 0 0 1 0 24 a10 12 0 0 1 0 24 a10 12 0 0 1 0 24 a10 12 0 0 1 0 24"/>
+            <path d="M170 50 V122 M150 122 H190 M150 138 H190 M170 138 V210"/>
+            <path d="M200 50 l8 -10 l12 20 l12 -20 l12 20 l12 -20 l12 20 l12 -20 l12 20 l8 -10"/>
+            <path d="M340 50 V122 M320 122 H360 M320 138 H360 M340 138 V210"/>
+            <rect x="428" y="100" width="44" height="60" rx="3" style="fill:var(--sheet)"/>
+            <path d="M450 50 V100 M450 160 V210"/>
+            <path d="M436 148 L464 112" style="stroke:var(--trace)"/>
+            <path d="M250 210 V226 M236 226 H264 M241 232 H259 M246 238 H254"/>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="14" style="fill:var(--ink)">
+            <text x="30" y="135" text-anchor="middle">L</text>
+            <text x="198" y="135">C2</text>
+            <text x="250" y="30" text-anchor="middle">R</text>
+            <text x="368" y="135">C1</text>
+            <text x="450" y="182" text-anchor="middle">N<tspan font-size="10" dy="3">R</tspan></text>
+          </g>
+          <g font-family="IBM Plex Mono, monospace" font-size="12">
+            <text x="30" y="155" text-anchor="middle" style="fill:var(--trace-2)">z</text>
+            <text x="198" y="155" style="fill:var(--trace-2)">y</text>
+            <text x="368" y="155" style="fill:var(--trace)">x</text>
+            <text x="450" y="90" text-anchor="middle" style="fill:var(--muted)">Chua diode</text>
+          </g>
+          <circle cx="170" cy="50" r="3.5" style="fill:var(--ink)"/><circle cx="340" cy="50" r="3.5" style="fill:var(--ink)"/>
+          <circle cx="170" cy="210" r="3.5" style="fill:var(--ink)"/><circle cx="340" cy="210" r="3.5" style="fill:var(--ink)"/>
+          <circle cx="250" cy="210" r="3.5" style="fill:var(--ink)"/>
+        </svg>
+      </div>
+      <figcaption>
+        <span class="fignum">Fig. 1 · the circuit</span>
+        <p>C2 and L ring like any LC tank. R couples them to C1, and the diode N<sub>R</sub> across C1 is the only part that
+          is not linear. Without it the circuit would just decay.</p>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="plate"><svg id="diode" viewBox="0 0 520 260" role="img" aria-label="The Chua diode's characteristic g(x)"></svg></div>
+      <figcaption>
+        <span class="fignum">Fig. 2 · the diode</span>
+        <p>Five straight segments. The middle ones slope downward: negative resistance, energy in. The outer ones slope up
+          where the op-amps saturate, which keeps every setting bounded. The dot is the circuit's x right now.</p>
+      </figcaption>
+    </figure>
+
+    <figure class="wide">
+      <div class="plate"><canvas id="bif" width="1100" height="380" aria-label="Bifurcation map along the Chaos knob"></canvas></div>
+      <figcaption>
+        <span class="fignum">Fig. 3 · the route to chaos, at the current Shape</span>
+        <p>Every peak of x the circuit reaches, for each position of the Chaos knob. One dot per column is a clean cycle;
+          two is period doubling; a smear is chaos. Where the dots jump to both signs the double scroll begins, and past the
+          crisis the saturated circuit settles on one large loop. The amber line is the knob.</p>
+      </figcaption>
+    </figure>
+
+    <figure class="wide">
+      <div class="plate"><canvas id="wave" width="1100" height="220" aria-label="x, y and z against time"></canvas></div>
+      <figcaption>
+        <span class="fignum">Fig. 4 · what you hear</span>
+        <p><span style="color:var(--trace)">x</span> switches between the two scrolls: the deep, noisy part.
+          <span style="color:var(--trace-2)">y</span> is the spiral itself, bright and closest to a pitch.
+          <span style="color:var(--muted)">z</span> is the inductor's slow, round swing. Output blends them.</p>
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="two">
+    <div class="intro">
+      <span class="eyebrow">On the FM-1</span>
+      <h2>The same circuit, eight times, in fixed point</h2>
+      <p>Each voice integrates its own circuit with the midpoint method in Q20 fixed point, at most four substeps per sample.
+        The regime landmarks, rotation times and loudness per setting were measured offline; this page uses the same
+        numbers. The screen draws the newest voice's trajectory, like the scope above.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Control</th><th>On the FM-1</th></tr></thead>
+        <tbody>
+          <tr><td>KNOB 1</td><td>Chaos: cycle, period 2, spiral, double scroll, outer</td></tr>
+          <tr><td>KNOB 2</td><td>Shape: β from 10 to 34</td></tr>
+          <tr><td>KNOB 3</td><td>Output: X, X+Y, Y, Y+Z, Z</td></tr>
+          <tr><td>KNOB 4</td><td>Release</td></tr>
+          <tr><td>SELECT</td><td>Attack</td></tr>
+          <tr><td>ALGORITHM</td><td>View: 3D, X-Y, X-Z, Y-Z, time</td></tr>
+          <tr><td>PRESETS</td><td>The eight presets above</td></tr>
+          <tr><td>SAVE</td><td>Everything into flash</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* the firmware's tables (firmware/src/chua_tables.h): 7 SHAPE rows (beta 10..34) x 17 CHAOS columns (knob 0..128) */
+const T = {"alpha":[5.5,5.7125,5.925,6.1375,6.35,6.45,6.55,6.6833,6.8385,7.0154,7.1923,7.3692,7.5462,7.7231,7.9,8.95,10.0,6.75,7.0813,7.4125,7.7437,8.075,8.2125,8.35,8.5167,8.7423,9.0269,9.3115,9.5962,9.8808,10.1654,10.45,11.5,12.55,7.85,8.2937,8.7375,9.1812,9.625,9.8125,10.0,10.2,10.4942,10.8827,11.2711,11.6596,12.0481,12.4365,12.825,13.875,14.925,8.85,9.4062,9.9625,10.5188,11.075,11.3,11.525,11.7417,12.1,12.6,13.1,13.6,14.1,14.6,15.1,16.15,17.2,9.75,10.4312,11.1125,11.7937,12.475,12.7375,13.0,13.2167,13.6288,14.2365,14.8442,15.4519,16.0596,16.6673,17.275,18.325,19.375,10.575,11.3813,12.1875,12.9937,13.8,14.1,14.4,14.6167,15.0846,15.8038,16.5231,17.2423,17.9615,18.6808,19.4,20.45,21.5,11.35,12.2812,13.2125,14.1438,15.075,15.4125,15.75,15.9667,16.4885,17.3154,18.1423,18.9692,19.7962,20.6231,21.45,22.5,23.55],"period":[2.5641,2.649,2.7211,2.7972,2.8571,2.8777,2.9197,2.9197,2.9197,2.9197,2.8985,2.963,3.0303,3.2258,3.3333,2.1978,2.1739,2.0833,2.139,2.1978,2.2599,2.3121,2.3256,2.3392,2.3392,2.3669,2.1978,2.1858,2.3256,2.5316,2.4691,2.5641,1.8182,1.81,1.7857,1.8433,1.8868,1.9324,1.9802,1.9802,1.99,2.0,2.0,1.8868,1.9139,1.9608,2.1505,2.0408,2.1277,1.5873,1.5748,1.5936,1.6326,1.6736,1.7094,1.7467,1.7544,1.7621,1.7544,1.7391,1.6736,1.6949,1.7241,1.8868,1.7544,1.8265,1.4184,1.4134,1.444,1.4815,1.5151,1.5504,1.581,1.581,1.5873,1.5748,1.5625,1.5385,1.5326,1.5504,1.6326,1.5936,1.6597,1.2987,1.2945,1.3289,1.3652,1.3937,1.4235,1.4545,1.4599,1.4652,1.4652,1.4388,1.3605,1.3986,1.4084,1.476,1.4599,1.5151,1.2012,1.1976,1.2384,1.2698,1.2945,1.3245,1.3513,1.3559,1.3605,1.3605,1.3201,1.278,1.3029,1.3333,1.3559,1.3841,1.4084,1.1268,1.1236],"rms":[0.3936,0.4824,0.5391,0.583,0.6191,0.6338,0.6484,0.6543,1.3555,1.458,1.4434,1.4697,1.4629,1.4043,1.4473,3.2773,3.3721,0.3857,0.4863,0.5469,0.5928,0.6299,0.6436,0.6553,0.6582,1.3652,1.418,1.4482,1.4561,1.4512,1.4209,1.4492,3.3418,3.4111,0.3867,0.4912,0.5537,0.6006,0.6367,0.6514,0.6621,0.6641,1.3584,1.4141,1.4551,1.4316,1.4355,1.4375,1.4287,3.3877,3.4414,0.3916,0.4971,0.5605,0.6074,0.6445,0.6582,0.6689,0.6699,0.8506,1.4102,1.4229,1.4277,1.4287,1.4473,1.4375,3.4229,3.4668,0.3906,0.502,0.5674,0.6152,0.6514,0.666,0.6758,0.6699,0.6123,1.4111,1.3867,1.4199,1.418,1.4287,1.4482,3.4521,3.4883,0.3877,0.5049,0.5723,0.6211,0.6582,0.6719,0.6816,0.6855,0.5449,1.4492,1.4365,1.4316,1.418,1.4268,1.4346,3.4766,3.5078,0.3857,0.5088,0.5771,0.626,0.6631,0.6777,0.6875,0.6914,0.6221,1.4375,1.4307,1.4141,1.416,1.4189,1.4346,3.4971,3.5244,0.2061,0.2324,0.2402,0.2432,0.2412,0.2344,0.2285,0.2129,0.2041,0.1592,0.1709,0.208,0.2021,0.2129,0.2314,2.6885,2.8574,0.2031,0.2324,0.2402,0.2422,0.2393,0.2324,0.2266,0.2119,0.1885,0.1729,0.1631,0.1699,0.2559,0.1943,0.2197,2.7998,2.9219,0.2041,0.2334,0.2412,0.2412,0.2373,0.2305,0.2246,0.2119,0.1865,0.1748,0.1797,0.1855,0.248,0.1777,0.2021,2.8799,2.9736,0.2061,0.2344,0.2412,0.2402,0.2363,0.2295,0.2236,0.21,0.1729,0.1797,0.1768,0.1787,0.2402,0.1816,0.1885,2.9414,3.0176,0.2051,0.2354,0.2412,0.2402,0.2344,0.2275,0.2207,0.2031,0.1611,0.1631,0.1875,0.1758,0.207,0.1836,0.208,2.9922,3.0547,0.2041,0.2354,0.2412,0.2393,0.2334,0.2256,0.2197,0.2139,0.1387,0.1768,0.1719,0.1738,0.1934,0.1816,0.1982,3.0322,3.0869,0.2031,0.2354,0.2412,0.2383,0.2314,0.2236,0.2178,0.2139,0.167,0.1816,0.1787,0.1826,0.1855,0.1865,0.1992,3.0674,3.1152,0.8408,0.9746,1.0381,1.0752,1.0967,1.0859,1.0791,1.0361,1.5586,1.5762,1.5811,1.6709,1.6572,1.6289,1.707,9.4375,9.9092,0.9424,1.1094,1.1777,1.2139,1.2275,1.2109,1.1992,1.1455,1.5977,1.6104,1.6191,1.6436,1.8643,1.6758,1.7705,11.3672,11.7744,1.0439,1.2285,1.2998,1.332,1.3438,1.3193,1.3018,1.2471,1.6465,1.6602,1.71,1.7119,1.9219,1.7021,1.7744,13.0693,13.4336,1.1465,1.3389,1.4102,1.4385,1.4443,1.417,1.3955,1.3301,1.2705,1.7178,1.7227,1.7383,1.9746,1.7715,1.7939,14.627,14.9561,1.2266,1.4395,1.5107,1.5352,1.5332,1.502,1.4766,1.374,1.1328,1.707,1.7822,1.7686,1.8994,1.8184,1.9404,16.0537,16.3564,1.2949,1.5312,1.6035,1.624,1.6162,1.5801,1.5508,1.5244,1.0303,1.8252,1.8027,1.8105,1.8955,1.8555,1.9453,17.4014,17.6758,1.3594,1.6182,1.6904,1.7061,1.6924,1.6533,1.6221,1.5996,1.2832,1.8799,1.8672,1.8818,1.9053,1.918,2.0049,18.6553,18.9111]};
+const NB = 7, NK = 17;
+const REG = [
+  { name: "CYCLE", sub: "one clean periodic orbit", from: 0 },
+  { name: "PERIOD 2", sub: "the orbit doubles: a sub-octave", from: 32 },
+  { name: "SPIRAL", sub: "chaos on one equilibrium", from: 48 },
+  { name: "DOUBLE SCROLL", sub: "both equilibria, chaotic", from: 60 },
+  { name: "OUTER CYCLE", sub: "the saturated circuit's big loop", from: 112 },
+];
+const regimeOf = (k) => (k < 32 ? 0 : k < 48 ? 1 : k < 60 ? 2 : k < 112 ? 3 : 4);
+const PRESETS = [
+  ["DOUBLE SCROLL", 85, 76, 0, 40], ["PURE CYCLE", 6, 64, 64, 30], ["PERIOD TWO", 38, 64, 32, 36],
+  ["SPIRAL", 54, 56, 64, 44], ["CRISIS EDGE", 110, 64, 96, 50], ["OUTER LOOP", 124, 40, 64, 30],
+  ["SLOW BLOOM", 70, 110, 127, 100], ["GRIT BASS", 96, 16, 0, 18],
+];
+
+function lookup(arr, off, shape, chaos) {        /* bilinear, as synth.c chua_lookup */
+  const rq = (shape * (NB - 1)) / 127, r = Math.min(Math.floor(rq), NB - 1), rf = rq - r;
+  const c = Math.min(chaos >> 3, NK - 2), cf = (chaos - c * 8) / 8;
+  const r1 = Math.min(r + 1, NB - 1);
+  const at = (rr, cc) => arr[off + rr * NK + cc];
+  const top = at(r, c) + (at(r, c + 1) - at(r, c)) * cf, bot = at(r1, c) + (at(r1, c + 1) - at(r1, c)) * cf;
+  return top + (bot - top) * rf;
+}
+function params(chaos, shape, out) {
+  const w = [Math.max(0, 256 - 4 * out) / 256, 0, Math.min(256, Math.max(0, 4 * out - 256)) / 256];
+  w[1] = 1 - w[0] - w[2];
+  const rms = [0, 1, 2].map((i) => Math.max(lookup(T.rms, i * NB * NK, shape, chaos), 1 / 64));
+  return {
+    alpha: lookup(T.alpha, 0, shape, chaos), beta: 10 + (24 * shape) / 127, period: lookup(T.period, 0, shape, chaos),
+    gain: rms.map((r, i) => (0.2136 * w[i]) / r), inner: regimeOf(chaos) !== 4,
+  };
+}
+
+/* the circuit: 5-segment diode, as synth.c */
+function g(x) {
+  const a = Math.abs(x), s = x < 0 ? -1 : 1;
+  if (a < 1) return (-8 / 7) * x;
+  if (a < 3) return s * (-8 / 7 - (5 / 7) * (a - 1));
+  return s * (-8 / 7 - 10 / 7 + 2 * (a - 3));
+}
+function rk4(s, h, a, b) {
+  const d = (x, y, z) => [a * (y - x - g(x)), x - y + z, -b * y];
+  const k1 = d(s[0], s[1], s[2]);
+  const k2 = d(s[0] + (h / 2) * k1[0], s[1] + (h / 2) * k1[1], s[2] + (h / 2) * k1[2]);
+  const k3 = d(s[0] + (h / 2) * k2[0], s[1] + (h / 2) * k2[1], s[2] + (h / 2) * k2[2]);
+  const k4 = d(s[0] + h * k3[0], s[1] + h * k3[1], s[2] + h * k3[2]);
+  for (let i = 0; i < 3; i++) s[i] += (h / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
+}
+
+/* ---------------------------------------------------------------- state --- */
+const st = { chaos: 85, shape: 76, out: 0, rel: 40, view: "3d", yaw: 0.5, pitch: 0.42, drag: null, auto: true };
+let P = params(st.chaos, st.shape, st.out);
+const ghost = [0.1, 0, 0];
+const TRAIL = 1600, tr = { x: new Float32Array(TRAIL), y: new Float32Array(TRAIL), z: new Float32Array(TRAIL), w: 0 };
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let colors = {};
+function readColors() {
+  colors = { ink: css("--ink"), muted: css("--muted"), rule: css("--rule"), grid: css("--grid"), trace: css("--trace"),
+    trace2: css("--trace-2"), sheet: css("--sheet"), bandA: css("--band-a"), bandB: css("--band-b"), hot: css("--hot") };
+}
+readColors();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readColors(); bifDraw(); diodeDraw(); });
+new MutationObserver(() => { readColors(); bifDraw(); diodeDraw(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+/* ----------------------------------------------------------- controls --- */
+const $ = (id) => document.getElementById(id);
+const outName = (o) => (o < 16 ? "X" : o < 48 ? "X + Y" : o < 80 ? "Y" : o < 112 ? "Y + Z" : "Z");
+function sync(fromPreset) {
+  st.chaos = +$("k-chaos").value; st.shape = +$("k-shape").value; st.out = +$("k-out").value; st.rel = +$("k-rel").value;
+  $("o-chaos").textContent = st.chaos;
+  $("o-shape").textContent = (10 + (24 * st.shape) / 127).toFixed(1);
+  $("o-out").textContent = outName(st.out);
+  $("o-rel").textContent = st.rel;
+  const r = REG[regimeOf(st.chaos)];
+  $("regime").textContent = r.name;
+  $("regime-sub").textContent = r.sub;
+  const prev = P;
+  P = params(st.chaos, st.shape, st.out);
+  $("h-a").textContent = P.alpha.toFixed(2);
+  $("h-b").textContent = P.beta.toFixed(1);
+  document.querySelectorAll("#presets button").forEach((b, i) => {
+    const p = PRESETS[i];
+    b.setAttribute("aria-pressed", String(p[1] === st.chaos && p[2] === st.shape && p[3] === st.out && p[4] === st.rel));
+  });
+  if (engine) engine.params(P, st.rel);
+  if (!prev || Math.abs(prev.beta - P.beta) > 1e-9 || fromPreset) bifStart();
+}
+["k-chaos", "k-shape", "k-out", "k-rel"].forEach((id) => $(id).addEventListener("input", () => sync(false)));
+PRESETS.forEach((p) => {
+  const b = document.createElement("button");
+  b.textContent = p[0];
+  b.addEventListener("click", () => {
+    $("k-chaos").value = p[1]; $("k-shape").value = p[2]; $("k-out").value = p[3]; $("k-rel").value = p[4];
+    sync(true);
+  });
+  $("presets").append(b);
+});
+document.querySelectorAll(".views button").forEach((b) => b.addEventListener("click", () => {
+  st.view = b.dataset.view;
+  document.querySelectorAll(".views button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+}));
+
+/* ------------------------------------------------------------- scope --- */
+const att = $("att"), ax = att.getContext("2d");
+const sc = { c: [0, 0, 0], r: [2.2, 0.45, 3.4] };
+att.addEventListener("pointerdown", (e) => { st.drag = { x: e.clientX, y: e.clientY }; st.auto = false; att.setPointerCapture(e.pointerId); });
+att.addEventListener("pointermove", (e) => {
+  if (!st.drag) return;
+  st.yaw += (e.clientX - st.drag.x) * 0.01;
+  st.pitch = Math.max(-1.4, Math.min(1.4, st.pitch + (e.clientY - st.drag.y) * 0.01));
+  st.drag = { x: e.clientX, y: e.clientY };
+  if (st.view !== "3d") { st.view = "3d"; document.querySelectorAll(".views button").forEach((o) => o.setAttribute("aria-pressed", String(o.dataset.view === "3d"))); }
+});
+const endDrag = () => { if (st.drag) { st.drag = null; setTimeout(() => { if (!st.drag) st.auto = true; }, 2500); } };
+att.addEventListener("pointerup", endDrag);
+att.addEventListener("pointercancel", endDrag);
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function stepGhost(n) {
+  for (let i = 0; i < n; i++) {
+    rk4(ghost, 0.01, P.alpha, P.beta);
+    if (!isFinite(ghost[0]) || Math.abs(ghost[0]) > 16 || (P.inner && Math.abs(ghost[1]) > 2)) { ghost[0] = 0.1; ghost[1] = 0; ghost[2] = 0; }
+    if (i % 2 === 0) {
+      const k = tr.w % TRAIL;
+      tr.x[k] = ghost[0]; tr.y[k] = ghost[1]; tr.z[k] = ghost[2]; tr.w++;
+    }
+  }
+}
+function rescale() {
+  const n = Math.min(tr.w, TRAIL), arrs = [tr.x, tr.y, tr.z];
+  for (let a = 0; a < 3; a++) {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n; i++) { const v = arrs[a][i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    const c = (lo + hi) / 2, r = (hi - lo) / 2 + 0.03;
+    sc.c[a] += (c - sc.c[a]) * 0.2;
+    sc.r[a] = r > sc.r[a] ? r : sc.r[a] - (sc.r[a] - r) * 0.1;
+  }
+}
+function drawScope() {
+  const W = att.width, H = att.height, cx = W / 2, cy = H / 2, S = W * 0.42;
+  ax.fillStyle = colors.sheet; ax.fillRect(0, 0, W, H);
+  ax.strokeStyle = colors.grid; ax.lineWidth = 1;
+  for (let i = 1; i < 10; i++) {
+    ax.beginPath(); ax.moveTo((i * W) / 10, 0); ax.lineTo((i * W) / 10, H); ax.moveTo(0, (i * H) / 10); ax.lineTo(W, (i * H) / 10); ax.stroke();
+  }
+  const n = Math.min(tr.w, TRAIL);
+  if (n < 2) return;
+  const cyw = Math.cos(st.yaw), syw = Math.sin(st.yaw), cp = Math.cos(st.pitch), sp = Math.sin(st.pitch);
+  const proj = (i) => {
+    const k = (tr.w - n + i) % TRAIL;
+    const x = (tr.x[k] - sc.c[0]) / sc.r[0], y = (tr.y[k] - sc.c[1]) / sc.r[1], z = (tr.z[k] - sc.c[2]) / sc.r[2];
+    if (st.view === "xy") return [x, y, 0];
+    if (st.view === "xz") return [x, z, 0];
+    if (st.view === "yz") return [y, z, 0];
+    const u = x * cyw + z * syw, d = -x * syw + z * cyw;          /* turn about the vertical, then tilt */
+    return [u * 0.8, (y * cp + d * sp) * 0.8, -y * sp + d * cp];
+  };
+  ax.lineCap = "round"; ax.lineJoin = "round";
+  const BANDS = 8;
+  let p0 = proj(0);
+  for (let b = 0; b < BANDS; b++) {
+    const i0 = Math.floor((b * (n - 1)) / BANDS), i1 = Math.floor(((b + 1) * (n - 1)) / BANDS);
+    ax.globalAlpha = 0.12 + (0.88 * (b + 1)) / BANDS;
+    ax.strokeStyle = colors.trace; ax.lineWidth = W / 450;
+    ax.beginPath();
+    p0 = proj(i0);
+    ax.moveTo(cx + p0[0] * S, cy - p0[1] * S);
+    for (let i = i0 + 1; i <= i1; i++) { const p = proj(i); ax.lineTo(cx + p[0] * S, cy - p[1] * S); }
+    ax.stroke();
+  }
+  ax.globalAlpha = 1;
+  const h = proj(n - 1);
+  ax.fillStyle = colors.trace2;
+  ax.beginPath(); ax.arc(cx + h[0] * S, cy - h[1] * S, W / 120, 0, Math.PI * 2); ax.fill();
+}
+
+/* ------------------------------------------------------------- diode --- */
+const dsvg = $("diode");
+function diodeDraw() {
+  const X = (x) => 260 + x * 46, Y = (y) => 130 - y * 40;
+  const pts = [-5, -3, -1, 1, 3, 5].map((x) => `${X(x).toFixed(1)},${Y(g(x)).toFixed(1)}`).join(" ");
+  const t = (x, y, s, a = "middle", c = "var(--muted)") => `<text x="${x}" y="${y}" text-anchor="${a}" style="fill:${c}" font-family="IBM Plex Mono, monospace" font-size="11">${s}</text>`;
+  let s = "";
+  for (const x of [-3, -1, 1, 3]) s += `<line x1="${X(x)}" y1="18" x2="${X(x)}" y2="242" style="stroke:var(--rule)" stroke-dasharray="3 4"/>`;
+  s += `<line x1="20" y1="130" x2="500" y2="130" style="stroke:var(--rule)"/><line x1="260" y1="12" x2="260" y2="248" style="stroke:var(--rule)"/>`;
+  s += `<polyline points="${pts}" style="fill:none;stroke:var(--ink)" stroke-width="2.2" stroke-linejoin="round"/>`;
+  s += t(X(-3), 252, "−3") + t(X(-1), 252, "−1") + t(X(1), 252, "1") + t(X(3), 252, "3") + t(494, 124, "x", "end") + t(268, 22, "g(x)", "start");
+  s += t(X(0) + 22, Y(0.5) - 16, "−8/7", "start", "var(--trace)") + t(X(2), Y(g(2)) + 22, "−5/7", "middle", "var(--ink)") + t(X(4) - 6, Y(g(4)) - 12, "+2", "end", "var(--trace-2)");
+  s += `<circle id="ddot" cx="260" cy="130" r="5" style="fill:var(--trace)"/>`;
+  dsvg.innerHTML = s;
+}
+diodeDraw();
+function diodeDot() {
+  const d = $("ddot"), x = Math.max(-5, Math.min(5, ghost[0]));
+  if (d) { d.setAttribute("cx", (260 + x * 46).toFixed(1)); d.setAttribute("cy", (130 - g(x) * 40).toFixed(1)); }
+}
+
+/* ---------------------------------------------------- bifurcation map --- */
+const bif = $("bif"), bx = bif.getContext("2d");
+let bifData = new Array(128).fill(null), bifJob = 0;
+const BY = (v) => 30 + (5 - v) * ((bif.height - 70) / 7.5);    /* x from 5 down to -2.5 */
+const BX = (k) => 56 + (k * (bif.width - 76)) / 127;
+function bifStart() {
+  const job = ++bifJob, shape = st.shape, s = [0.1, 0, 0];
+  bifData = new Array(128).fill(null);
+  let k = 0;
+  const chunk = () => {
+    if (job !== bifJob) return;
+    const end = Math.min(128, k + 6);
+    for (; k < end; k++) {
+      const p = params(k, shape, 0), peaks = [];
+      if (p.inner && Math.abs(s[1]) > 2) { s[0] = 0.1; s[1] = 0; s[2] = 0; }
+      let a = s[0], b = s[0];
+      for (let i = 0; i < 26000; i++) {
+        rk4(s, 0.01, p.alpha, p.beta);
+        if (i > 12000 && b > a && b > s[0] && peaks.length < 80) peaks.push(b);
+        a = b; b = s[0];
+      }
+      bifData[k] = peaks;
+    }
+    bifDraw();
+    if (k < 128) setTimeout(chunk, 0);
+  };
+  setTimeout(chunk, 30);
+}
+function bifDraw() {
+  const W = bif.width, H = bif.height;
+  bx.fillStyle = colors.sheet; bx.fillRect(0, 0, W, H);
+  REG.forEach((r, i) => {
+    const x0 = BX(r.from), x1 = i + 1 < REG.length ? BX(REG[i + 1].from) : BX(127);
+    bx.fillStyle = i % 2 ? colors.bandB : colors.bandA; bx.fillRect(x0, 22, x1 - x0, H - 62);
+    bx.fillStyle = colors.muted; bx.font = "500 15px IBM Plex Mono, monospace"; bx.textAlign = "left";
+    bx.fillText(r.name.toLowerCase(), x0 + 6, 16);
+  });
+  bx.strokeStyle = colors.rule; bx.lineWidth = 1; bx.font = "13px IBM Plex Mono, monospace";
+  for (const v of [-2, 0, 2, 4]) {
+    bx.beginPath(); bx.moveTo(56, BY(v)); bx.lineTo(W - 20, BY(v)); bx.stroke();
+    bx.fillStyle = colors.muted; bx.textAlign = "right"; bx.fillText(String(v), 48, BY(v) + 4);
+  }
+  bx.textAlign = "center";
+  for (const k of [0, 32, 48, 60, 112, 127]) bx.fillText(String(k), BX(k), H - 20);
+  bx.textAlign = "left"; bx.fillText("chaos knob →", 56, H - 4);
+  bx.save(); bx.translate(14, BY(1.2)); bx.rotate(-Math.PI / 2); bx.textAlign = "center"; bx.fillText("peaks of x", 0, 0); bx.restore();
+  bx.fillStyle = colors.ink;
+  for (let k = 0; k < 128; k++) {
+    const pk = bifData[k];
+    if (!pk) continue;
+    for (const v of pk) bx.fillRect(BX(k) - 1.5, BY(Math.max(-2.5, Math.min(5, v))) - 1.5, 3, 3);
+  }
+  bx.strokeStyle = colors.trace; bx.lineWidth = 2;
+  bx.beginPath(); bx.moveTo(BX(st.chaos), 22); bx.lineTo(BX(st.chaos), H - 40); bx.stroke();
+}
+
+/* --------------------------------------------------------- waveforms --- */
+const wave = $("wave"), wx = wave.getContext("2d");
+function drawWave() {
+  const W = wave.width, H = wave.height, n = Math.min(tr.w, 700);
+  wx.fillStyle = colors.sheet; wx.fillRect(0, 0, W, H);
+  wx.strokeStyle = colors.rule; wx.lineWidth = 1;
+  wx.beginPath(); wx.moveTo(0, H / 2); wx.lineTo(W, H / 2); wx.stroke();
+  const ch = [[tr.x, 0, colors.trace, 2.2], [tr.y, 1, colors.trace2, 1.8], [tr.z, 2, colors.muted, 1.4]];
+  for (const [arr, a, col, lw] of ch) {
+    wx.strokeStyle = col; wx.lineWidth = lw; wx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const k = (tr.w - n + i) % TRAIL, v = (arr[k] - sc.c[a]) / sc.r[a];
+      const x = (i * W) / 700, y = H / 2 - v * H * 0.42;
+      i ? wx.lineTo(x, y) : wx.moveTo(x, y);
+    }
+    wx.stroke();
+  }
+  wx.font = "500 14px IBM Plex Mono, monospace";
+  [["x", colors.trace], ["y", colors.trace2], ["z", colors.muted]].forEach(([s, c], i) => { wx.fillStyle = c; wx.fillText(s, 12 + i * 22, 20); });
+}
+
+/* ------------------------------------------------------------- sound --- */
+/* the voices: the firmware's solver (midpoint, substeps of at most 0.02, 4 per sample) in floating point */
+function makeEngine(sr) {
+  const NV = 6, HMAX = 0.02, NSUB = 4;
+  const g = (x) => { const a = Math.abs(x), s = x < 0 ? -1 : 1;
+    if (a < 1) return -8 / 7 * x; if (a < 3) return s * (-8 / 7 - 5 / 7 * (a - 1)); return s * (-8 / 7 - 10 / 7 + 2 * (a - 3)); };
+  const step = (s, h, a, b) => {
+    const dx = h * a * (s[1] - s[0] - g(s[0])), dy = h * (s[0] - s[1] + s[2]), dz = -h * b * s[1];
+    const mx = s[0] + dx / 2, my = s[1] + dy / 2, mz = s[2] + dz / 2;
+    s[0] += h * a * (my - mx - g(mx)); s[1] += h * (mx - my + mz); s[2] += -h * b * my; };
+  let P = null, rel = 40, clock = 0, n = 0;
+  const ghost = [0.1, 0, 0];
+  const V = Array.from({ length: NV }, () => ({ on: 0, s: [0, 0, 0], env: 0, stage: 0, note: 0, f: 0, age: 0, dc: 0, fresh: 1 }));
+  const envStep = (v) => 1 / ((1 + v * v * 3000 / 16129) * sr / 1000);
+  return {
+    params(p, r) { P = p; rel = r; },
+    noteOn(note) {
+      let v = V.find((q) => q.stage && q.note === note) || V.find((q) => !q.stage);
+      if (!v) v = V.reduce((a, b) => (a.age < b.age ? a : b));
+      if (!v.stage) { v.s = [ghost[0] + (Math.random() - 0.5) * 0.02, ghost[1] + (Math.random() - 0.5) * 0.004, ghost[2]]; v.env = 0; v.fresh = 1; }
+      v.note = note; v.f = 440 * Math.pow(2, (note - 69) / 12); v.stage = 1; v.age = ++clock; },
+    noteOff(note) { for (const v of V) if (v.note === note && v.stage && v.stage < 3) v.stage = 3; },
+    panic() { for (const v of V) v.stage = 0; },
+    render(out) {
+      out.fill(0);
+      if (!P) return;
+      for (let i = 0; i < out.length; i++) {
+        if ((n++ & 31) === 0) {
+          step(ghost, 0.025, P.alpha, P.beta);
+          if (!isFinite(ghost[0]) || Math.abs(ghost[0]) > 16 || (P.inner && Math.abs(ghost[1]) > 2)) { ghost[0] = 0.1; ghost[1] = 0; ghost[2] = 0; }
+        }
+      }
+      for (const v of V) {
+        if (!v.stage) continue;
+        let h = v.f * P.period / sr, ns = Math.ceil(h / HMAX);
+        if (ns > NSUB) { ns = NSUB; h = HMAX * NSUB; }
+        const hs = h / Math.max(1, ns), att = envStep(2), rl = envStep(rel);
+        if (P.inner && Math.abs(v.s[1]) > 2) { v.s = ghost.slice(); v.fresh = 1; }
+        for (let i = 0; i < out.length; i++) {
+          if (v.stage === 1) { v.env += att; if (v.env >= 1) { v.env = 1; v.stage = 2; } }
+          else if (v.stage === 3) { v.env -= rl; if (v.env <= 0) { v.env = 0; v.stage = 0; } }
+          for (let j = 0; j < ns; j++) step(v.s, hs, P.alpha, P.beta);
+          if (!isFinite(v.s[0]) || Math.abs(v.s[0]) > 16) { v.s = ghost.slice(); v.fresh = 1; }
+          let s = v.s[0] * P.gain[0] + v.s[1] * P.gain[1] + v.s[2] * P.gain[2];
+          if (v.fresh) { v.dc = s; v.fresh = 0; }
+          v.dc += (s - v.dc) / 512; s -= v.dc;
+          out[i] += s * v.env * 0.5;
+          if (!v.stage) break;
+        }
+      }
+      for (let i = 0; i < out.length; i++) { const x = Math.max(-1.5, Math.min(1.5, out[i])); out[i] = 0.7 * (x - 4 / 27 * x * x * x); }
+    },
+  };
+}
+const ENGINE_SRC = makeEngine.toString();
+let ctx = null, engine = null;
+async function startAudio() {
+  if (ctx) return true;
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const proc = ENGINE_SRC + `
+class ChuaProc extends AudioWorkletProcessor {
+  constructor() { super(); this.e = makeEngine(sampleRate);
+    this.port.onmessage = (m) => { const d = m.data; if (d.t === "p") this.e.params(d.p, d.r); else if (d.t === "on") this.e.noteOn(d.n); else if (d.t === "off") this.e.noteOff(d.n); else this.e.panic(); }; }
+  process(_, outs) { const o = outs[0]; this.e.render(o[0]); for (let c = 1; c < o.length; c++) o[c].set(o[0]); return true; }
+}
+registerProcessor("chua", ChuaProc);`;
+    let ok = false;
+    if (ctx.audioWorklet) {
+      try {
+        const url = URL.createObjectURL(new Blob([proc], { type: "application/javascript" }));
+        await ctx.audioWorklet.addModule(url);
+        const node = new AudioWorkletNode(ctx, "chua", { outputChannelCount: [2] });
+        node.connect(ctx.destination);
+        engine = {
+          params: (p, r) => node.port.postMessage({ t: "p", p, r }),
+          on: (n) => node.port.postMessage({ t: "on", n }), off: (n) => node.port.postMessage({ t: "off", n }),
+          panic: () => node.port.postMessage({ t: "x" }),
+        };
+        ok = true;
+      } catch (e) { ok = false; }
+    }
+    if (!ok) {                                                   /* (no worklet: the same engine on the main thread) */
+      const e = makeEngine(ctx.sampleRate);
+      const sp = ctx.createScriptProcessor(1024, 0, 2);
+      sp.onaudioprocess = (ev) => { const l = ev.outputBuffer.getChannelData(0); e.render(l); ev.outputBuffer.getChannelData(1).set(l); };
+      sp.connect(ctx.destination);
+      engine = { params: (p, r) => e.params(p, r), on: (n) => e.noteOn(n), off: (n) => e.noteOff(n), panic: () => e.panic() };
+    }
+    await ctx.resume();
+    engine.params(P, st.rel);
+    $("power").setAttribute("aria-pressed", "true");
+    $("power").textContent = "Sound on";
+    return true;
+  } catch (err) {
+    $("power").textContent = "No audio in this browser";
+    ctx = null; engine = null;
+    return false;
+  }
+}
+$("power").addEventListener("click", async () => {
+  if (ctx && ctx.state === "running") {
+    await ctx.suspend(); $("power").setAttribute("aria-pressed", "false"); $("power").textContent = "Start sound";
+  } else if (ctx) {
+    await ctx.resume(); $("power").setAttribute("aria-pressed", "true"); $("power").textContent = "Sound on";
+  } else startAudio();
+});
+
+/* ---------------------------------------------------------- keyboard --- */
+let base = 48;
+const held = new Map();
+const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+function buildKeys() {
+  const k = $("keys");
+  k.innerHTML = "";
+  const whites = [];
+  for (let i = 0; i < 25; i++) {
+    const n = base + i, black = [1, 3, 6, 8, 10].includes(n % 12);
+    const b = document.createElement("button");
+    b.className = black ? "b" : "w";
+    b.dataset.note = n;
+    b.setAttribute("aria-label", NOTE[n % 12] + (Math.floor(n / 12) - 1));
+    if (!black) { k.append(b); whites.push(b); } else { b.dataset.after = whites.length; k.append(b); }
+  }
+  requestAnimationFrame(placeBlacks);
+  $("oct").textContent = "C" + (Math.floor(base / 12) - 1);
+}
+function placeBlacks() {
+  const k = $("keys"), ws = [...k.querySelectorAll(".w")];
+  k.querySelectorAll(".b").forEach((b) => {
+    const w = ws[+b.dataset.after - 1];
+    if (w) b.style.left = w.offsetLeft + w.offsetWidth - 8 - k.scrollLeft + "px";
+  });
+}
+addEventListener("resize", placeBlacks);
+async function noteOn(n, src) {
+  if (held.has(src)) return;
+  if (!engine && !(await startAudio())) return;
+  held.set(src, n);
+  engine.on(n);
+  document.querySelectorAll(`#keys [data-note="${n}"]`).forEach((e) => e.classList.add("on"));
+}
+function noteOff(src) {
+  if (!held.has(src)) return;
+  const n = held.get(src);
+  held.delete(src);
+  if (engine) engine.off(n);
+  if (![...held.values()].includes(n)) document.querySelectorAll(`#keys [data-note="${n}"]`).forEach((e) => e.classList.remove("on"));
+}
+$("keys").addEventListener("pointerdown", (e) => {
+  const n = e.target.dataset && e.target.dataset.note;
+  if (n === undefined) return;
+  e.preventDefault();
+  noteOn(+n, "p" + e.pointerId);
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((ev) => $("keys").addEventListener(ev, (e) => noteOff("p" + e.pointerId)));
+const KEYMAP = "awsedftgyhujkolp;";
+addEventListener("keydown", (e) => {
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const i = KEYMAP.indexOf(e.key.toLowerCase());
+  if (i >= 0) noteOn(base + i, "k" + e.key.toLowerCase());
+});
+addEventListener("keyup", (e) => noteOff("k" + e.key.toLowerCase()));
+addEventListener("blur", () => { [...held.keys()].forEach(noteOff); });
+$("oct-dn").addEventListener("click", () => { base = Math.max(24, base - 12); buildKeys(); });
+$("oct-up").addEventListener("click", () => { base = Math.min(84, base + 12); buildKeys(); });
+buildKeys();
+
+/* --------------------------------------------------------------- loop --- */
+for (let i = 0; i < 4000; i++) stepGhost(1);          /* a trail on screen from the first frame */
+rescale(); sync(false); drawScope(); drawWave();
+let frame = 0;
+function loop() {
+  stepGhost(reduced ? 6 : 14);
+  if (st.auto && st.view === "3d" && !reduced) st.yaw += 0.004;
+  if (frame++ % 3 === 0) rescale();
+  drawScope(); drawWave(); diodeDot();
+  $("h-x").textContent = ghost[0].toFixed(2); $("h-y").textContent = ghost[1].toFixed(2); $("h-z").textContent = ghost[2].toFixed(2);
+  if (frame % 10 === 0) bifDraw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
