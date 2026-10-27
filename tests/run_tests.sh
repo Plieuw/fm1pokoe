@@ -26,13 +26,17 @@ OUT=build/host
 mkdir -p "$OUT"
 CC="${CC:-cc} -O1 -Wall -Wno-unused-function"
 fail=0
+TIMEOUT_CMD=""                              # each test at most 5 minutes (a hang fails it instead of the whole run)
+command -v timeout >/dev/null 2>&1 && TIMEOUT_CMD="timeout 300"
 run() {                                     # (on GitHub Actions a failure is also an annotation on the run)
     name=$1; shift
     echo "== $name"
-    if ! "$@"; then
+    t0=$(date +%s)
+    if ! ${TIMEOUT_CMD} "$@"; then
         fail=1
         [ -n "$GITHUB_ACTIONS" ] && echo "::error title=test failed::$name"
     fi
+    [ -n "$GITHUB_ACTIONS" ] && echo "::notice title=test time::$name: $(( $(date +%s) - t0 )) s"
     return 0
 }
 
