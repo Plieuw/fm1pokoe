@@ -86,6 +86,17 @@ je boven ~80 %, zet dan `NVOICE` in `core.h` op 6 of 4, of `CHUA_NSUB` in `synth
 cc -O2 -o build/gen_chua_tables tools/gen_chua_tables.c -lm && build/gen_chua_tables > firmware/src/chua_tables.h
 ```
 
+## Installeren vanaf GitHub
+
+Elke push naar `main` bouwt de firmware op GitHub (Actions), draait de tests en zet de installer online:
+
+**https://plieuw.github.io/fm1pokoe/** → open in Chrome of Edge, sluit de FM-1 met een USB-datakabel aan, druk op
+*Installeren*. Volgende versies gaan op dezelfde manier; terug naar de officiële firmware kan op dezelfde pagina.
+
+- Het `.fwsc`-bestand zelf staat bij elke run onder *Actions → firmware → Artifacts*.
+- Een tag `v1.0` (één cijfer per deel) maakt een release-build en een GitHub Release met het bestand.
+- Eenmalig instellen: *Settings → Pages → Build and deployment → Source: GitHub Actions*.
+
 ## Bouwen, testen, installeren
 
 Zie [BUILDING.md](BUILDING.md). Kort:

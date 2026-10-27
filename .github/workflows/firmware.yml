@@ -1,0 +1,153 @@
+# Builds the CHUA firmware on every push, runs the host tests, and publishes the web installer on GitHub Pages:
+#   https://<owner>.github.io/<repo>/   -> open in Chrome or Edge, connect the FM-1 by USB, press Install.
+# A tag vX.Y (one digit each, e.g. v1.0) also makes a release build and a GitHub Release with the .fwsc.
+# One-time setup: Settings > Pages > Build and deployment > Source: "GitHub Actions".
+name: firmware
+
+on:
+  push:
+    branches: [main]
+    tags: ["v[0-9].[0-9]*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The JieLi toolchain is Linux x86-64; Felucca runs it in debian:bookworm-slim, so the same here.
+    container: debian:bookworm-slim
+    env:
+      JIELI_TOOLCHAIN: /opt/jieli/toolchain
+      AC79_SDK: /opt/ac79-sdk
+    steps:
+      - name: Packages
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            git ca-certificates curl xz-utils python3 python3-pil python3-fonttools gcc libc6-dev >/dev/null
+
+      - uses: actions/checkout@v4
+
+      - name: Cache the JieLi toolchain and SDK files
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/jieli
+            /opt/ac79-sdk
+          key: jieli-toolchain-ac79-sdk-v1.2.1-2023-12-13
+
+      - name: JieLi toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sh tools/get_toolchain.sh /opt/jieli
+          test -x /opt/jieli/toolchain/pi32v2/bin/clang
+
+      - name: JieLi AC79 SDK (the three files the package needs)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          tmp=$(mktemp -d)
+          git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 --filter=blob:none --sparse \
+              https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git "$tmp/sdk" \
+            && git -C "$tmp/sdk" sparse-checkout set cpu/wl82/tools \
+            || { rm -rf "$tmp/sdk"; git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+                   https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git "$tmp/sdk"; }
+          mkdir -p "$AC79_SDK/cpu/wl82/tools/cfg"
+          cp "$tmp/sdk/cpu/wl82/tools/uboot.boot" "$tmp/sdk/cpu/wl82/tools/cfg_tool.bin" "$AC79_SDK/cpu/wl82/tools/"
+          cp "$tmp/sdk/cpu/wl82/tools/cfg/eq_cfg_hw.bin" "$AC79_SDK/cpu/wl82/tools/cfg/"
+          cp "$tmp/sdk/LICENSE"* "$AC79_SDK/" 2>/dev/null || true
+          rm -rf "$tmp"
+
+      - name: Version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "release=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "label=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=" >> "$GITHUB_OUTPUT"
+            echo "label=v0.1-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ -n "${{ steps.ver.outputs.release }}" ]; then
+            ./build.sh --release "${{ steps.ver.outputs.release }}"
+            cp "build/felucca-${{ steps.ver.outputs.release }}.fwsc" build/chua.fwsc
+          else
+            FELUCCA_VERSION="${{ steps.ver.outputs.label }}" ./build.sh
+            cp build/felucca.fwsc build/chua.fwsc
+          fi
+
+      - name: Tests
+        run: sh tests/run_tests.sh
+
+      - name: Installer site
+        env:
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: python3 web/make_site.py build/chua.fwsc "${{ steps.ver.outputs.label }}" site
+
+      - name: Firmware file
+        uses: actions/upload-artifact@v4
+        with:
+          name: chua-${{ steps.ver.outputs.label }}
+          path: |
+            build/chua.fwsc
+            build/host/ui/sheet.png
+            build/host/basis.wav
+
+      - name: Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Release files
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: build/release-${{ steps.ver.outputs.release }}/
+
+  pages:
+    needs: build
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}webapp/installer/
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" \
+            --title "CHUA $GITHUB_REF_NAME" \
+            --notes "Install: open https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/ in Chrome or Edge, connect the FM-1 by USB and press Install. Or: python3 tools/fm1_install.py felucca-${GITHUB_REF_NAME#v}.fwsc"
