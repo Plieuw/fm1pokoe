@@ -32,9 +32,15 @@ run() {                                     # (on GitHub Actions a failure is al
     name=$1; shift
     echo "== $name"
     t0=$(date +%s)
-    if ! ${TIMEOUT_CMD} "$@"; then
+    if ! ${TIMEOUT_CMD} "$@" > "$OUT/last_test.log" 2>&1; then
+        cat "$OUT/last_test.log"
         fail=1
-        [ -n "$GITHUB_ACTIONS" ] && echo "::error title=test failed::$name"
+        if [ -n "$GITHUB_ACTIONS" ]; then          # the failure and its last lines, readable on the run's page
+            tail -n 12 "$OUT/last_test.log" | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > "$OUT/last_tail.txt"
+            echo "::error title=test failed::$name%0A$(cat "$OUT/last_tail.txt")"
+        fi
+    else
+        cat "$OUT/last_test.log"
     fi
     [ -n "$GITHUB_ACTIONS" ] && echo "::notice title=test time::$name: $(( $(date +%s) - t0 )) s"
     return 0
