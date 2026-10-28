@@ -407,10 +407,10 @@ static uint32_t voice_h(const voice_t *v, int32_t *hs)
 #endif
 #include "resonator.c"                          /* the FX resonators (Rings' models), after the voices */
 #include "shimmer.c"                            /* the shimmer reverb, after the resonator: the stereo output */
+static voice_t *render_tv;                       /* the voice the trace follows (set before the voices render) */
 #include "noise.c"                              /* the noise oscillators (after Befaco's Noise Plethora) */
 
 /* one voice's block into sum[0..n-1] (mono); restarts: the counter of the core it runs on */
-static voice_t *render_tv;                       /* the voice the trace follows (set before the voices render) */
 static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restarts)
 {
     int32_t hs = 0, ahs = 0, bhs = 0, src[CTL];

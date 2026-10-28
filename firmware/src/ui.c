@@ -13,6 +13,8 @@
  *   MOD      (HOME again) the FM oscillator on the noise programs: KNOB 1 WAVE (sine, triangle, saw, square,
  *            morphing), KNOB 2 RATIO to the note, KNOB 3 DEPTH (0: off), KNOB 4 FINE; ALGORITHM the oscillator;
  *            drawn: its wave and a sine it modulates
+ *   MOD ENV  (ENV again) KNOB 1..4 ATTACK, DECAY, SUSTAIN, RELEASE of the FM oscillator's envelope, into its VCA (the
+ *            depth follows it); drawn: the ADSR and the VCA's level now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices);
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
@@ -48,6 +50,7 @@ typedef struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* SHIMMER; MIX 0 (left out): off */
     uint8_t osc, np_x, np_y;                     /* the oscillator: 0 (left out) the circuit, 1..30 a noise program */
     uint8_t mod_wave, mod_ratio, mod_depth;      /* its FM oscillator (DEPTH 0, left out: off; FINE 0 cents) */
+    uint8_t menv_a, menv_d, menv_s, menv_r;      /* its envelope (all 0, left out: 0, 80, 127, 70: always open) */
 } preset_t;
 #define NZ(a, b) (1 + (a) * 10 + (b))            /* noise program A0 = NZ(0, 0) .. C9 = NZ(2, 9) */
 #define NOFX 0, 0, 0, 0, 0, 0
@@ -86,11 +89,13 @@ static const preset_t PRESETS[] = {
     {"BITCRUSH WALK", 85, 76, 0, 0, 64, 60, 60, 50, NOFX, NOSH, NZ(2, 8), 64, 100},       /* a crushed random walk */
     /* the FM oscillator on them (the MOD page) */
     {"FM BELL CLUSTER", 85, 76, 0, 0, 70, 30, 90, 30, RZ_MODAL, 70, 100, 100, 12, 50,    /* sines FMed at 7/2: */
-     NOSH, NZ(1, 3), 20, 30, 0, 9, 70},                                                    /* metal, rung */
+     NOSH, NZ(1, 3), 20, 30, 0, 9, 90, 0, 70, 0, 60},                                      /* metal, a strike */
     {"SQUARE GRAINS", 85, 76, 0, 0, 64, 80, 64, 50, NOFX, NOSH, NZ(0, 7), 80, 30, 127, 1, 60},   /* a sub square */
     {"SAW RADIO", 85, 76, 0, 4, 70, 100, 70, 40, NOFX, NOSH, NZ(0, 0), 64, 64, 85, 6, 50},   /* a saw an octave up */
     {"TRI WOBBLE PAD", 85, 76, 0, 80, 96, 110, 100, 40, NOFX,                             /* a slow triangle */
-     110, 100, 80, 70, SI_FIFTH, 90, NZ(1, 7), 40, 50, 42, 0, 40},                         /* under the cluster */
+     110, 100, 80, 70, SI_FIFTH, 90, NZ(1, 7), 40, 50, 42, 0, 40, 110, 90, 127, 100},      /* swelling in */
+    {"FM PLUCK", 85, 76, 0, 0, 64, 40, 64, 40, NOFX, NOSH, NZ(1, 3), 10, 20, 0, 6, 110,  /* the FM falls away */
+     0, 60, 0, 50},                                                                        /* fast: a pluck */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -131,11 +136,23 @@ static void preset_load(uint32_t i)
         sys.mod_ratio = (uint8_t)(p->mod_ratio % NP_NRATIO);
         sys.mod_depth = p->mod_depth;
         sys.mod_fine = 64;
+        if (p->menv_a | p->menv_d | p->menv_s | p->menv_r) {
+            sys.menv_a = p->menv_a;
+            sys.menv_d = p->menv_d;
+            sys.menv_s = p->menv_s;
+            sys.menv_r = p->menv_r;
+        } else {
+            sys.menv_a = 0;
+            sys.menv_d = 80;
+            sys.menv_s = 127;
+            sys.menv_r = 70;
+        }
     }
 }
 static int preset_edited(void)
 {
     const preset_t *p = &PRESETS[sys.preset % NPRESETS];
+    uint32_t pe = (p->menv_a | p->menv_d | p->menv_s | p->menv_r) != 0;   /* (the MOD ENV given, else its default) */
     return sys.chaos != p->chaos || sys.shape != p->shape || sys.output != p->output || sys.attack != p->attack ||
            sys.decay != p->decay || sys.sustain != p->sustain || sys.release != p->release || sys.ring != p->ring ||
            sys.fx_mix != p->fx_mix || (p->fx_mix && (sys.fx_model != p->fx_model || sys.fx_struct != p->fx_struct ||
@@ -144,11 +161,13 @@ static int preset_edited(void)
            sys.sh_shimmer != p->sh_shimmer || sys.sh_interval != p->sh_interval || sys.sh_tone != p->sh_tone)) ||
            sys.osc != p->osc || (p->osc && (sys.np_x != p->np_x || sys.np_y != p->np_y || sys.np_level != 64u ||
            sys.mod_depth != p->mod_depth || (p->mod_depth && (sys.mod_wave != p->mod_wave ||
-           sys.mod_ratio != p->mod_ratio || sys.mod_fine != 64u))));
+           sys.mod_ratio != p->mod_ratio || sys.mod_fine != 64u || sys.menv_a != (pe ? p->menv_a : 0u) ||
+           sys.menv_d != (pe ? p->menv_d : 80u) || sys.menv_s != (pe ? p->menv_s : 127u) ||
+           sys.menv_r != (pe ? p->menv_r : 70u)))));
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485537u      /* "CHU7": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485538u      /* "CHU8": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -157,6 +176,7 @@ typedef struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
     uint8_t osc, np_x, np_y, np_level;
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
+    uint8_t menv_a, menv_d, menv_s, menv_r;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -200,6 +220,10 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.mod_ratio = (uint8_t)(s.mod_ratio % NP_NRATIO);
         sys.mod_depth = (uint8_t)(s.mod_depth & 127u);
         sys.mod_fine = (uint8_t)(s.mod_fine & 127u);
+        sys.menv_a = (uint8_t)(s.menv_a & 127u);
+        sys.menv_d = (uint8_t)(s.menv_d & 127u);
+        sys.menv_s = (uint8_t)(s.menv_s & 127u);
+        sys.menv_r = (uint8_t)(s.menv_r & 127u);
     }
 }
 
@@ -242,6 +266,10 @@ static int settings_save(void)     /* 0 = saved */
     s.mod_ratio = sys.mod_ratio;
     s.mod_depth = sys.mod_depth;
     s.mod_fine = sys.mod_fine;
+    s.menv_a = sys.menv_a;
+    s.menv_d = sys.menv_d;
+    s.menv_s = sys.menv_s;
+    s.menv_r = sys.menv_r;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -687,6 +715,41 @@ static void draw_mod(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the MOD ENV page's picture: the ADSR (each time's width grows with its knob, the sustain held a while) and on the
+ * right the VCA: the newest voice's envelope now */
+static void draw_menv(void)
+{
+    const int32_t top = 10, bot = PLOT_H - 16, hh = bot - top;
+    int32_t xa = 8 + 6 + (int32_t)(sys.menv_a & 127u) * 44 / 127, xd = xa + 6 + (int32_t)(sys.menv_d & 127u) * 44 / 127;
+    int32_t xs = xd + 40, xr = xs + 6 + (int32_t)(sys.menv_r & 127u) * 44 / 127;
+    int32_t ys = bot - (int32_t)(sys.menv_s & 127u) * hh / 127, lv = (int32_t)sys.menv_view * hh / 32767, i;
+    uint32_t on = sys.osc && sys.mod_depth;
+    uint16_t c = on ? T_THEME : T_DIM;
+    cv_begin(240, PLOT_H, T_BG);
+    cv_rect(8, bot, 192, 1, T_LINE);
+    cv_line_t(8, bot, xa, top, c, 2);
+    for (i = 0; i < 8; i++) {                    /* the decay's curve, in 8 pieces of an exponential */
+        static const uint8_t E[9] = {255, 160, 101, 64, 40, 25, 16, 10, 6};
+        int32_t x0 = xa + (xd - xa) * i / 8, x1 = xa + (xd - xa) * (i + 1) / 8;
+        cv_line_t(x0, ys - (ys - top) * E[i] / 255, x1, ys - (ys - top) * E[i + 1] / 255, c, 2);
+    }
+    cv_line_t(xd, ys, xs, ys, c, 2);
+    for (i = 0; i < 8; i++) {
+        static const uint8_t E[9] = {255, 160, 101, 64, 40, 25, 16, 10, 6};
+        int32_t x0 = xs + (xr - xs) * i / 8, x1 = xs + (xr - xs) * (i + 1) / 8;
+        cv_line_t(x0, bot - (bot - ys) * E[i] / 255, x1, bot - (bot - ys) * E[i + 1] / 255, c, 2);
+    }
+    cv_frame(212, top, 20, hh + 1, T_LINE);      /* the VCA */
+    if (lv > 0)
+        cv_rect(214, bot - lv + 1, 16, lv - 1 > 0 ? lv - 1 : 1, on ? T_ACCENT : T_DIM);
+    cv_text(8, bot + 3, &AF_S, "A", T_DIM);
+    cv_text(xa - 8 < 12 ? 20 : xa, bot + 3, &AF_S, "D", T_DIM);   /* (a short attack: D past the A) */
+    cv_text(xd + 14, bot + 3, &AF_S, "S", T_DIM);
+    cv_text(xs, bot + 3, &AF_S, "R", T_DIM);
+    cv_text(208, bot + 3, &AF_S, "VCA", T_DIM);
+    cv_blit(0, PLOT_Y);
+}
+
 /* the oscillator's short name: "CHUA", or the noise program's bank and number ("A5") */
 static void osc_code(char *d, uint32_t n, uint32_t osc)
 {
@@ -711,7 +774,18 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 4u) {
+    if (sys.page == 5u) {
+        env_time(b, sizeof b, sys.menv_a);
+        ui_cell(T_C1, "1 ATTACK", b);
+        env_time(b, sizeof b, sys.menv_d);
+        ui_cell(T_C2, "2 DECAY", b);
+        fmt_int(v, (int32_t)(sys.menv_s * 100u / 127u));
+        str_cpy(b, v, sizeof b);
+        ui_cat(b, sizeof b, " %");
+        ui_cell(T_C3, "3 SUSTAIN", b);
+        env_time(b, sizeof b, sys.menv_r);
+        ui_cell(T_C4, "4 RELEASE", b);
+    } else if (sys.page == 4u) {
         mod_wave_name(b, sizeof b, sys.mod_wave);
         ui_cell(T_C1, "1 WAVE", b);
         str_cpy(b, "x ", sizeof b);
@@ -833,6 +907,19 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, sys.fx_model % RZ_COUNT == RZ_SYMP ? "   AMT " : "   POS ");
             fmt_int(v, sys.fx_pos);
             ui_cat(a, sizeof a, v);
+        } else if (sys.page == 5u) {             /* MOD ENV: on what */
+            str_cpy(a, "MOD ENV   ", sizeof a);
+            if (!sys.osc)
+                ui_cat(a, sizeof a, "CHUA: NO FM");
+            else if (!sys.mod_depth)
+                ui_cat(a, sizeof a, "DEPTH OFF");
+            else {
+                osc_code(v, sizeof v, sys.osc);
+                ui_cat(a, sizeof a, v);
+                ui_cat(a, sizeof a, " DEPTH ");
+                fmt_int(v, sys.mod_depth);
+                ui_cat(a, sizeof a, v);
+            }
         } else if (sys.page == 4u) {             /* MOD: what it modulates */
             osc_code(a, sizeof a, sys.osc);
             ui_cat(a, sizeof a, sys.osc ? " FM" : ": FM ON NOISE ONLY");
@@ -873,6 +960,8 @@ static void ui_draw(void)
         draw_sh();
     else if (sys.page == 4u)
         draw_mod();
+    else if (sys.page == 5u)
+        draw_menv();
     else
         draw_plot();
     ui_force = 0;
@@ -917,7 +1006,7 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_OCTUP]);
     if (sys.page == 0u || sys.page == 4u)
         led_on(nl, panel.btn[B_HOME]);
-    if (sys.page == 1u)
+    if (sys.page == 1u || sys.page == 5u)
         led_on(nl, panel.btn[B_ENV]);
     if (sys.page >= 2u || sys.fx_mix || sys.sh_mix)     /* (FX lit: its pages, or the resonator or the shimmer on) */
         led_on(nl, panel.btn[B_FX]);
@@ -971,8 +1060,8 @@ static void ui_input(void)
             sys.page = sys.page == 0u ? 4u : 0u;
             ui_force = 1;
             break;
-        case B_ENV:                                     /* the ENV page and back */
-            sys.page = sys.page == 1u ? 0u : 1u;
+        case B_ENV:                                     /* the ENV page, the MOD ENV page, back HOME */
+            sys.page = sys.page == 1u ? 5u : sys.page == 5u ? 0u : 1u;
             ui_force = 1;
             break;
         case B_FX:                                      /* the resonator, the shimmer, back HOME */
@@ -992,7 +1081,12 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 4u) {
+    if (sys.page == 5u) {
+        knob(&sys.menv_a, EN_K1, 0);
+        knob(&sys.menv_d, EN_K2, 1);
+        knob(&sys.menv_s, EN_K3, 2);
+        knob(&sys.menv_r, EN_K4, 3);
+    } else if (sys.page == 4u) {
         knob(&sys.mod_wave, EN_K1, 0);
         if ((s = panel_enc(EN_K2)) != 0) {           /* (the ratio in steps, a detent each) */
             sys.mod_ratio = (uint8_t)clamp((int32_t)sys.mod_ratio + s, 0, NP_NRATIO - 1);

@@ -236,6 +236,23 @@ int main(int argc, char **argv)
     sys.mod_depth = 0;
     edges = btn_bit(B_HOME);
     ui_input();
+    preset_load(NPRESETS - 1u);          /* the MOD ENV page (ENV twice): FM PLUCK, a note, its envelope falling */
+    edges = btn_bit(B_ENV);
+    ui_input();
+    edges = btn_bit(B_ENV);
+    ui_input();
+    synth_note_on(55, 100);
+    frames(2);
+    bad |= shot(dir, "j_menv_strike");
+    frames(10);
+    bad |= shot(dir, "j_menv_fallen");
+    sys.menv_a = 100; sys.menv_d = 90; sys.menv_s = 90; sys.menv_r = 110;
+    ui_event_ms = 0;
+    frames(8);
+    bad |= shot(dir, "j_menv_slow");
+    synth_kill();
+    sys.page = 0;
+    ui_force = 1;
     synth_kill();
     preset_load(0);
     ui_force = 1;
