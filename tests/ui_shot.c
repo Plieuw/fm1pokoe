@@ -246,10 +246,13 @@ int main(int argc, char **argv)
     bad |= shot(dir, "j_menv_strike");
     frames(10);
     bad |= shot(dir, "j_menv_fallen");
-    sys.menv_a = 100; sys.menv_d = 90; sys.menv_s = 90; sys.menv_r = 110;
+    sys.menv_len = 115; sys.menv_skew = 80; sys.menv_height = 90; sys.mod_depth = 40;
     ui_event_ms = 0;
     frames(8);
     bad |= shot(dir, "j_menv_slow");
+    synth_note_on(60, 100);
+    frames(20);
+    bad |= shot(dir, "j_menv_rising");
     synth_kill();
     sys.page = 0;
     ui_force = 1;

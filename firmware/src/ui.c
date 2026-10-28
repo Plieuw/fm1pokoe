@@ -11,16 +11,17 @@
  *   NOISE    KNOB 1 X, KNOB 2 Y (the program's two controls), KNOB 3 LEVEL, KNOB 4 RING; drawn: the output against
  *            itself a moment ago (its "attractor")
  *   MOD      (HOME again) the FM oscillator on the noise programs: KNOB 1 WAVE (sine, triangle, saw, square,
- *            morphing), KNOB 2 RATIO to the note, KNOB 3 DEPTH (0: off), KNOB 4 FINE; ALGORITHM the oscillator;
+ *            morphing), KNOB 2 RATIO to the note, KNOB 3 DEPTH (always, under the envelope), KNOB 4 FINE;
  *            drawn: its wave and a sine it modulates
- *   MOD ENV  (ENV again) KNOB 1..4 ATTACK, DECAY, SUSTAIN, RELEASE of the FM oscillator's envelope, into its VCA (the
- *            depth follows it); drawn: the ADSR and the VCA's level now
+ *   MOD ENV  (ENV again) the FM oscillator's AD envelope, started by each note: KNOB 1 LENGTH, KNOB 2 SKEW (where the
+ *            peak falls), KNOB 3 HEIGHT (how much FM it adds to DEPTH); drawn: its shape over DEPTH, the depth now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices);
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
  *   FX (2nd) KNOB 1..4      SIZE, DECAY, SHIMMER, MIX of the shimmer reverb (shimmer.c); ALGORITHM the INTERVAL,
  *            SELECT the TONE; the tail's level over the last seconds drawn (the riser building)
- *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME); ENV: RING
+ *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME)
+ * Each parameter lives in one place: RING on HOME (KNOB 4), the oscillator on HOME (ALGORITHM).
  *   PRESETS the presets
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO          2ND CORE on / off (saved at once; from the next power-on: the core starts only at boot)
@@ -50,7 +51,7 @@ typedef struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* SHIMMER; MIX 0 (left out): off */
     uint8_t osc, np_x, np_y;                     /* the oscillator: 0 (left out) the circuit, 1..30 a noise program */
     uint8_t mod_wave, mod_ratio, mod_depth;      /* its FM oscillator (DEPTH 0, left out: off; FINE 0 cents) */
-    uint8_t menv_a, menv_d, menv_s, menv_r;      /* its envelope (all 0, left out: 0, 80, 127, 70: always open) */
+    uint8_t menv_len, menv_skew, menv_height;    /* its AD envelope (HEIGHT 0, left out: none) */
 } preset_t;
 #define NZ(a, b) (1 + (a) * 10 + (b))            /* noise program A0 = NZ(0, 0) .. C9 = NZ(2, 9) */
 #define NOFX 0, 0, 0, 0, 0, 0
@@ -89,13 +90,13 @@ static const preset_t PRESETS[] = {
     {"BITCRUSH WALK", 85, 76, 0, 0, 64, 60, 60, 50, NOFX, NOSH, NZ(2, 8), 64, 100},       /* a crushed random walk */
     /* the FM oscillator on them (the MOD page) */
     {"FM BELL CLUSTER", 85, 76, 0, 0, 70, 30, 90, 30, RZ_MODAL, 70, 100, 100, 12, 50,    /* sines FMed at 7/2: */
-     NOSH, NZ(1, 3), 20, 30, 0, 9, 90, 0, 70, 0, 60},                                      /* metal, a strike */
+     NOSH, NZ(1, 3), 20, 30, 0, 9, 30, 90, 0, 110},                                        /* metal, a strike */
     {"SQUARE GRAINS", 85, 76, 0, 0, 64, 80, 64, 50, NOFX, NOSH, NZ(0, 7), 80, 30, 127, 1, 60},   /* a sub square */
     {"SAW RADIO", 85, 76, 0, 4, 70, 100, 70, 40, NOFX, NOSH, NZ(0, 0), 64, 64, 85, 6, 50},   /* a saw an octave up */
     {"TRI WOBBLE PAD", 85, 76, 0, 80, 96, 110, 100, 40, NOFX,                             /* a slow triangle */
-     110, 100, 80, 70, SI_FIFTH, 90, NZ(1, 7), 40, 50, 42, 0, 40, 110, 90, 127, 100},      /* swelling in */
-    {"FM PLUCK", 85, 76, 0, 0, 64, 40, 64, 40, NOFX, NOSH, NZ(1, 3), 10, 20, 0, 6, 110,  /* the FM falls away */
-     0, 60, 0, 50},                                                                        /* fast: a pluck */
+     110, 100, 80, 70, SI_FIFTH, 90, NZ(1, 7), 40, 50, 42, 0, 20, 118, 90, 90},            /* swelling in */
+    {"FM PLUCK", 85, 76, 0, 0, 64, 40, 64, 40, NOFX, NOSH, NZ(1, 3), 10, 20, 0, 6, 0,    /* the FM falls away */
+     64, 0, 120},                                                                          /* fast: a pluck */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -136,23 +137,14 @@ static void preset_load(uint32_t i)
         sys.mod_ratio = (uint8_t)(p->mod_ratio % NP_NRATIO);
         sys.mod_depth = p->mod_depth;
         sys.mod_fine = 64;
-        if (p->menv_a | p->menv_d | p->menv_s | p->menv_r) {
-            sys.menv_a = p->menv_a;
-            sys.menv_d = p->menv_d;
-            sys.menv_s = p->menv_s;
-            sys.menv_r = p->menv_r;
-        } else {
-            sys.menv_a = 0;
-            sys.menv_d = 80;
-            sys.menv_s = 127;
-            sys.menv_r = 70;
-        }
+        sys.menv_len = p->menv_height ? p->menv_len : 80;
+        sys.menv_skew = p->menv_height ? p->menv_skew : 10;
+        sys.menv_height = p->menv_height;
     }
 }
 static int preset_edited(void)
 {
     const preset_t *p = &PRESETS[sys.preset % NPRESETS];
-    uint32_t pe = (p->menv_a | p->menv_d | p->menv_s | p->menv_r) != 0;   /* (the MOD ENV given, else its default) */
     return sys.chaos != p->chaos || sys.shape != p->shape || sys.output != p->output || sys.attack != p->attack ||
            sys.decay != p->decay || sys.sustain != p->sustain || sys.release != p->release || sys.ring != p->ring ||
            sys.fx_mix != p->fx_mix || (p->fx_mix && (sys.fx_model != p->fx_model || sys.fx_struct != p->fx_struct ||
@@ -160,14 +152,14 @@ static int preset_edited(void)
            sys.sh_mix != p->sh_mix || (p->sh_mix && (sys.sh_size != p->sh_size || sys.sh_decay != p->sh_decay ||
            sys.sh_shimmer != p->sh_shimmer || sys.sh_interval != p->sh_interval || sys.sh_tone != p->sh_tone)) ||
            sys.osc != p->osc || (p->osc && (sys.np_x != p->np_x || sys.np_y != p->np_y || sys.np_level != 64u ||
-           sys.mod_depth != p->mod_depth || (p->mod_depth && (sys.mod_wave != p->mod_wave ||
-           sys.mod_ratio != p->mod_ratio || sys.mod_fine != 64u || sys.menv_a != (pe ? p->menv_a : 0u) ||
-           sys.menv_d != (pe ? p->menv_d : 80u) || sys.menv_s != (pe ? p->menv_s : 127u) ||
-           sys.menv_r != (pe ? p->menv_r : 70u)))));
+           sys.mod_depth != p->mod_depth || sys.menv_height != p->menv_height ||
+           ((p->mod_depth || p->menv_height) && (sys.mod_wave != p->mod_wave || sys.mod_ratio != p->mod_ratio ||
+           sys.mod_fine != 64u)) || (p->menv_height && (sys.menv_len != p->menv_len ||
+           sys.menv_skew != p->menv_skew))));
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485538u      /* "CHU8": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485539u      /* "CHU9": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -176,7 +168,7 @@ typedef struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
     uint8_t osc, np_x, np_y, np_level;
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
-    uint8_t menv_a, menv_d, menv_s, menv_r;
+    uint8_t menv_len, menv_skew, menv_height;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -220,10 +212,9 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.mod_ratio = (uint8_t)(s.mod_ratio % NP_NRATIO);
         sys.mod_depth = (uint8_t)(s.mod_depth & 127u);
         sys.mod_fine = (uint8_t)(s.mod_fine & 127u);
-        sys.menv_a = (uint8_t)(s.menv_a & 127u);
-        sys.menv_d = (uint8_t)(s.menv_d & 127u);
-        sys.menv_s = (uint8_t)(s.menv_s & 127u);
-        sys.menv_r = (uint8_t)(s.menv_r & 127u);
+        sys.menv_len = (uint8_t)(s.menv_len & 127u);
+        sys.menv_skew = (uint8_t)(s.menv_skew & 127u);
+        sys.menv_height = (uint8_t)(s.menv_height & 127u);
     }
 }
 
@@ -266,10 +257,9 @@ static int settings_save(void)     /* 0 = saved */
     s.mod_ratio = sys.mod_ratio;
     s.mod_depth = sys.mod_depth;
     s.mod_fine = sys.mod_fine;
-    s.menv_a = sys.menv_a;
-    s.menv_d = sys.menv_d;
-    s.menv_s = sys.menv_s;
-    s.menv_r = sys.menv_r;
+    s.menv_len = sys.menv_len;
+    s.menv_skew = sys.menv_skew;
+    s.menv_height = sys.menv_height;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -680,7 +670,7 @@ static void draw_mod(void)
 {
     const int32_t top = 10, h = 40, mid = top + h, w = 104;
     int32_t i, px = 0, py = mid;
-    uint32_t wv = sys.mod_wave & 127u, on = sys.mod_depth && sys.osc;
+    uint32_t wv = sys.mod_wave & 127u, on = (sys.mod_depth || sys.menv_height) && sys.osc;
     cv_begin(240, PLOT_H, T_BG);
     cv_rect(8, mid, w, 1, T_LINE);
     cv_rect(128, mid, w, 1, T_LINE);
@@ -710,43 +700,37 @@ static void draw_mod(void)
         }
     }
     cv_text(8, mid + h + 8, &AF_S, "MOD", T_DIM);
-    cv_text(128, mid + h + 8, &AF_S, !sys.osc ? "CHUA: NO FM" : sys.mod_depth ? "THE NOTE, FM" : "DEPTH OFF",
-            sys.osc && sys.mod_depth ? T_MID : T_DIM);
+    cv_text(128, mid + h + 8, &AF_S, !sys.osc ? "CHUA: NO FM" : sys.mod_depth ? "THE NOTE, FM" :
+            sys.menv_height ? "DEPTH 0: ENV ONLY" : "OFF", on ? T_MID : T_DIM);
     cv_blit(0, PLOT_Y);
 }
 
-/* the MOD ENV page's picture: the ADSR (each time's width grows with its knob, the sustain held a while) and on the
- * right the VCA: the newest voice's envelope now */
+/* the MOD ENV page's picture: the FM depth over the envelope's LENGTH (the time axis: 0.5 ms .. 10 s, log), DEPTH the
+ * floor, HEIGHT the peak above it at SKEW; on the right the newest voice's depth now */
 static void draw_menv(void)
 {
-    const int32_t top = 10, bot = PLOT_H - 16, hh = bot - top;
-    int32_t xa = 8 + 6 + (int32_t)(sys.menv_a & 127u) * 44 / 127, xd = xa + 6 + (int32_t)(sys.menv_d & 127u) * 44 / 127;
-    int32_t xs = xd + 40, xr = xs + 6 + (int32_t)(sys.menv_r & 127u) * 44 / 127;
-    int32_t ys = bot - (int32_t)(sys.menv_s & 127u) * hh / 127, lv = (int32_t)sys.menv_view * hh / 32767, i;
-    uint32_t on = sys.osc && sys.mod_depth;
+    const int32_t top = 10, bot = PLOT_H - 16, hh = bot - top, x0 = 8;
+    int32_t xl = x0 + 20 + (int32_t)(sys.menv_len & 127u) * 170 / 127;           /* (the length's end) */
+    int32_t xp = x0 + (xl - x0) * (int32_t)(sys.menv_skew & 127u) / 127;          /* the peak */
+    int32_t dd = (int32_t)((sys.mod_depth & 127u) * (sys.mod_depth & 127u) * 3u / 2u);
+    int32_t dh = (int32_t)((sys.menv_height & 127u) * (sys.menv_height & 127u) * 3u / 2u);
+    int32_t yf = bot - dd * hh / 24193, yp = bot - (dd + dh > 24193 ? 24193 : dd + dh) * hh / 24193;
+    int32_t lv = (int32_t)sys.menv_view * hh / 32767;
+    uint32_t on = sys.osc && (sys.mod_depth || sys.menv_height);
     uint16_t c = on ? T_THEME : T_DIM;
     cv_begin(240, PLOT_H, T_BG);
-    cv_rect(8, bot, 192, 1, T_LINE);
-    cv_line_t(8, bot, xa, top, c, 2);
-    for (i = 0; i < 8; i++) {                    /* the decay's curve, in 8 pieces of an exponential */
-        static const uint8_t E[9] = {255, 160, 101, 64, 40, 25, 16, 10, 6};
-        int32_t x0 = xa + (xd - xa) * i / 8, x1 = xa + (xd - xa) * (i + 1) / 8;
-        cv_line_t(x0, ys - (ys - top) * E[i] / 255, x1, ys - (ys - top) * E[i + 1] / 255, c, 2);
-    }
-    cv_line_t(xd, ys, xs, ys, c, 2);
-    for (i = 0; i < 8; i++) {
-        static const uint8_t E[9] = {255, 160, 101, 64, 40, 25, 16, 10, 6};
-        int32_t x0 = xs + (xr - xs) * i / 8, x1 = xs + (xr - xs) * (i + 1) / 8;
-        cv_line_t(x0, bot - (bot - ys) * E[i] / 255, x1, bot - (bot - ys) * E[i + 1] / 255, c, 2);
-    }
-    cv_frame(212, top, 20, hh + 1, T_LINE);      /* the VCA */
+    cv_rect(x0, bot, 196, 1, T_LINE);
+    if (dd)
+        cv_rect(x0, yf, 196, 1, ux_mix(T_BG, T_THEME, 40));   /* DEPTH: the floor */
+    cv_line_t(x0, yf, xp, yp, c, 2);
+    cv_line_t(xp, yp, xl, yf, c, 2);
+    cv_line_t(xl, yf, x0 + 196, yf, c, 2);
+    cv_frame(212, top, 20, hh + 1, T_LINE);      /* the depth now */
     if (lv > 0)
         cv_rect(214, bot - lv + 1, 16, lv - 1 > 0 ? lv - 1 : 1, on ? T_ACCENT : T_DIM);
-    cv_text(8, bot + 3, &AF_S, "A", T_DIM);
-    cv_text(xa - 8 < 12 ? 20 : xa, bot + 3, &AF_S, "D", T_DIM);   /* (a short attack: D past the A) */
-    cv_text(xd + 14, bot + 3, &AF_S, "S", T_DIM);
-    cv_text(xs, bot + 3, &AF_S, "R", T_DIM);
-    cv_text(208, bot + 3, &AF_S, "VCA", T_DIM);
+    cv_text(x0, bot + 3, &AF_S, "NOTE", T_DIM);
+    cv_text_r(xl < 60 ? 60 : xl, bot + 3, &AF_S, "END", T_DIM, T_BG);
+    cv_text(206, bot + 3, &AF_S, "FM", T_DIM);
     cv_blit(0, PLOT_Y);
 }
 
@@ -775,16 +759,22 @@ static void ui_draw(void)
     ui_head(a, b);
 
     if (sys.page == 5u) {
-        env_time(b, sizeof b, sys.menv_a);
-        ui_cell(T_C1, "1 ATTACK", b);
-        env_time(b, sizeof b, sys.menv_d);
-        ui_cell(T_C2, "2 DECAY", b);
-        fmt_int(v, (int32_t)(sys.menv_s * 100u / 127u));
-        str_cpy(b, v, sizeof b);
-        ui_cat(b, sizeof b, " %");
-        ui_cell(T_C3, "3 SUSTAIN", b);
-        env_time(b, sizeof b, sys.menv_r);
-        ui_cell(T_C4, "4 RELEASE", b);
+        env_time(b, sizeof b, sys.menv_len);
+        ui_cell(T_C1, "1 LENGTH", b);
+        {
+            uint32_t k = sys.menv_skew & 127u;
+            fmt_int(v, (int32_t)(k * 100u / 127u));
+            str_cpy(b, k == 0u ? "FALL" : k == 127u ? "RISE" : v, sizeof b);
+            if (k && k < 127u)
+                ui_cat(b, sizeof b, " %");
+        }
+        ui_cell(T_C2, "2 SKEW", b);
+        if (sys.menv_height)
+            fmt_int(v, sys.menv_height);
+        else
+            str_cpy(v, "OFF", sizeof v);
+        ui_cell(T_C3, "3 HEIGHT", v);
+        ui_cell(T_C4, "4", "");
     } else if (sys.page == 4u) {
         mod_wave_name(b, sizeof b, sys.mod_wave);
         ui_cell(T_C1, "1 WAVE", b);
@@ -911,8 +901,6 @@ static void ui_draw(void)
             str_cpy(a, "MOD ENV   ", sizeof a);
             if (!sys.osc)
                 ui_cat(a, sizeof a, "CHUA: NO FM");
-            else if (!sys.mod_depth)
-                ui_cat(a, sizeof a, "DEPTH OFF");
             else {
                 osc_code(v, sizeof v, sys.osc);
                 ui_cat(a, sizeof a, v);
@@ -928,9 +916,7 @@ static void ui_draw(void)
                 ui_cat(a, sizeof a, NP_NAME[(sys.osc - 1u) % NP_COUNT]);
             }
         } else if (sys.page) {
-            str_cpy(a, "ENV   RING ", sizeof a);
-            fmt_int(v, sys.ring);
-            ui_cat(a, sizeof a, v);
+            str_cpy(a, "ENV   LPG", sizeof a);
         } else {                                 /* HOME: the oscillator and the view */
             osc_code(a, sizeof a, sys.osc);
             if (sys.osc) {                       /* (the program's name: no room for the view as well) */
@@ -1082,10 +1068,9 @@ static void ui_input(void)
         }
     }
     if (sys.page == 5u) {
-        knob(&sys.menv_a, EN_K1, 0);
-        knob(&sys.menv_d, EN_K2, 1);
-        knob(&sys.menv_s, EN_K3, 2);
-        knob(&sys.menv_r, EN_K4, 3);
+        knob(&sys.menv_len, EN_K1, 0);
+        knob(&sys.menv_skew, EN_K2, 1);
+        knob(&sys.menv_height, EN_K3, 2);
     } else if (sys.page == 4u) {
         knob(&sys.mod_wave, EN_K1, 0);
         if ((s = panel_enc(EN_K2)) != 0) {           /* (the ratio in steps, a detent each) */
@@ -1126,11 +1111,10 @@ static void ui_input(void)
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
         ui_say(t);
-    } else if (s) {
-        volatile uint8_t *p = sys.page == 3u ? &sys.sh_tone : sys.page == 2u ? &sys.fx_pos : &sys.ring;
+    } else if (s && (sys.page == 2u || sys.page == 3u)) {   /* (ENV, MOD, MOD ENV: nothing; RING is on HOME) */
+        volatile uint8_t *p = sys.page == 3u ? &sys.sh_tone : &sys.fx_pos;
         *p = (uint8_t)clamp(*p + s, 0, 127);
-        str_cpy(t, sys.page == 3u ? "TONE " : sys.page == 2u ? (sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ")
-                                                             : "RING ", sizeof t);
+        str_cpy(t, sys.page == 3u ? "TONE " : sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ", sizeof t);
         fmt_int(v, *p);
         ui_cat(t, sizeof t, v);
         ui_say(t);
@@ -1145,7 +1129,7 @@ static void ui_input(void)
         str_cpy(t, "MODEL ", sizeof t);
         ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
         ui_say(t);
-    } else if (s && (!sys.page || sys.page == 4u)) {   /* HOME, MOD: the oscillator, CHUA, the 30 noise programs */
+    } else if (s && !sys.page) {                 /* HOME: the oscillator, CHUA and the 30 noise programs */
         sys.osc = (uint8_t)(((int32_t)sys.osc + (int32_t)(NP_COUNT + 1u) * 8 + s) % (int32_t)(NP_COUNT + 1u));
         osc_code(t, sizeof t, sys.osc);
         if (sys.osc) {

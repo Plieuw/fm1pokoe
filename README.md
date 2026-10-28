@@ -39,10 +39,10 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
 | HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING); nog een keer: de MOD-pagina (de FM-oscillator), nog een keer: terug |
-| ENV | 1× de ENV-pagina, 2× de MOD ENV (de envelope van de FM-oscillator), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
+| ENV | 1× de ENV-pagina, 2× de MOD ENV (de AD-envelope van de FM-oscillator), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings, 2× de shimmer reverb, 3× terug naar HOME |
-| SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · RING (ENV) · POSITION (resonator) · TONE (shimmer) |
-| ALGORITHM | op HOME en MOD de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
+| SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · POSITION (resonator) · TONE (shimmer) |
+| ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
@@ -81,12 +81,22 @@ ook de clusters. Hij werkt op alle 30 programma's, niet op het Chua-circuit.
 
 Het scherm toont links de golfvorm en rechts een sinus die erdoor gemoduleerd wordt (twee periodes van de noot).
 
-**De MOD ENV (ENV, tweede keer).** Druk op ENV terwijl je al op de ENV-pagina staat: een eigen ADSR voor de
-FM-oscillator, die een VCA op zijn uitgang stuurt. De diepte van de FM volgt dus de envelope, per stem, getriggerd
-door de noot. KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (dezelfde tijden als de gewone ENV). Sustain 100 % en attack 0
-(de standaard) is altijd open, zoals voorheen; sustain 0 met korte decay geeft een FM-"aanslag" die wegvalt (preset FM
-PLUCK); een lange attack laat de FM inzwellen. Het scherm toont de ADSR en rechts de VCA van de nieuwste stem. Nog een
-keer ENV: terug naar HOME.
+**De MOD ENV (ENV, tweede keer).** Druk op ENV terwijl je al op de ENV-pagina staat: een AD-envelope voor de
+FM-oscillator, gestart door elke noot (hij loopt zijn vorm af, ook als je de toets eerder loslaat).
+
+| Bediening | Functie |
+| --- | --- |
+| KNOB 1 LENGTH | de hele duur, 0,5 ms .. 10 s |
+| KNOB 2 SKEW | waar de piek valt: 0 = meteen (FALL: een aanslag die wegvalt), 64 = in het midden, 127 = aan het eind (RISE: aanzwellen, dan weg) |
+| KNOB 3 HEIGHT | hoeveel FM de envelope toevoegt bovenop DEPTH (0 = geen envelope) |
+
+DEPTH (MOD-pagina) is de vaste FM die er altijd is, HEIGHT het deel dat de envelope er bovenop zet: samen zijn ze
+begrensd op het maximum. DEPTH 0 en HEIGHT hoog geeft alleen FM in de envelope (FM PLUCK); DEPTH hoog en HEIGHT 0 is
+vaste FM zoals voorheen. Het scherm toont de vorm boven de DEPTH-lijn en rechts de FM-diepte van de nieuwste stem nu.
+Nog een keer ENV: terug naar HOME.
+
+**Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina doet niets meer), de
+oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).
 
 **De low pass gate.** Op de ENV-pagina is de gate een rond rood lampje (het LED van een vactrol): het brandt fel als de gate open staat en dimt mee met de envelope; ernaast de cutoff. De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt
 de envelope snel omhoog (~2 ms) en trager omlaag (~30 ms), en zet zowel het volume als de cutoff (25 Hz .. 15 kHz). Het

@@ -483,26 +483,27 @@ int main(int argc, char **argv)
                 int32_t w0 = np_wave(j << 26, rt), w1 = np_wave(j << 26, rt + 1u);   /* (the knob turned a step) */
                 okk &= w0 >= -32768 && w0 <= 32767 && (rt == 127u || abs(w1 - w0) < 3000);
             }
-        {   /* MOD ENV: a pluck (attack 0, sustain 0): the FM's effect fades with it; held at full sustain it stays */
+        {   /* MOD ENV: an AD falling (SKEW 0) with DEPTH 0: the FM's effect fades with it; DEPTH alone: it stays */
             double ed[2][2];
             uint32_t m2;
             for (m2 = 0; m2 < 2u; m2++) {
                 uint32_t ph2;
                 synth_kill(); memset(voice, 0, sizeof voice);
-                sys.osc = 4; sys.mod_depth = 127; sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64;
-                sys.menv_a = 0; sys.menv_d = 40; sys.menv_s = m2 ? 127 : 0; sys.menv_r = 40;
+                sys.osc = 4; sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64;
+                sys.mod_depth = m2 ? 127 : 0; sys.menv_height = m2 ? 0 : 127; sys.menv_len = 60; sys.menv_skew = 0;
                 synth_note_on(60, 110);
                 for (ph2 = 0; ph2 < 2u; ph2++) {         /* how far the voice's sound is from FM-less: early, late */
                     double dd = 0;
                     for (b = 0; b < 100u; b++) {
                         np_t keep;
                         int32_t o1[CTL], o2[CTL];
+                        uint8_t md = sys.mod_depth, mh = sys.menv_height;
                         keep = np_state[0];
                         np_render(0, 3, voice[0].inc, o1, CTL);
                         np_state[0] = keep;
-                        sys.mod_depth = 0;
+                        sys.mod_depth = 0; sys.menv_height = 0;
                         np_render(0, 3, voice[0].inc, o2, CTL);
-                        sys.mod_depth = 127;
+                        sys.mod_depth = md; sys.menv_height = mh;
                         np_state[0] = keep;
                         synth_render(buf, CTL);
                         for (j = 0; j < CTL; j++)
@@ -512,10 +513,10 @@ int main(int argc, char **argv)
                     run_ms(600);
                 }
             }
-            printf("   (MOD ENV: FM's effect early / late: pluck %.0f / %.0f, held %.0f / %.0f)\n",
+            printf("   (MOD ENV: FM's effect early / late: AD %.0f / %.0f, DEPTH %.0f / %.0f)\n",
                    ed[0][0], ed[0][1], ed[1][0], ed[1][1]);
             okk &= ed[0][1] < ed[0][0] / 20 && ed[1][1] > ed[1][0] / 3;
-            sys.menv_a = 0; sys.menv_d = 80; sys.menv_s = 127; sys.menv_r = 70;
+            sys.menv_len = 80; sys.menv_skew = 10; sys.menv_height = 0; sys.mod_depth = 127;
         }
         check("FM oscillator: DEPTH 0 bit for bit off", same);
         check("... full DEPTH, every wave and ratio: each program changes, sounds, bounded, no DC; MOD ENV", okk && moved);

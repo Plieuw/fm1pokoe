@@ -18,8 +18,8 @@
  *
  * The FM oscillator (the MOD page): per voice a modulator at a ratio of the note, its wave morphing sine ->
  * triangle -> saw -> square, moves the pitch of every audio-rate oscillator of the program, linear FM (1 + m x depth;
- * no through zero: down to 1/16 of the frequency). At DEPTH 0 nothing of it runs. Its own ADSR (the MOD ENV page,
- * the same times as the ENV page's) drives a VCA on it: the depth follows the envelope, per voice, gated by its note.
+ * no through zero: down to 1/16 of the frequency). Its depth is DEPTH (the MOD page: always there) plus HEIGHT times
+ * its own AD envelope (the MOD ENV page: LENGTH, SKEW, HEIGHT), started by each note. With both 0 nothing of it runs.
  *
  *   np_start(k, seed)                 a voice's state at a new note
  *   np_render(k, alg, inc, out, n)    voice k, program alg (0..29), the note's increment: n samples Q15 into out */
@@ -83,7 +83,7 @@ typedef struct {
     uint32_t hn;
     uint32_t mph;                                /* the FM oscillator's phase */
     uint32_t menv, mage;                         /* its envelope (0..ENV_MAX), the voice's age it was started for */
-    uint8_t mstage;                              /* 0 attack, 1 decay / sustain, 2 release */
+    uint8_t mstage;                              /* 0 rising, 1 falling, 2 done */
 } np_t;
 static np_t np_state[NVOICE];
 
@@ -241,47 +241,56 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     int16_t *b = np_buf[k];
     int32_t x = (int32_t)(sys.np_x & 127u) * 258, y = (int32_t)(sys.np_y & 127u) * 258;   /* Q15 0 .. 32766 */
     uint32_t i, j;
-    uint32_t fk[CTL], fm = sys.mod_depth & 127u;
+    uint32_t fk[CTL], dep = sys.mod_depth & 127u, hgt = sys.menv_height & 127u, fm = dep | hgt;
     if (inc > 0x20000000u)                       /* (an eighth of the rate: room for the ratios above it) */
         inc = 0x20000000u;
     if (n > CTL)
         n = CTL;
-    {   /* the FM oscillator's ADSR, per sample (as env_frame), gated by the voice: e[] its VCA, Q15 */
-        uint32_t att = ENV_MAX / ENV_FRAMES[sys.menv_a & 127u], dec = ENV_COEF[sys.menv_d & 127u];
-        uint32_t sus = (uint32_t)(sys.menv_s & 127u) * (ENV_MAX / 127u), rel = ENV_COEF[sys.menv_r & 127u];
+    {   /* the MOD ENV: an AD envelope, started by each note (not gated: it runs its course), per sample. LENGTH the
+         * whole of it, SKEW where the peak falls (0: at once, a fall; 64: the middle; 127: a rise, then off) */
+        uint32_t len = ENV_FRAMES[sys.menv_len & 127u], a = len * (sys.menv_skew & 127u) / 127u;   /* (<= 441000 x 127: 32 bits) */
+        uint32_t ia = a ? ENV_MAX / a : ENV_MAX, id = len - a ? ENV_MAX / (len - a) : ENV_MAX;
         const voice_t *v = &voice[k];
-        int gate = v->stage == ST_ATTACK || v->stage == ST_SUSTAIN;
-        if (gate && v->age != S->mage) {         /* a new note (or the same again): the attack, from where it is */
+        if ((v->stage == ST_ATTACK || v->stage == ST_SUSTAIN) && v->age != S->mage) {   /* a note: from 0 again */
             S->mage = v->age;
             S->mstage = 0;
-        } else if (!gate)
-            S->mstage = 2;
+            S->menv = 0;
+        }
         for (i = 0; i < n; i++) {
             if (S->mstage == 0) {
-                if (ENV_MAX - S->menv <= att) {
+                if (ENV_MAX - S->menv <= ia) {
                     S->menv = ENV_MAX;
                     S->mstage = 1;
                 } else
-                    S->menv += att;
-            } else if (S->mstage == 1)
-                S->menv = (uint32_t)((int32_t)S->menv - (int32_t)(((int64_t)((int32_t)S->menv - (int32_t)sus) * dec) >> 24));
-            else
-                S->menv -= (uint32_t)(((uint64_t)S->menv * rel) >> 24) + (S->menv ? 1u : 0u);
+                    S->menv += ia;
+            } else if (S->mstage == 1) {
+                if (S->menv <= id) {
+                    S->menv = 0;
+                    S->mstage = 2;
+                } else
+                    S->menv -= id;
+            }
             fk[i] = S->menv >> 15;               /* (Q15, for the VCA below) */
         }
-        if (v == render_tv)
-            sys.menv_view = (uint16_t)(S->menv >> 15);
     }
-    if (fm) {   /* the FM oscillator through its VCA: per sample the factor on every audio-rate increment, Q16 */
-        uint32_t mi = np_mul(np_mul(inc, NP_RATIO[sys.mod_ratio % NP_NRATIO]),
-                             px_exp2(((int32_t)(sys.mod_fine & 127u) - 64) * 1365 / 16)),   /* +-1 semitone */
-                 wv = sys.mod_wave & 127u;
-        int32_t d = (int32_t)(fm * fm * 3u / 2u);   /* depth^2 x 1.5: 0 .. 24193 (Q14: 0 .. 1.48) */
-        for (i = 0; i < n; i++) {
-            int32_t dv = (int32_t)(((uint32_t)d * fk[i]) >> 15);   /* the depth through the VCA */
-            int32_t f = 65536 + ((np_wave(S->mph, wv) * dv) >> 13);
-            S->mph += mi;
-            fk[i] = f < 4096 ? 4096u : (uint32_t)f;
+    {   /* the FM oscillator's depth: DEPTH (always) + HEIGHT x the envelope, each depth^2 x 1.5 (Q14: 0 .. 1.48), at
+         * most 1.48 together */
+        int32_t dd = (int32_t)(dep * dep * 3u / 2u), dh = (int32_t)(hgt * hgt * 3u / 2u);
+        if (voice + k == render_tv) {            /* (the screen: the depth now, 0..32767) */
+            int32_t now = dd + ((dh * (int32_t)(S->menv >> 15)) >> 15);
+            sys.menv_view = (uint16_t)(now >= 24193 ? 32767 : now * 32767 / 24193);
+        }
+        if (fm) {   /* per sample the factor on every audio-rate increment, Q16 */
+            uint32_t mi = np_mul(np_mul(inc, NP_RATIO[sys.mod_ratio % NP_NRATIO]),
+                                 px_exp2(((int32_t)(sys.mod_fine & 127u) - 64) * 1365 / 16)),   /* +-1 semitone */
+                     wv = sys.mod_wave & 127u;
+            for (i = 0; i < n; i++) {
+                int32_t dv = dd + ((dh * (int32_t)fk[i]) >> 15), f;
+                dv = dv > 24193 ? 24193 : dv;
+                f = 65536 + ((np_wave(S->mph, wv) * dv) >> 13);
+                S->mph += mi;
+                fk[i] = f < 4096 ? 4096u : (uint32_t)f;
+            }
         }
     }
 #define NPF(v) (fm ? np_mul((v), fk[i]) : (v))   /* an audio-rate increment, the FM on it */
