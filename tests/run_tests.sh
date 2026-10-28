@@ -32,7 +32,9 @@ run() {                                     # (on GitHub Actions a failure is al
     name=$1; shift
     echo "== $name"
     t0=$(date +%s)
-    if ! ${TIMEOUT_CMD} "$@" > "$OUT/last_test.log" 2>&1; then
+    tmo=${TIMEOUT_CMD}
+    [ "$1" = san_try ] && tmo=""            # (a shell function: it times its own tries)
+    if ! ${tmo} "$@" > "$OUT/last_test.log" 2>&1; then
         cat "$OUT/last_test.log"
         fail=1
         if [ -n "$GITHUB_ACTIONS" ]; then          # the failure and its last lines, readable on the run's page
@@ -50,16 +52,34 @@ run() {                                     # (on GitHub Actions a failure is al
 # Debian 12's: a crash or a hang at random, nothing to do with the code): their tests run without it where we may
 NORAND=""
 setarch "$(uname -m)" -R true >/dev/null 2>&1 && NORAND="setarch $(uname -m) -R"
+if [ -n "$NORAND" ]; then echo "(sanitizers: address randomisation off)"; else echo "(sanitizers: address randomisation on: setarch not allowed here)"; fi
+# and where it may not be turned off (a container): a run that dies in the sanitizer's own start-up (DEADLYSIGNAL
+# before any test output) is tried again, up to three times; a real failure fails the same way each time
+san_try() {
+    for t in 1 2 3; do
+        if ${TIMEOUT_CMD:+timeout 120} ${NORAND} "$@" > "$OUT/san_try.log" 2>&1; then
+            cat "$OUT/san_try.log"
+            return 0
+        fi
+        if ! grep -q "DEADLYSIGNAL" "$OUT/san_try.log" || grep -q " ok$\| FAIL$" "$OUT/san_try.log"; then
+            cat "$OUT/san_try.log"
+            return 1
+        fi
+        echo "(the sanitizer died at start-up: again, $t of 3)"
+    done
+    cat "$OUT/san_try.log"
+    return 1
+}
 
 $CC -o "$OUT/basis_test" tests/basis_test.c -lm -pthread
 run "keyboard and CHUA synth: keys, octave, MIDI, voices, the circuit vs double precision, ranges, pitch" "$OUT/basis_test" "$OUT/basis.wav"
 ${CC%% *} -O1 -g -w -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
     -o "$OUT/basis_test_san" tests/basis_test.c -lm -pthread
-run "keyboard and synth under ASan / UBSan" ${NORAND} "$OUT/basis_test_san"
+run "keyboard and synth under ASan / UBSan" san_try "$OUT/basis_test_san"
 printf 'int main(void){return 0;}\n' > "$OUT/tsan_probe.c"
 if ${CC%% *} -fsanitize=thread -o "$OUT/tsan_probe" "$OUT/tsan_probe.c" 2>/dev/null && ${NORAND} "$OUT/tsan_probe" 2>/dev/null &&
    ${CC%% *} -O1 -g -w -fsanitize=thread -o "$OUT/basis_test_tsan" tests/basis_test.c -lm -pthread 2>/dev/null; then
-    run "keyboard and synth, the second core as a real thread, under ThreadSanitizer" ${NORAND} "$OUT/basis_test_tsan"
+    run "keyboard and synth, the second core as a real thread, under ThreadSanitizer" san_try "$OUT/basis_test_tsan"
 else
     echo "== skip ThreadSanitizer (not available here: the compiler, or the memory layout of this machine)"
 fi
