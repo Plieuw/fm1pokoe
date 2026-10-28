@@ -46,6 +46,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
 | ARP | de ARP-pagina; nog een keer: de arpeggiator aan/uit (het lampje brandt zolang hij aan staat) |
 | REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
+| SEQ | de KARMA-pagina (de frasegenerator); nog een keer: KARMA aan/uit (het lampje brandt zolang hij aan staat) |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
@@ -116,6 +117,7 @@ beweegt mee met zijn stem. Op de ENV-pagina staat onderin "BASIS 90  ORBIT 40".
 hij aan staat). Aan: de noten die je vasthoudt (toetsen en MIDI in) klinken niet zelf, de arpeggiator speelt ze.
 Zolang er MIDI clock binnenkomt (USB of TRS, 24 per kwartnoot) loopt hij daarop mee (START begint het patroon
 opnieuw); komt er 0,5 s geen clock, dan loopt hij op zijn eigen BPM. Naar de arpeggiators van de Yamaha AN1x en DJX.
+Wat hij speelt gaat over USB-MIDI naar buiten (als USB OUT aan staat). ARP en KARMA (SEQ) staan nooit tegelijk aan.
 
 | Bediening | Functie |
 | --- | --- |
@@ -136,19 +138,80 @@ toont de laatste 32 stappen als een rol.
 
 **FREE EG (REC).** Neemt een knopbeweging op en speelt die af op een parameter, zoals de Free EG van de AN1x. REC
 opent de pagina; daar zet KNOB 4 het doel (TARGET: CHAOS, SHAPE, RING, NOISE X/Y, MOD DEPTH, FX STRUCTURE/BRIGHTNESS/
-DAMPING/MIX, SHIMMER, BASIS, ORBIT, ARP GATE/SWING, ...), KNOB 2 de lengte en KNOB 3 de diepte. Druk REC en draai aan
+DAMPING/MIX, SHIMMER, BASIS, ORBIT, ARP GATE/SWING, KARMA K1..K4, ...), KNOB 2 de lengte en KNOB 3 de diepte. Druk REC en draai aan
 KNOB 1: de beweging wordt opgenomen (128 punten) en je hoort hem meteen op het doel. SELECT rechtsom speelt hem af
 (linksom uit: de parameter krijgt zijn oude waarde terug).
 
 | LENGTH | Wat |
 | --- | --- |
-| NOTE | elke noot (ook van de arpeggiator) start hem opnieuw; hij speelt één keer, zo lang als je opnam (REC nog een keer stopt, max ~6 s), en houdt dan de laatste waarde |
+| NOTE | elke noot (ook van de arpeggiator en KARMA) start hem opnieuw; hij speelt één keer, zo lang als je opnam (REC nog een keer stopt, max ~6 s), en houdt dan de laatste waarde |
 | 1..8 STEPS | een lus van 1 tot 8 zestiende noten |
 | 1..4 BARS | een lus van 1 tot 4 maten (4/4) |
+| PHRASE | precies zo lang als de frase van KARMA (5/4, 6/8, 3 tegen 4: wat de GE ook is) en elke keer dat de frase opnieuw begint begint hij mee; zonder KARMA één maat |
 
 STEPS en BARS lopen op de BPM van de ARP-pagina, of op MIDI clock als die binnenkomt (START begint de lus opnieuw);
 de opname begint aan het begin van een lus en stopt vanzelf na één lengte. DEPTH 127 speelt de opname precies af, lager
 schaalt hij rond de waarde die de parameter had; zolang hij speelt neemt hij de eigen knop van die parameter over.
+
+**KARMA (SEQ).** Een frasegenerator naar KARMA van Korg (Kay Algorithmic Realtime Music Architecture, Stephen
+Kay; de KARMA Basic Guide). De noten die je vasthoudt klinken niet zelf: een *Generated Effect* (GE) maakt er een
+muzikale frase van, in de maat, zolang je ze vasthoudt (of met LATCH). Speel een ander akkoord en de frase volgt het
+meteen. De architectuur is die van KARMA, de code en de frases zijn nieuw (KARMA's eigen GE's zijn niet openbaar).
+
+Een GE is, zoals bij KARMA, een paar kleine generatoren die samenwerken:
+
+| Generator | Wat hij doet |
+| --- | --- |
+| RHYTHM | een patroon van stappen: zware, lichte en spook-aanslagen, rusten, overbindingen, lange noten; in 1/32, 1/16, 1/8-triolen, 1/8 of 1/4 |
+| NOTE SERIES | waar de frase van gemaakt is: het akkoord, het akkoord met de grondtoon erboven, of de toonladder die het akkoord suggereert (majeur of mineur, diatonisch of pentatonisch), over 1–4 octaven |
+| INDEX | de weg door die noten: op, neer, op en neer, willekeurig, een *random walk*, een spiraal (laag, hoog, steeds meer naar het midden) of *Direct Index* (elke stap noemt zijn noot) |
+| CLUSTER + STRUM | hoeveel noten per aanslag (een akkoordstoot), uitgespreid als een gitaar: omlaag, dan omhoog |
+| MELODIC REPEAT | elke noot echoot een paar keer, getransponeerd en zachter (cascades, echo's in toonhoogte), afwisselend links en rechts |
+| VELOCITY / GATE | een accentpatroon en een lengte per GE |
+| PAN | per noot: afwisselend, willekeurig, een zwaai over de frase, of naar toonhoogte (laag links); BASIS (ENV-pagina) zet hoe breed |
+| ENV | een vorm over de frase (op, neer, op-en-neer) op een parameter van de klank: RING, FX BRIGHTNESS, CHAOS, OUTPUT, SHIMMER MIX ...; als hij stopt krijgt de parameter zijn waarde terug |
+
+| Bediening (SEQ-pagina) | Functie |
+| --- | --- |
+| SEQ | nog een keer: KARMA aan/uit |
+| ALGORITHM | de GE (24, zie hieronder) |
+| KNOB 1..4 | de vier *Realtime Controls* van die GE; de cellen tonen wat ze doen. 64 is de GE zoals hij geschreven is |
+| SELECT | LATCH: rechtsom aan (de frase loopt door als je loslaat, een nieuw akkoord vervangt het oude), linksom uit |
+
+De Realtime Controls: DENSITY (0 niets, laag alleen de zware aanslagen, 64 het patroon, hoger ook de spooknoten en
+boven 96 noten in de rusten), RANGE (−3..+3 octaven), REPEAT (meer of minder echo's), ACCENT (dynamiek, boven 96 ook
+toeval), GATE, RANDOM (af en toe een andere noot, boven 96 octaafsprongen), CLUSTER, TRANSPOSE (octaven), ENV (diepte
+van de envelope) en STRUM.
+
+De GE's: PULSE ARP (de klassieke 16e-arp met accenten en spooknoten), CASCADE (dalende kwarten die echoën), HARP GLISS
+(een glissando door de toonladder), STRUM GUITAR, FINGERPICK (Travis-achtig: bas, dan de akkoordtonen), TECHNO STAB
+(akkoordstoten, RING zwelt over de frase), ACID LINE (303-achtig, met overbindingen en octaven), BASS WALK (een
+wandelende bas door de toonladder), OCTAVE BASS, TRANCE GATE, RAIN DROPS (pentatonisch, willekeurig, met echo's),
+SPIRAL, BROKEN 6/8, GAMELAN (een kotekan-achtig pentatonisch patroon met echo een octaaf hoger), ECHO CANYON (twee
+noten, vier echo's), FUNK CLAV, POLY 3 OVER 4 (een figuur van drie zestienden tegen de maat), SWELL PAD (lange
+akkoorden, SHIMMER MIX zwelt), CHAOS MACHINE (de toonladder over vier octaven terwijl CHAOS oploopt: het circuit raakt
+steeds verder uit zijn baan), SCROLL HOPPER (OUTPUT golft over de frase: van de scroll naar de spiraal en terug), NOISE
+PERC (voor de noise-programma's: korte tikken laag en hoog), BIRD CALLS (trillers in 1/32 en stilte: mooi met de
+SYRINX-waveguide), MINIMAL 5/4 (Reich-achtig, 20 zestienden, met echo een octaaf hoger) en LULLABY. De GE's met een
+envelope (TECHNO STAB, ACID LINE, TRANCE GATE, SWELL PAD, CHAOS MACHINE, SCROLL HOPPER, MINIMAL 5/4) spelen dus ook
+met de klank, niet alleen met de noten.
+
+Het scherm toont het ritme van de GE (hoogte = gewicht, het spelende stapje licht op) en eronder de laatste 32 noten
+als een rol; onderin de klok en de lengte ("20 x 1/16").
+
+**KARMA, de ARP en FREE EG samen.**
+- *Eén tegelijk.* KARMA en de ARP pakken allebei de noten die je vasthoudt; zet je de een aan, dan gaat de ander uit
+  en de vastgehouden noten gaan mee over. Zet je hem uit, dan klinkt het akkoord gewoon.
+- *Eén tempo.* KARMA loopt op de BPM van de ARP-pagina, of op MIDI clock als die binnenkomt (START begint de frase
+  opnieuw), en neemt de SWING van de ARP-pagina over voor zijn zestienden (of achtsten). Een nieuwe frase begint op
+  de volgende zestiende (KARMA's *Quantize Trigger*); vanuit stilte meteen.
+- *FREE EG.* LENGTH PHRASE loopt precies met de frase van KARMA mee (opnemen begint aan het begin van de frase) en de
+  TARGETs KARMA K1..K4 zijn de vier Realtime Controls. Zo neem je bijvoorbeeld een DENSITY-beweging op die over de
+  frase opbouwt, of een REPEAT die alleen aan het eind uitwaaiert. FREE EG NOTE start bij elke noot die KARMA maakt
+  opnieuw: een eigen envelope per noot van de frase. Als FREE EG en de envelope van een GE dezelfde parameter willen,
+  wint FREE EG.
+- *MIDI uit.* Wat KARMA en de ARP maken gaat over USB-MIDI naar buiten op het TX-kanaal (als USB OUT aan staat op de
+  GLO-pagina), zoals KARMA zijn gegenereerde noten uitstuurt; de toetsen zelf dan niet.
 
 **Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina is nu BASIS), de
 oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).

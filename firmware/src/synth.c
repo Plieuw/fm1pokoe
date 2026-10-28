@@ -237,6 +237,8 @@ static const int16_t PAN_CYCLE[8] = {-32767, 32767, -16384, 16384, -24576, 24576
  * low-passed to ~7 Hz, or for a noise program (whose picture is noise) a drift to a new random place every ~0.2 s;
  * ORBIT how far (added to BASIS's place, together at most full left / right). The resonators follow their voices */
 static uint32_t pan_next;
+static int16_t synth_pan_next;                  /* karma.c: the next note's place instead (synth_pan_set) */
+static uint8_t synth_pan_set;
 static uint32_t voice_clock;
 static chua_t ghost = {C1 / 10, 0, 0};          /* the circuit at the current settings, one substep per block */
 static uint32_t chua_restarts;                   /* voices restarted because the solver left the range (a diagnostic) */
@@ -290,7 +292,7 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     }
     v->note = (uint8_t)note;
     v->rz = (uint8_t)rz_assign(note);
-    v->pan = PAN_CYCLE[pan_next++ & 7u];
+    v->pan = synth_pan_set ? synth_pan_next : PAN_CYCLE[pan_next++ & 7u];
     if (v->stage == ST_OFF || v->stage == ST_TAIL) {  /* (a new voice: its picture's place from the middle) */
         v->orb = 0;
         v->ocnt = 0;
@@ -648,4 +650,5 @@ static void synth_render(int32_t *out, uint32_t n)
 }
 
 #include "arp.c"                                 /* the arpeggiator (keys.c drives it) */
+#include "karma.c"                               /* KARMA: the phrase generator (SEQ) */
 #include "feg.c"                                 /* FREE EG: a knob recorded, played onto a parameter */

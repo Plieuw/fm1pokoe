@@ -72,6 +72,7 @@ static uint32_t irq_save(void) { return 0; }
 static void irq_restore(uint32_t f) { (void)f; }
 static uint32_t fl_jedec(void) { return 0x856014u; }
 #define FL_FAR(f) fl_jedec
+static void midi_out_event(uint32_t pkt) { (void)pkt; }   /* (usb.c: not in this test) */
 #include "../firmware/src/panel.c"
 #include "../firmware/src/synth.c"
 static volatile uint8_t keys_panic_req;   /* (keys.c: not in this test) */
@@ -294,6 +295,28 @@ int main(int argc, char **argv)
     frames(2);
     bad |= shot(dir, "m_feg");
     sys.feg_has = 0; sys.feg_on = 0; feg.pos = 255;
+    edges = btn_bit(B_HOME);
+    ui_input();
+
+    edges = btn_bit(B_SEQ);              /* the KARMA page: off, then on with a phrase playing (filled in) */
+    ui_input();
+    frames(2);
+    bad |= shot(dir, "n_karma_off");
+    edges = btn_bit(B_SEQ);
+    ui_input();
+    sys.k_ge = 5; sys.k_latch = 1; sys.k_m[0] = 90; kar.view_step = 6;
+    for (i = 0; i < 32u; i++) {
+        static const uint8_t N[8] = {48, 55, 60, 64, 67, 60, 72, 64};
+        kar_view.note[kar_view.w++ & 31u] = N[(i * 3u) % 8u];
+    }
+    ui_event_ms = 0;
+    frames(2);
+    bad |= shot(dir, "n_karma_on");
+    sys.k_ge = 22;
+    ui_event_ms = 0;
+    frames(2);
+    bad |= shot(dir, "n_karma_minimal");
+    sys.k_on = 0; sys.k_latch = 0; sys.k_m[0] = 64; sys.k_ge = 0; kar.view_step = 255;
     edges = btn_bit(B_HOME);
     ui_input();
 

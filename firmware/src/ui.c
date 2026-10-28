@@ -31,6 +31,8 @@
  *            MIDI clock), KNOB 2 SUBDIVIDE, KNOB 3 GATE, KNOB 4 SWING; ALGORITHM the pattern, SELECT HOLD
  *   REC      the FREE EG page (feg.c): KNOB 1 the knob recorded, KNOB 2 LENGTH (NOTE, 1..8 STEPS, 1..4 BARS),
  *            KNOB 3 DEPTH, KNOB 4 the TARGET; SELECT PLAY; REC again there: record (NOTE: REC once more to stop)
+ *   SEQ      the KARMA page (karma.c; again: on / off, its LED lit while on): ALGORITHM the GE (the phrase
+ *            generator), KNOB 1..4 its four realtime controls (named per GE: DENSITY, RANGE, REPEAT ...), SELECT LATCH
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -185,7 +187,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x4348553Fu      /* "CHU?": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485540u      /* "CHU@": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -198,6 +200,7 @@ typedef struct {
     uint8_t arp_on, arp_type, arp_bpm, arp_div, arp_gate, arp_swing, arp_hold;
     uint8_t midi_trs, midi_usb, midi_rx, midi_tx;
     uint8_t feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts, feg_curve[FEG_N];
+    uint8_t k_on, k_ge, k_latch, k_m[4];
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -265,6 +268,11 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.feg_npts = (uint8_t)(s.feg_npts & 127u);
         for (uint32_t i = 0; i < FEG_N; i++)
             feg.curve[i] = (uint8_t)(s.feg_curve[i] & 127u);
+        sys.k_on = (uint8_t)(s.k_on != 0 && !sys.arp_on);
+        sys.k_ge = (uint8_t)(s.k_ge % KGE_N);
+        sys.k_latch = (uint8_t)(s.k_latch != 0);
+        for (uint32_t i = 0; i < 4u; i++)
+            sys.k_m[i] = (uint8_t)(s.k_m[i] & 127u);
     }
 }
 
@@ -330,6 +338,11 @@ static int settings_save(void)     /* 0 = saved */
     s.feg_has = sys.feg_has;
     s.feg_npts = sys.feg_npts;
     memcpy(s.feg_curve, feg.curve, sizeof s.feg_curve);
+    s.k_on = sys.k_on;
+    s.k_ge = sys.k_ge;
+    s.k_latch = sys.k_latch;
+    for (uint32_t i = 0; i < 4u; i++)
+        s.k_m[i] = sys.k_m[i];
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -800,6 +813,55 @@ static void draw_feg(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the KARMA page's picture: the GE's rhythm (each step: a hit's weight its height, a long one wide, ties joined, the
+ * step playing lit), under it the last notes made as a roll, the newest bright */
+static void draw_karma(void)
+{
+    const ge_t *G = k_ge();
+    const char *r = G->rhy;
+    const int32_t rt = 6, rh = 26, top = 42, bot = PLOT_H - 14;
+    uint32_t len = str_len(r), i, wv = kar_view.w, lo = 127, hi = 0, cur = kar.view_step;
+    int32_t w = 224 / (int32_t)(len ? len : 1u);
+    char a[40], v[12];
+    cv_begin(240, PLOT_H, T_BG);
+    for (i = 0; i < len; i++) {
+        char h = r[i];
+        int32_t x = 8 + (int32_t)i * w, hh = h == '1' || h == 'L' ? rh : h == '2' ? rh * 2 / 3 : h == '3' ? rh / 3 : 0;
+        uint16_t c = i == cur && sys.k_on ? T_ACCENT : sys.k_on ? T_THEME : T_DIM;
+        if (h == '-')                            /* a tie: joined to the step before */
+            cv_rect(x - 1, rt + rh - 3, w, 3, ux_mix(T_BG, c, 60));
+        else if (hh)
+            cv_rect(x, rt + rh - hh, h == 'L' ? w * 2 - 1 : w - 1, hh, c);
+        else
+            cv_rect(x + w / 2 - 1, rt + rh - 2, 2, 2, T_LINE);
+    }
+    for (i = 0; i < 32u; i++) {
+        uint32_t nt = kar_view.note[(wv - 32u + i) & 31u];
+        if (nt && wv >= 32u - i) {
+            lo = nt < lo ? nt : lo;
+            hi = nt > hi ? nt : hi;
+        }
+    }
+    if (hi < lo + 12u)
+        hi = lo + 12u;
+    cv_rect(8, bot, 224, 1, T_LINE);
+    for (i = 0; i < 32u; i++) {
+        uint32_t nt = kar_view.note[(wv - 32u + i) & 31u];
+        if (nt && wv >= 32u - i) {
+            int32_t y = bot - 4 - (int32_t)(nt - lo) * (bot - top - 8) / (int32_t)(hi - lo);
+            cv_rect(8 + (int32_t)i * 7, y, 6, 4, i == 31u && sys.k_on ? T_ACCENT :
+                    sys.k_on ? ux_mix(T_BG, T_THEME, 40 + (int32_t)i * 2) : T_DIM);
+        }
+    }
+    str_cpy(a, sys.k_on ? (arp_ext() ? "MIDI CLOCK  " : "INTERNAL  ") : "OFF: PRESS SEQ  ", sizeof a);
+    fmt_int(v, (int32_t)len);
+    ui_cat(a, sizeof a, v);
+    ui_cat(a, sizeof a, G->res == 3u ? " x 1/32" : G->res == 6u ? " x 1/16" : G->res == 8u ? " x 1/8T" :
+                        G->res == 12u ? " x 1/8" : " x 1/4");
+    cv_text(8, bot + 1, &AF_S, a, T_DIM);
+    cv_blit(0, PLOT_Y);
+}
+
 /* the MIDI page's picture: where notes come in and go out, and the clock */
 static void draw_midi(void)
 {
@@ -951,7 +1013,26 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 8u) {
+    if (sys.page == 9u) {
+        static const uint8_t CELL[4] = {T_C1, T_C2, T_C3, T_C4};
+        const ge_t *G = k_ge();
+        for (uint32_t i = 0; i < 4u; i++) {
+            str_cpy(a, "1 ", sizeof a);
+            a[0] = (char)('1' + i);
+            ui_cat(a, sizeof a, MC_NAME[G->knob[i] % MC_COUNT]);
+            if (G->knob[i] == MC_TRANSPOSE) {    /* (in octaves) */
+                int32_t o = ((int32_t)(sys.k_m[i] & 127u) - 64) / 32 + G->transpose;
+                fmt_int(v, o);
+                str_cpy(b, o > 0 ? "+" : "", sizeof b);
+                ui_cat(b, sizeof b, v);
+                ui_cat(b, sizeof b, " OCT");
+                ui_cell(CELL[i], a, b);
+                continue;
+            }
+            fmt_int(v, sys.k_m[i] & 127u);
+            ui_cell(CELL[i], a, v);
+        }
+    } else if (sys.page == 8u) {
         fmt_int(v, sys.feg_val);
         ui_cell(T_C1, "1 VALUE", v);
         ui_cell(T_C2, "2 LENGTH", FEG_LEN_NAME[sys.feg_len % FEG_NLEN]);
@@ -1131,6 +1212,11 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, "   ");
             fx_pos_text(b, sizeof b, 1);
             ui_cat(a, sizeof a, b);
+        } else if (sys.page == 9u) {             /* KARMA: on or off, the GE, LATCH */
+            str_cpy(a, sys.k_on ? "KARMA ON  " : "KARMA OFF  ", sizeof a);
+            ui_cat(a, sizeof a, k_ge()->name);
+            if (sys.k_latch)
+                ui_cat(a, sizeof a, "  LATCH");
         } else if (sys.page == 8u) {             /* FREE EG: recording, playing, or what to do */
             str_cpy(a, feg.rec ? "FREE EG   RECORDING: TURN KNOB 1" : !sys.feg_has ? "FREE EG   REC: RECORD" :
                     sys.feg_on ? "FREE EG   PLAYING" : "FREE EG   SELECT: PLAY", sizeof a);
@@ -1209,6 +1295,8 @@ static void ui_draw(void)
         draw_midi();
     else if (sys.page == 8u)
         draw_feg();
+    else if (sys.page == 9u)
+        draw_karma();
     else
         draw_plot();
     ui_force = 0;
@@ -1259,6 +1347,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_ARP]);
     if (sys.page == 7u)
         led_on(nl, panel.btn[B_GLO]);
+    if (sys.k_on || sys.page == 9u)
+        led_on(nl, panel.btn[B_SEQ]);
     if (sys.page == 8u || (feg.rec && (fm1_ms & 256u)) || (sys.feg_on && sys.feg_has))   /* (blinking: recording) */
         led_on(nl, panel.btn[B_REC]);
     if ((sys.page >= 2u && sys.page <= 3u) || sys.fx_mix || sys.sh_mix)   /* (FX lit: its pages, or FX on) */
@@ -1333,9 +1423,18 @@ static void ui_input(void)
         case B_ARP:                                     /* the ARP page; there: the arpeggiator on / off */
             if (sys.page == 6u) {
                 sys.arp_on = (uint8_t)!sys.arp_on;
-                ui_say(sys.arp_on ? "ARP ON" : "ARP OFF");
+                ui_say(sys.arp_on ? (sys.k_on ? "ARP ON, KARMA OFF" : "ARP ON") : "ARP OFF");
             } else {
                 sys.page = 6;
+                ui_force = 1;
+            }
+            break;
+        case B_SEQ:                                     /* the KARMA page; there: KARMA on / off (the ARP off) */
+            if (sys.page == 9u) {
+                sys.k_on = (uint8_t)!sys.k_on;
+                ui_say(sys.k_on ? (sys.arp_on ? "KARMA ON, ARP OFF" : "KARMA ON") : "KARMA OFF");
+            } else {
+                sys.page = 9;
                 ui_force = 1;
             }
             break;
@@ -1351,7 +1450,12 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 8u) {
+    if (sys.page == 9u) {
+        knob(&sys.k_m[0], EN_K1, 0);
+        knob(&sys.k_m[1], EN_K2, 1);
+        knob(&sys.k_m[2], EN_K3, 2);
+        knob(&sys.k_m[3], EN_K4, 3);
+    } else if (sys.page == 8u) {
         knob(&sys.feg_val, EN_K1, 0);
         if ((s = panel_enc(EN_K2)) != 0) {
             sys.feg_len = (uint8_t)clamp((int32_t)sys.feg_len + s, 0, FEG_NLEN - 1);
@@ -1437,6 +1541,9 @@ static void ui_input(void)
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
         ui_say(t);
+    } else if (s && sys.page == 9u) {           /* KARMA: LATCH (right on, left off) */
+        sys.k_latch = (uint8_t)(s > 0);
+        ui_say(sys.k_latch ? "LATCH ON" : "LATCH OFF");
     } else if (s && sys.page == 8u) {           /* FREE EG: PLAY (right on, left off) */
         sys.feg_on = (uint8_t)(s > 0);
         ui_say(sys.feg_on ? (sys.feg_has ? "PLAY ON" : "NOTHING RECORDED") : "PLAY OFF");
@@ -1478,6 +1585,11 @@ static void ui_input(void)
         sys.fx_model = (uint8_t)((sys.fx_model + RZ_COUNT * 8 + s) % RZ_COUNT);
         str_cpy(t, "MODEL ", sizeof t);
         ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
+        ui_say(t);
+    } else if (s && sys.page == 9u) {           /* KARMA: the GE */
+        sys.k_ge = (uint8_t)(((int32_t)sys.k_ge + (int32_t)KGE_N * 8 + s) % (int32_t)KGE_N);
+        str_cpy(t, "GE ", sizeof t);
+        ui_cat(t, sizeof t, k_ge()->name);
         ui_say(t);
     } else if (s && sys.page == 6u) {           /* ARP: the pattern */
         sys.arp_type = (uint8_t)(((int32_t)sys.arp_type + (int32_t)ARP_NTYPE * 8 + s) % (int32_t)ARP_NTYPE);

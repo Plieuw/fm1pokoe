@@ -15,6 +15,29 @@
  *   arp_add(note, vel), arp_remove(note)   keys.c: a note held, let go (with ARP on)
  *   arp_block(n)                          keys.c: the clock and the steps, once a block (n samples)
  *   arp_midi_rt(status)                   keys.c: MIDI realtime in: F8 clock, FA start, FB continue, FC stop */
+/* the notes it plays (and KARMA's) go here: the synth, and USB MIDI out on the TX channel (if on: the GLO page) */
+static uint8_t gen_ch[128], gen_out[128];
+static void gen_on(uint32_t note, uint32_t vel)
+{
+    synth_note_on(note, vel);
+    if (gen_out[note])                           /* (the same note again: its old one ends first) */
+        midi_out_event(0x08u | (0x80u | gen_ch[note]) << 8 | note << 16);
+    gen_out[note] = 0;
+    if (sys.midi_usb & 2u) {
+        gen_ch[note] = (uint8_t)(sys.midi_tx & 15u);
+        gen_out[note] = 1;
+        midi_out_event(0x09u | (0x90u | gen_ch[note]) << 8 | note << 16 | vel << 24);
+    }
+}
+static void gen_off(uint32_t note)
+{
+    synth_note_off(note);
+    if (gen_out[note]) {
+        gen_out[note] = 0;
+        midi_out_event(0x08u | (0x80u | gen_ch[note]) << 8 | note << 16);
+    }
+}
+
 #define ARP_MAXN 16                              /* notes held at most */
 #define ARP_EXT_TIMEOUT 22050u                   /* samples without a clock: back on its own tempo (0.5 s) */
 
@@ -127,7 +150,7 @@ static void arp_off_all(void)
 {
     uint32_t i;
     for (i = 0; i < arp.non; i++)
-        synth_note_off(arp.on[i]);
+        gen_off(arp.on[i]);
     arp.non = 0;
 }
 
@@ -208,7 +231,7 @@ static void arp_sound(uint32_t note, uint32_t vel)
 {
     if (note > 127u || arp.non >= ARP_MAXN)
         return;
-    synth_note_on(note, vel);
+    gen_on(note, vel);
     arp.on[arp.non++] = (uint8_t)note;
 }
 

@@ -8,7 +8,9 @@
  * channel (or any: OMNI) plays the synth; the keys go out (USB, if on) on the TX channel;
  * CC 123 (all notes off) releases everything.
  * A note held by several sources (two keys at different octaves, a key and MIDI) ends when the last lets go.
- * ARP on (arp.c): the notes held go to the arpeggiator instead; MIDI clock in drives it.
+ * ARP on (arp.c) or KARMA on (karma.c, the SEQ page): the notes held go to the one on instead (never both: one
+ * turned on turns the other off, the notes held move over); MIDI clock in drives them. Their notes go out on USB MIDI,
+ * the keys' own then do not.
  *
  *   keys_block()     audio ISR, before the block renders
  *   keys_panic_req   main loop: set to release everything at the next block */
@@ -23,21 +25,24 @@ static uint8_t kb_ch[NKEYS];                     /* the MIDI channel its note on
 static void kb_out(uint32_t pkt)                 /* a note on to USB MIDI out, if it is on (the GLO page; the offs
                                                   * go always: none left hanging when it is turned off) */
 {
-    if (sys.midi_usb & 2u)
+    if ((sys.midi_usb & 2u) && !sys.arp_on && !sys.k_on)   /* (ARP, KARMA: what they make goes out instead) */
         midi_out_event(pkt);
 }
 static uint8_t note_held[128];                   /* sources holding each note */
 
-static uint8_t arp_was_on, arp_was_hold;
+enum { OWN_SYNTH, OWN_ARP, OWN_KARMA };         /* who the notes held go to */
+static uint8_t own_was, arp_was_hold, k_was_latch, k_was_on, arp_was_on;
+static uint32_t owner(void) { return sys.k_on ? OWN_KARMA : sys.arp_on ? OWN_ARP : OWN_SYNTH; }
 
 static void note_start(uint32_t note, uint32_t vel)
 {
     if (note_held[note] < 255u)
         note_held[note]++;
-    if (sys.arp_on)
-        arp_add(note, vel);
-    else
-        synth_note_on(note, vel);
+    switch (own_was) {
+    case OWN_ARP: arp_add(note, vel); break;
+    case OWN_KARMA: karma_add(note, vel); break;
+    default: synth_note_on(note, vel); break;
+    }
 }
 
 static void note_end(uint32_t note)
@@ -45,25 +50,37 @@ static void note_end(uint32_t note)
     if (!note_held[note])
         return;
     if (--note_held[note] == 0u) {
-        if (sys.arp_on)
-            arp_remove(note);
-        else
-            synth_note_off(note);
+        switch (own_was) {
+        case OWN_ARP: arp_remove(note); break;
+        case OWN_KARMA: karma_remove(note); break;
+        default: synth_note_off(note); break;
+        }
     }
 }
 
-/* ARP turned on or off (or HOLD off) under held notes: they move over */
+/* ARP or KARMA turned on or off (or HOLD, LATCH off) under held notes: they move over. The two never at once: the
+ * one just turned on wins, the other goes off */
 static void arp_follow(void)
 {
-    uint32_t k;
-    if (sys.arp_on != arp_was_on) {
-        arp_was_on = sys.arp_on;
+    uint32_t k, o;
+    if (sys.k_on && !k_was_on && sys.arp_on)
+        sys.arp_on = 0;
+    else if (sys.arp_on && !arp_was_on && sys.k_on)
+        sys.k_on = 0;
+    k_was_on = sys.k_on;
+    arp_was_on = sys.arp_on;
+    o = owner();
+    if (o != own_was) {
+        own_was = (uint8_t)o;
         arp_reset();
+        karma_reset();
         synth_all_off();
-        for (k = 0; k < 128u; k++)               /* the notes held now: into the arpeggiator, or sounding again */
+        for (k = 0; k < 128u; k++)               /* the notes held now: to the one on, or sounding again */
             if (note_held[k]) {
-                if (sys.arp_on)
+                if (o == OWN_ARP)
                     arp_add(k, KEY_VEL);
+                else if (o == OWN_KARMA)
+                    karma_add(k, KEY_VEL);
                 else
                     synth_note_on(k, KEY_VEL);
             }
@@ -72,6 +89,11 @@ static void arp_follow(void)
         arp_was_hold = sys.arp_hold;
         if (!sys.arp_hold)
             arp_hold_released();
+    }
+    if (sys.k_latch != k_was_latch) {
+        k_was_latch = sys.k_latch;
+        if (!sys.k_latch)
+            karma_latch_released();
     }
 }
 
@@ -87,6 +109,7 @@ static void keys_all_off(void)
         }
     synth_all_off();
     arp_reset();
+    karma_reset();
 }
 
 static void keyboard_block(void)
@@ -163,5 +186,6 @@ static void keys_block(void)
     keyboard_block();
     midi_in_block();
     arp_block(CTL);
+    karma_block(CTL);
     feg_block(CTL, voice_clock);                 /* (voice_clock: the note ons, the arpeggiator's too) */
 }

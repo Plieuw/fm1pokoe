@@ -848,6 +848,154 @@ int main(int argc, char **argv)
         check("ARP: own clock, MIDI clock in and out, gate, off, HOLD, every pattern, UP&DOWN B, echo, swing", okk);
     }
 
+    /* KARMA (SEQ): the chord held makes a phrase. PULSE ARP at 120 BPM (sixteenths) starts at once and plays its hits
+     * ('1', '2': 12 of 16 steps) and not its ghosts; DENSITY 0 nothing, 127 more; every GE plays (and stops); LATCH
+     * keeps it going, a new chord replaces the old; MIDI clock drives it (a step each 6 clocks, START from the top);
+     * ARP and KARMA never at once, the notes held move over; what it makes goes out on USB MIDI (the keys' own not);
+     * a GE's envelope moves its parameter and gives it back; FREE EG PHRASE loops with the phrase, KARMA K1 driven */
+    {
+#define KOK(x) do { if (!(x)) { printf("   (KARMA: line %d)\n", __LINE__); okk = 0; } } while (0)
+        uint32_t okk = 1, w0, g, j, b, q, n0;
+        uint8_t ring0;
+        synth_kill(); keys_all_off(); run_ms(50);
+        sys.arp_on = 0; sys.osc = 0; sys.fx_mix = 0; sys.sh_mix = 0; sys.attack = 0; sys.sustain = 100;
+        sys.release = 20; sys.arp_bpm = 120; sys.arp_swing = 0; sys.feg_on = 0; sys.feg_has = 0;
+        KOK(KGE_N == 24u);
+        sys.k_ge = 0; sys.k_latch = 0; sys.k_m[0] = sys.k_m[1] = sys.k_m[2] = sys.k_m[3] = 64;
+        sys.k_on = 1;
+        run_ms(10);
+        w0 = kar_view.w;
+        midi_in(0x90, 60, 100); midi_in(0x90, 64, 100); midi_in(0x90, 67, 100);
+        run_ms(3);
+        okk &= kar_view.w - w0 == 1u && kar_view.note[w0 & 31u] == 60u;   /* (at once, the lowest first) */
+        run_ms(1997);                                        /* 2 s: 16 sixteenths, 12 of them hits */
+        printf("   (KARMA PULSE ARP 120 BPM: %u notes in 2 s:", kar_view.w - w0);
+        for (j = 0; j < 12u; j++)
+            printf(" %u", kar_view.note[(w0 + j) & 31u]);
+        printf(")\n");
+        KOK(kar_view.w - w0 >= 12u && kar_view.w - w0 <= 13u);
+        sys.k_m[0] = 0;                                      /* DENSITY 0: nothing */
+        w0 = kar_view.w;
+        run_ms(1000);
+        KOK(kar_view.w == w0);
+        sys.k_m[0] = 127;                                    /* DENSITY 127: ghosts and fills too */
+        run_ms(1000);
+        KOK(kar_view.w - w0 >= 8u);                          /* (a second: 8 steps, all played) */
+        sys.k_m[0] = 64;
+        for (g = 0; g < KGE_N; g++) {                        /* every GE: notes, in range, and stopping */
+            uint32_t lo = 127, hi = 0;
+            sys.k_ge = (uint8_t)g;
+            w0 = kar_view.w;
+            run_ms(2500);
+            for (j = w0; j != kar_view.w && j - w0 < 32u; j++) {
+                uint32_t nt = kar_view.note[j & 31u];
+                lo = nt < lo ? nt : lo;
+                hi = nt > hi ? nt : hi;
+            }
+            if (kar_view.w - w0 < 2u || lo < 12u || hi > 120u) {
+                printf("   (GE %s: %u notes, %u..%u)\n", KGE[g].name, kar_view.w - w0, lo, hi);
+                okk = 0;
+            }
+        }
+        midi_in(0x80, 60, 0); midi_in(0x80, 64, 0); midi_in(0x80, 67, 0);
+        run_ms(1000);
+        w0 = kar_view.w;
+        run_ms(1000);
+        KOK(kar_view.w == w0 && !kar.running && sounding() == 0);
+        /* an envelope: TECHNO STAB moves RING over the phrase, gives it back */
+        sys.k_ge = 5; sys.ring = 50; ring0 = 50;
+        midi_in(0x90, 60, 100); midi_in(0x90, 63, 100); midi_in(0x90, 67, 100);
+        q = 0;
+        for (b = 0; b < 40u; b++) {
+            run_ms(50);
+            q |= sys.ring != ring0;
+        }
+        KOK(q && kar.env_on);
+        midi_in(0x80, 60, 0); midi_in(0x80, 63, 0); midi_in(0x80, 67, 0);
+        run_ms(20);
+        KOK(sys.ring == ring0 && !kar.env_on);
+        /* LATCH: let go, it goes on; a new chord replaces the old */
+        sys.k_ge = 0; sys.k_latch = 1;
+        midi_in(0x90, 60, 100); midi_in(0x90, 64, 100);
+        run_ms(100);
+        midi_in(0x80, 60, 0); midi_in(0x80, 64, 0);
+        w0 = kar_view.w;
+        run_ms(1000);
+        KOK(kar_view.w - w0 >= 5u && kar.n == 2u);
+        midi_in(0x90, 50, 100);
+        run_ms(300);
+        midi_in(0x80, 50, 0);
+        KOK(kar.n == 1u && kar.note[0] == 50u);
+        sys.k_latch = 0;
+        run_ms(20);
+        KOK(kar.n == 0u && !kar.running);
+        run_ms(500);
+        /* MIDI clock: 96 clocks = 16 sixteenths; START: the phrase from its top */
+        midi_in(0x90, 60, 100); midi_in(0x90, 64, 100); midi_in(0x90, 67, 100);
+        midi_in(0xFA, 0, 0);
+        run_ms(5);
+        w0 = kar_view.w; n0 = kar.triggers;
+        for (b = 0; b < 96u; b++) {
+            midi_in(0xF8, 0, 0);
+            run_ms(20);
+        }
+        KOK(kar_view.w - w0 >= 12u && kar_view.w - w0 <= 13u && kar.triggers - n0 >= 1u);
+        /* ARP on: KARMA off, the notes held into the ARP; KARMA on again: the ARP off */
+        sys.arp_on = 1;
+        run_ms(10);
+        KOK(!sys.k_on && arp.n == 3u && !kar.n);
+        sys.k_on = 1;
+        run_ms(10);
+        KOK(!sys.arp_on && kar.n == 3u && !arp.n);
+        sys.k_on = 0;                                        /* off: the chord sounds as held */
+        run_ms(10);
+        KOK(sounding() == 3u);
+        sys.k_on = 1;
+        run_ms(700);                                         /* (the clock gone: its own again) */
+        /* USB MIDI out: KARMA's notes on the TX channel, the keys' own not */
+        out_n = 0; sys.midi_tx = 4;
+        fm1_in.notes = 1u << key_of(72);
+        run_ms(400);
+        q = 0;
+        for (j = 0; j < out_n; j++)
+            q += ((out_log[j] >> 8) & 0xFFu) == 0x94u;
+        KOK(q >= 2u && !sent(0, 0x94, 72, KEY_VEL));
+        fm1_in.notes = 0;
+        sys.midi_tx = 0;
+        /* FREE EG: PHRASE (a phrase of PULSE ARP: 16 sixteenths, 2 s) recorded in step with it, KARMA K1 its target */
+        sys.k_ge = 0; sys.feg_len = 13; sys.feg_target = 26; sys.feg_depth = 127; sys.feg_val = 0;
+        KOK(!strcmp(FEG_T_NAME[26], "KARMA K1") && !strcmp(FEG_LEN_NAME[13], "PHRASE"));
+        n0 = kar.triggers;
+        for (b = 0; b < 3000u && kar.triggers == n0; b++)   /* (from a phrase's start) */
+            run_ms(1);
+        feg_req = 1;
+        run_ms(1000);
+        sys.feg_val = 100;
+        for (b = 0; b < 300u && feg.rec; b++)
+            run_ms(10);
+        KOK(!feg.rec && sys.feg_has && feg.curve[10] == 0u && feg.curve[120] == 100u);
+        if (feg.rec || feg.curve[10] || feg.curve[120] != 100u)
+            printf("   (FEG PHRASE: rec %u, %u %u %u)\n", feg.rec, feg.curve[10], feg.curve[64], feg.curve[120]);
+        sys.feg_on = 1;
+        sys.k_m[0] = 64;
+        q = 0;
+        for (b = 0; b < 200u; b++) {                         /* driven: 0 in its first half, 100 in its second */
+            run_ms(20);
+            q |= (sys.k_m[0] == 0u) << 0 | (sys.k_m[0] == 100u) << 1;
+        }
+        KOK(q == 3u);
+        sys.feg_on = 0;
+        run_ms(10);
+        KOK(sys.k_m[0] == 64u);
+        sys.feg_has = 0; sys.feg_len = 9; sys.feg_target = 0;
+        midi_in(0x80, 60, 0); midi_in(0x80, 64, 0); midi_in(0x80, 67, 0);
+        sys.k_on = 0;
+        run_ms(500);
+        check("KARMA: a phrase from the chord, DENSITY, every GE, envelope, LATCH, MIDI clock, ARP handover, MIDI out, "
+              "FREE EG PHRASE", okk);
+#undef KOK
+    }
+
     /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */
     {
         voice_t v;
