@@ -42,7 +42,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | ENV | 1× de ENV-pagina, 2× de MOD ENV (de AD-envelope van de FM-oscillator), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings, 2× de shimmer reverb, 3× terug naar HOME |
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · BASIS op de ENV-pagina (stereo-spreiding) · POSITION (resonator) · TONE (shimmer) |
-| ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
+| ALGORITHM | op de ENV-pagina ORBIT (de stemmen bewegen mee met hun plaatje) · op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
@@ -101,6 +101,14 @@ rechts, en weer van voren af aan. BASIS schaalt die plekken: 0 is mono (precies 
 Ook noten die al klinken schuiven mee als je draait. De resonator van een noot klinkt op dezelfde plek als die noot; de
 shimmer krijgt het midden en maakt er zijn eigen stereo van. De pan-wet is een balans: het midden blijft op vol niveau,
 de andere kant gaat zachter (bij volle breedte uit).
+
+**ORBIT (ALGORITHM op de ENV-pagina).** De tweede pan-parameter naast BASIS: elke stem beweegt ook mee met zijn eigen
+plaatje. Bij het Chua-circuit is dat de x van de attractor: in de double scroll springt de stem mee van de ene lus
+(links) naar de andere (rechts), in één lus (SPIRAL) blijft hij aan één kant hangen, bij een cyclus staat hij stil.
+Het rondcirkelen binnen een lus (op de toonhoogte van de noot) wordt eruit gefilterd (~7 Hz). Een noise-programma (zijn
+plaatje is ruis) zwerft elke ~0,2 s naar een nieuwe willekeurige plek. ORBIT bepaalt hoe ver; het komt bovenop de
+plek van BASIS (samen hooguit helemaal links of rechts), dus ORBIT werkt ook met BASIS op 0. De resonator van een noot
+beweegt mee met zijn stem. Op de ENV-pagina staat onderin "BASIS 90  ORBIT 40".
 
 **Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina is nu BASIS), de
 oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).

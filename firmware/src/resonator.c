@@ -56,7 +56,6 @@ typedef struct {
     uint8_t note;                                /* the note it is tuned to */
     uint16_t quiet;                              /* blocks it has been quiet (RZ_QUIET and up: not run) */
     uint32_t stamp;                              /* when a note last took it */
-    int16_t pan;                                 /* the stereo place of the note that took it last (synth.c BASIS) */
 } rz_t;
 static rz_t rz[RZ_POLY] __attribute__((section(".pool")));   /* (zeroed at start: held 0) */
 static int32_t rz_bus[RZ_POLY][CTL];             /* each resonator's input this block, Q15 */
@@ -123,7 +122,10 @@ static int32_t rz_knee(int32_t s)                /* only peaks saturate: above 2
     return s;
 }
 
-static void rz_pan(uint32_t r, int32_t pan) { rz[r % RZ_POLY].pan = (int16_t)pan; }
+/* where each resonator is in the stereo field (synth.c: the pan, BASIS and ORBIT, of the newest voice feeding it,
+ * kept while its tail rings on), Q15; the age of that voice */
+static int32_t rz_epan[RZ_POLY];
+static uint32_t rz_age[RZ_POLY];
 
 /* resonator r over this block: rz_bus[r] in, rz_out[r] out. Each touches only its own state (and the screen's view,
  * the one resonator rz_view_r): the two cores run different ones */
@@ -219,7 +221,7 @@ static void c1_resonators(uint32_t arg)          /* the second core: arg the res
 static void fx_resonator(int32_t *sum, int32_t *dl, int32_t *dr, uint32_t n)
 {
     uint32_t md = sys.fx_model % RZ_COUNT, i, r, run = 0, mine = 0, busy = 0;
-    int32_t pl[RZ_POLY], pr[RZ_POLY], basis = (int32_t)(sys.basis & 127u);
+    int32_t pl[RZ_POLY], pr[RZ_POLY], basis = 0;
     int32_t mix = sys.fx_mix > 127u ? 127 : (int32_t)sys.fx_mix;
     if (!mix) {
         for (r = 0; r < RZ_POLY; r++) {          /* (off: the next use starts from silence) */
@@ -254,9 +256,10 @@ static void fx_resonator(int32_t *sum, int32_t *dl, int32_t *dr, uint32_t n)
         c1_resonators(run | n << 8);
     mine |= run;
     for (r = 0; r < RZ_POLY; r++) {              /* BASIS: each resonator where its note is (what it takes off L, R) */
-        int32_t p = (int32_t)rz[r].pan * basis / 127;
+        int32_t p = rz_epan[r];
         pl[r] = p > 0 ? p : 0;
         pr[r] = p < 0 ? -p : 0;
+        basis |= p;                              /* (all in the middle: nothing to pan) */
     }
     mix += mix >> 6;                             /* 0..128 */
     {

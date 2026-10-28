@@ -336,7 +336,8 @@ int main(int argc, char **argv)
             sys.fx_mix = 0; sys.fx_model = RZ_MODAL; sys.fx_struct = 70; sys.fx_damp = 100;
             c1_mode = mode;
             sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30; sys.osc = 0;
-            sys.mod_depth = 0; sys.basis = 100; pan_next = 0;   /* (BASIS: the voices panned, each core its own) */
+            sys.mod_depth = 0; sys.basis = 100; sys.orbit = 90; pan_next = 0;   /* (BASIS, ORBIT: panned, each core its own) */
+            memset(rz_epan, 0, sizeof rz_epan); memset(rz_age, 0, sizeof rz_age);
             for (b = 0; b < 2000u; b++) {
                 if (b % 250u == 0u)
                     for (j = 0; j < sizeof CH; j++)
@@ -371,6 +372,7 @@ int main(int argc, char **argv)
         sys.fx_mix = 0;
         sys.mod_depth = 0;
         sys.basis = 0;
+        sys.orbit = 0;
         printf("   (blocks with voices on the second core: %u of 2000)\n", blocks);
         check("second core (at once, a thread, one that gives up): the same output bit for bit", same && blocks > 1000u);
     }
@@ -559,9 +561,48 @@ int main(int argc, char **argv)
             okk &= e[0][0] > 20 * e[0][1] && e[1][1] > 20 * e[1][0];          /* hard left, hard right */
             okk &= e[2][0] > 2.5 * e[2][1] && e[3][1] > 2.5 * e[3][0];        /* half: the far side at ~1/4 the energy */
         }
+        {   /* ORBIT, BASIS 0: the double scroll moves a held note between left and right (both sides, at times far);
+             * a noise program drifts; the circuit on one scroll (SPIRAL) stays to one side */
+            uint32_t q, w2, sw = 0, side = 0;
+            double lmax = 0, rmax = 0;
+            int32_t last = 0;
+            synth_kill(); run_ms(500);
+            sys.fx_mix = 0; sys.basis = 0; sys.orbit = 127; sys.chaos = 85; sys.shape = 76;
+            synth_note_on(48, 110);
+            for (q = 0; q < 3000u; q++) {                     /* ~2.2 s, the balance every 32 samples */
+                double el = 0, er = 0, bal;
+                synth_render(buf, CTL);
+                for (w2 = 0; w2 < CTL; w2++) {
+                    el += (double)buf[2 * w2] * buf[2 * w2];
+                    er += (double)buf[2 * w2 + 1] * buf[2 * w2 + 1];
+                }
+                if (el + er < 1e6)
+                    continue;
+                bal = (er - el) / (er + el);                  /* -1 left .. 1 right */
+                lmax = -bal > lmax ? -bal : lmax;
+                rmax = bal > rmax ? bal : rmax;
+                if ((bal > 0.3 && last < 0) || (bal < -0.3 && last > 0))
+                    sw++;
+                if (bal > 0.3) last = 1;
+                if (bal < -0.3) last = -1;
+            }
+            printf("   (ORBIT, double scroll: as far as %.2f left, %.2f right, %u crossings)\n", lmax, rmax, sw);
+            okk &= lmax > 0.6 && rmax > 0.6 && sw >= 2u;
+            synth_kill(); run_ms(500);
+            sys.chaos = 54;                                   /* SPIRAL: one scroll, one side */
+            synth_note_on(48, 110);
+            run_ms(1000);
+            for (q = 0; q < 300u; q++) {
+                synth_render(buf, CTL);
+                for (w2 = 0; w2 < CTL; w2++)
+                    side |= (uint32_t)(buf[2 * w2] != buf[2 * w2 + 1]);
+            }
+            okk &= side;
+            synth_kill();
+        }
         synth_kill();
-        sys.basis = 0; sys.fx_mix = 0;
-        check("BASIS: 0 mono bit for bit; 127 notes cycle left, right, half left, half right, the resonator too", okk && mono);
+        sys.basis = 0; sys.fx_mix = 0; sys.orbit = 0; sys.chaos = 85;
+        check("BASIS: 0 mono bit for bit; 127 cycles L, R, half L, half R (resonator too); ORBIT moves with the scroll", okk && mono);
     }
 
     /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */

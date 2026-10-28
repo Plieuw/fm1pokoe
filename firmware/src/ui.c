@@ -16,7 +16,8 @@
  *   MOD ENV  (ENV again) the FM oscillator's AD envelope, started by each note: KNOB 1 LENGTH, KNOB 2 SKEW (where the
  *            peak falls), KNOB 3 HEIGHT (how much FM it adds to DEPTH); drawn: its shape over DEPTH, the depth now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
- *            SELECT BASIS: the stereo spread, each note the next place of a cycle (left, right, half left, ...)
+ *            SELECT BASIS: the stereo spread, each note the next place of a cycle (left, right, half left, ...);
+ *            ALGORITHM ORBIT: how far each voice's picture moves it (the circuit's scroll left / right, a drift)
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices);
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
  *   FX (2nd) KNOB 1..4      SIZE, DECAY, SHIMMER, MIX of the shimmer reverb (shimmer.c); ALGORITHM the INTERVAL,
@@ -160,7 +161,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x4348553Au      /* "CHU:": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x4348553Bu      /* "CHU;": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -169,7 +170,7 @@ typedef struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
     uint8_t osc, np_x, np_y, np_level;
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
-    uint8_t menv_len, menv_skew, menv_height, basis;
+    uint8_t menv_len, menv_skew, menv_height, basis, orbit;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -217,6 +218,7 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.menv_skew = (uint8_t)(s.menv_skew & 127u);
         sys.menv_height = (uint8_t)(s.menv_height & 127u);
         sys.basis = (uint8_t)(s.basis & 127u);
+        sys.orbit = (uint8_t)(s.orbit & 127u);
     }
 }
 
@@ -263,6 +265,7 @@ static int settings_save(void)     /* 0 = saved */
     s.menv_skew = sys.menv_skew;
     s.menv_height = sys.menv_height;
     s.basis = sys.basis;
+    s.orbit = sys.orbit;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -919,11 +922,17 @@ static void ui_draw(void)
                 ui_cat(a, sizeof a, NP_NAME[(sys.osc - 1u) % NP_COUNT]);
             }
         } else if (sys.page) {
-            str_cpy(a, "ENV   BASIS ", sizeof a);
+            str_cpy(a, "BASIS ", sizeof a);
             if (sys.basis)
                 fmt_int(v, sys.basis);
             else
                 str_cpy(v, "MONO", sizeof v);
+            ui_cat(a, sizeof a, v);
+            ui_cat(a, sizeof a, "  ORBIT ");
+            if (sys.orbit)
+                fmt_int(v, sys.orbit);
+            else
+                str_cpy(v, "OFF", sizeof v);
             ui_cat(a, sizeof a, v);
         } else {                                 /* HOME: the oscillator and the view */
             osc_code(a, sizeof a, sys.osc);
@@ -1145,6 +1154,15 @@ static void ui_input(void)
         sys.fx_model = (uint8_t)((sys.fx_model + RZ_COUNT * 8 + s) % RZ_COUNT);
         str_cpy(t, "MODEL ", sizeof t);
         ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
+        ui_say(t);
+    } else if (s && sys.page == 1u) {           /* ENV: ORBIT, the pictures moving the voices in the stereo field */
+        sys.orbit = (uint8_t)clamp((int32_t)sys.orbit + s, 0, 127);
+        str_cpy(t, "ORBIT ", sizeof t);
+        if (sys.orbit)
+            fmt_int(v, sys.orbit);
+        else
+            str_cpy(v, "OFF", sizeof v);
+        ui_cat(t, sizeof t, v);
         ui_say(t);
     } else if (s && !sys.page) {                 /* HOME: the oscillator, CHUA and the 30 noise programs */
         sys.osc = (uint8_t)(((int32_t)sys.osc + (int32_t)(NP_COUNT + 1u) * 8 + s) % (int32_t)(NP_COUNT + 1u));

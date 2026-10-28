@@ -220,6 +220,10 @@ typedef struct {
     uint8_t osc;                 /* the oscillator its state belongs to (sys.osc when it started; a change restarts it) */
     uint8_t rz;                  /* the FX resonator it feeds (resonator.c: the one tuned to its note) */
     int16_t pan;                 /* its place in the stereo field at BASIS 127, Q15 (- left): the next of PAN_CYCLE */
+    int32_t orb;                 /* ORBIT: its picture's slow movement, Q15 (- left): the circuit's x low-passed (the
+                                  * scroll it is on), a noise program a slow random drift */
+    uint32_t orng, ocnt;         /* (the drift's random numbers, blocks to its next target) */
+    int32_t otgt;
 } voice_t;
 static voice_t voice[NVOICE];
 #define NP_COUNT 30                              /* the noise programs (noise.c, included below) */
@@ -229,8 +233,10 @@ static uint32_t rz_assign(uint32_t note);
  * held notes too. The pan law is a balance: the far side turned down, the centre at full level (BASIS 0: the mono
  * output as it was, bit for bit) */
 static const int16_t PAN_CYCLE[8] = {-32767, 32767, -16384, 16384, -24576, 24576, -8192, 8192};
+/* ORBIT: the pan also follows the voice's picture: the circuit's x (the double scroll's two lobes: left and right),
+ * low-passed to ~7 Hz, or for a noise program (whose picture is noise) a drift to a new random place every ~0.2 s;
+ * ORBIT how far (added to BASIS's place, together at most full left / right). The resonators follow their voices */
 static uint32_t pan_next;
-static void rz_pan(uint32_t r, int32_t pan);
 static uint32_t voice_clock;
 static chua_t ghost = {C1 / 10, 0, 0};          /* the circuit at the current settings, one substep per block */
 static uint32_t chua_restarts;                   /* voices restarted because the solver left the range (a diagnostic) */
@@ -285,7 +291,11 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     v->note = (uint8_t)note;
     v->rz = (uint8_t)rz_assign(note);
     v->pan = PAN_CYCLE[pan_next++ & 7u];
-    rz_pan(v->rz, v->pan);                          /* (its resonator rings where the note is) */
+    if (v->stage == ST_OFF || v->stage == ST_TAIL) {  /* (a new voice: its picture's place from the middle) */
+        v->orb = 0;
+        v->ocnt = 0;
+        v->orng = 0x9E3779B9u * (uint32_t)(v - voice + 1) + voice_clock;
+    }
     v->inc = note_inc(note);
     v->amp = (uint16_t)(vel * 258u);                /* 127 -> 32766 */
     v->stage = ST_ATTACK;                           /* (a retrigger: the attack from where the envelope is) */
@@ -499,15 +509,33 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
  * or stopped: then it is held for good) C1_RUN takes nothing and this core renders them all. */
 static int32_t c1_bus[RZ_POLY][CTL];            /* its voices' output, per resonator they feed */
 static int32_t c1_dl[CTL], c1_dr[CTL];           /* and what BASIS takes off the left, the right */
-static int32_t vpan[NVOICE];                     /* this block's pan per voice (PAN_CYCLE x BASIS), Q15 */
+static int32_t vpan[NVOICE];                     /* this block's pan per voice (PAN_CYCLE x BASIS; ORBIT added by
+                                                  * voice_mix, which leaves the sum here), Q15 */
 
 /* a voice into the bus of its resonator; BASIS: what its pan takes off the far side into dl / dr */
 static void voice_mix(voice_t *v, uint32_t n, int32_t (*bus)[CTL], int32_t *dl, int32_t *dr, uint32_t *restarts)
 {
-    int32_t t[CTL], *b = bus[v->rz % RZ_POLY], p = vpan[v - voice];
+    int32_t t[CTL], *b = bus[v->rz % RZ_POLY], p = vpan[v - voice], orbit = (int32_t)(sys.orbit & 127u);
     uint32_t i;
     memset(t, 0, sizeof t);
     render_voice(v, n, t, restarts);
+    if (orbit) {   /* the picture's movement, per block (touches only this voice: either core) */
+        int32_t tgt;
+        if (v->osc) {
+            if (!v->ocnt--) {                           /* a new place every 256 blocks (~0.19 s) */
+                v->orng = v->orng * 1664525u + 1013904223u;
+                v->otgt = (int32_t)(v->orng >> 16) - 32768;
+                v->ocnt = 255u;
+            }
+            tgt = v->otgt;
+        } else
+            tgt = clamp(v->s.x / (C1 / 32767 + 1), -32767, 32767);   /* (x +-1: full; a lobe's middle +-1.5) */
+        v->orb += (tgt - v->orb) / (v->osc ? 64 : 32);  /* ~7 Hz at 1378 blocks a second: the scroll's hops (the
+                                                         * circling within a lobe at the note's pitch smoothed off);
+                                                         * the drift ~3.4 Hz */
+        p = clamp(p + v->orb * orbit / 127, -32767, 32767);
+        vpan[v - voice] = p;                            /* (the resonators follow: synth_render) */
+    }
     for (i = 0; i < n; i++)
         b[i] += t[i];
     if (p > 0)                                          /* right: the left turned down */
@@ -594,6 +622,11 @@ static void synth_render(int32_t *out, uint32_t n)
             dr[i] += c1_dr[i];
         }
     }
+    for (k = 0; k < NVOICE; k++)                        /* each resonator where the newest voice feeding it is */
+        if ((own | mask) >> k & 1u && voice[k].age >= rz_age[voice[k].rz % RZ_POLY]) {
+            rz_age[voice[k].rz % RZ_POLY] = voice[k].age;
+            rz_epan[voice[k].rz % RZ_POLY] = vpan[k];
+        }
     for (i = 0; i < n; i++) {                           /* the dry: all of them */
         int32_t a = 0;
         for (k = 0; k < RZ_POLY; k++)
