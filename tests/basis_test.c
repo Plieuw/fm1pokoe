@@ -766,8 +766,8 @@ int main(int argc, char **argv)
                     }
                 }
             }
-            for (j = 0; j < 4u; j++) {                         /* its share of the energy: > 0.5 % */
-                double e = 2 * (re[j] * re[j] + im[j] * im[j]) / t / tot;
+            for (j = 0; j < 4u && md < RZ_THROAT; j++) {       /* its share of the energy: > 0.5 % (Rings' models: */
+                double e = 2 * (re[j] * re[j] + im[j] * im[j]) / t / tot;   /* the waveguides: tested below) */
                 if (e < 0.005) {
                     printf("   %s: note %u only %.4f of the energy\n", RZ_NAME[md], CH[j], e);
                     heard = 0;
@@ -785,6 +785,96 @@ int main(int argc, char **argv)
         sys.fx_mix = 0;
         check("FX resonators polyphonic: a chord, one tuned resonator a note, all heard", dist && tuned && heard);
         check("... a fifth note takes the oldest; bounded; quiet ones stop running", okk && pk2 <= 32767);
+    }
+
+    /* the waveguides: the flute speaks at the note (STRUCTURE low), overblows to its octave and twelfth; the syrinx
+     * whistles two octaves up and its pitch rises with CHIRP; the throat's vowels move its spectrum (I brighter than
+     * U); each sounds with the voices and goes quiet without them */
+    {
+        static int32_t o[44100 / 2];
+        uint32_t okk = 1, q, w2;
+        struct { uint32_t md; uint8_t st, pos; double lo, hi; } T[] = {
+            {RZ_FLUTE, 0, 30, 0.96, 1.04}, {RZ_FLUTE, 100, 30, 1.9, 2.1}, {RZ_FLUTE, 127, 30, 2.85, 4.15},
+            {RZ_SYRINX, 0, 0, 3.6, 4.8}, {RZ_SYRINX, 127, 0, 5.0, 20},
+        };
+        sys.osc = 11; sys.np_x = sys.np_y = 64; sys.np_level = 64;   /* (CLUSTER SAW: a steady breath) */
+        sys.attack = 0; sys.sustain = 127; sys.release = 20; sys.fx_bright = 70; sys.fx_damp = 90; sys.sh_mix = 0;
+        sys.basis = 0;
+        for (q = 0; q < sizeof T / sizeof T[0]; q++) {
+            double best = 0, f = 0;
+            uint32_t k2;
+            synth_kill(); sys.fx_mix = 0; run_ms(20);
+            sys.fx_model = (uint8_t)T[q].md; sys.fx_struct = T[q].st; sys.fx_pos = T[q].pos; sys.fx_mix = 127;
+            synth_note_on(57, 110);
+            run_ms(300);
+            for (w2 = 0; w2 < sizeof o / sizeof o[0] / CTL; w2++) {
+                synth_render(buf, CTL);
+                for (k2 = 0; k2 < CTL; k2++)
+                    o[w2 * CTL + k2] = buf[2 * k2];
+            }
+            for (k2 = 100; k2 < 4000; k2 += 5) {           /* the strongest of a comb of frequencies: 100 Hz .. 4 kHz */
+                double re = 0, im = 0, e;
+                uint32_t i2;
+                for (i2 = 0; i2 < sizeof o / sizeof o[0]; i2 += 2) {
+                    double ph = 2 * M_PI * k2 * i2 / FS;
+                    re += o[i2] * cos(ph);
+                    im += o[i2] * sin(ph);
+                }
+                e = re * re + im * im;
+                if (e > best) { best = e; f = k2; }
+            }
+            printf("   (%s STRUCTURE %u: strongest %.0f Hz, %.2f x the note)\n", RZ_NAME[T[q].md], T[q].st, f, f / 220.0);
+            okk &= f / 220.0 >= T[q].lo && f / 220.0 <= T[q].hi;
+        }
+        {   /* the throat: U darker than I (the energy above 1.5 kHz), each animal sounds */
+            double hi2[2];
+            uint32_t v2;
+            for (v2 = 0; v2 < 2u; v2++) {
+                double eh = 0, et = 0;
+                synth_kill(); sys.fx_mix = 0; run_ms(20);
+                sys.fx_model = RZ_THROAT; sys.fx_struct = 40; sys.fx_pos = v2 ? 127 : 0; sys.fx_mix = 127;
+                synth_note_on(57, 110);
+                run_ms(300);
+                for (w2 = 0; w2 < 400u; w2++) {       /* the energy at 2..3 kHz (an I's second formant) against
+                                                       * 500..1000 Hz (where an U's first two sit) */
+                    synth_render(buf, CTL);
+                    for (q = 0; q < CTL; q++)
+                        o[w2 * CTL + q] = buf[2 * q];
+                }
+                for (q = 500; q <= 3000; q += 100) {
+                    double re = 0, im = 0;
+                    uint32_t i2;
+                    if (q > 1000 && q < 2000)
+                        continue;
+                    for (i2 = 0; i2 < 400u * CTL; i2++) {
+                        double ph = 2 * M_PI * q * i2 / FS;
+                        re += o[i2] * cos(ph);
+                        im += o[i2] * sin(ph);
+                    }
+                    if (q >= 2000) eh += re * re + im * im; else et += re * re + im * im;
+                }
+                hi2[v2] = eh / (et + 1);
+            }
+            printf("   (THROAT, HUMAN: 2..3 kHz against 0.5..1 kHz: U %.3f, I %.3f)\n", hi2[0], hi2[1]);
+            okk &= hi2[1] > 4 * hi2[0];
+        }
+        {   /* silence in, silence out (no self-oscillation without breath) */
+            uint32_t md2;
+            for (md2 = RZ_THROAT; md2 < RZ_COUNT; md2++) {
+                int32_t pk = 0;
+                synth_kill(); sys.fx_mix = 0; run_ms(20);
+                sys.fx_model = (uint8_t)md2; sys.fx_damp = 127; sys.fx_mix = 127;
+                synth_note_on(57, 110); run_ms(200); synth_kill(); run_ms(3000);
+                for (w2 = 0; w2 < 100u; w2++) {
+                    synth_render(buf, CTL);
+                    for (q = 0; q < CTL; q++) pk = abs(buf[2 * q]) > pk ? abs(buf[2 * q]) : pk;
+                }
+                if (pk > 30) { printf("   (%s still %d 3 s after)\n", RZ_NAME[md2], pk); okk = 0; }
+            }
+        }
+        synth_kill();
+        sys.osc = 0; sys.fx_mix = 0;
+        check("FX waveguides: flute registers, syrinx chirp, throat vowels, quiet without breath", okk);
     }
 
     /* the shimmer: bounded in every corner (SIZE x DECAY x SHIMMER x INTERVAL, held chords), no DC; it rises (the

@@ -40,9 +40,9 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
 | HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING); nog een keer: de MOD-pagina (de FM-oscillator), nog een keer: terug |
 | ENV | 1× de ENV-pagina, 2× de MOD ENV (de AD-envelope van de FM-oscillator), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
-| FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings, 2× de shimmer reverb, 3× terug naar HOME |
+| FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings en de waveguides (THROAT, FLUTE, SYRINX), 2× de shimmer reverb, 3× terug naar HOME |
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · BASIS op de ENV-pagina (stereo-spreiding) · POSITION (resonator) · TONE (shimmer) |
-| ALGORITHM | op de ENV-pagina ORBIT (de stemmen bewegen mee met hun plaatje) · op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
+| ALGORITHM | op de ENV-pagina ORBIT (de stemmen bewegen mee met hun plaatje) · op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
@@ -136,6 +136,22 @@ Rings en DaisySP (Emilie Gillet, Electrosmith; MIT) die Felucca al had (`phys_ds
 KNOB 2 BRIGHTNESS, KNOB 3 DAMPING (zoals Rings: rechtsom langer), KNOB 4 MIX (0 = uit, dan rekent er niets). Het
 scherm toont de resonanties op een frequentie-as (de meeresonerende snaren blauw) en de uitgang eronder.
 
+**De waveguides (FX, achter de resonatoren).** Draai op de FX-pagina verder met ALGORITHM: na MODAL, SYMP STRING en
+STRING komen drie waveguides, eigen code (naar de klassieke modellen: het vocal tract van Kelly en Lochbaum, de fluit
+van Cook / STK). Net als de resonatoren polyfoon (één per noot) en gevoed door de stemmen: de oscillator is de bron.
+De luidheid van de stemmen is de "adem": de fluit en de syrinx blazen alleen zolang je speelt.
+
+| Model | Wat | KNOB 1 | SELECT |
+| --- | --- | --- | --- |
+| THROAT | een strottenhoofd/keel: een buis van tot 24 secties met de oscillator als stembanden. De lengte geeft de formanten van het dier, de mond gaat open met de luidheid (miauw, boe) | ANIMAL: CAT, MONKEY, HUMAN, DOG, WOLF, COW, LION, ELEPHANT | VOWEL: U, O, A, E, I (morphend) |
+| FLUTE | een luchtstraal over een buis op de toonhoogte van de noot | JET: laag = grondtoon (buigt iets omhoog), hoger = overblazen naar octaaf en duodecime | BREATH: de ruis in de adem |
+| SYRINX | het stemorgaan van een vogel: twee fluitjes twee octaven boven de noot, door de snavel | CHIRP: hoeveel de toon stijgt met de adem | TWO VOICE: de tweede fluit 0..7 halve tonen hoger (zweven .. kwint) |
+
+KNOB 2 BRIGHTNESS (mondopening/snavel/demping van de hoogte), KNOB 3 DAMPING (hoe lang de buis naklinkt), KNOB 4 MIX.
+Combineer gerust: een noise-programma als adem in de FLUTE (PAN NOISE FLUTE), de pure cyclus in een kattenkeel (CAT
+MEOW), een wolf met shimmer (WOLF HOWL). Nieuwe presets: CAT MEOW, COW MOO, WOLF HOWL, TALKING CHAOS, ELEPHANT, NIGHT
+FLUTE, OVERBLOWN, PAN NOISE FLUTE, BIRD SONG, TWO BIRDS.
+
 **De shimmer reverb (FX, tweede scherm).** Een stereo galm (4 vertragingslijnen met een Householder-matrix) met een
 toonhoogteverschuiver in de terugkoppeling. Elke ronde door de galm (60–110 ms) schuift een deel van de staart een
 interval omhoog en gaat terug de galm in, met behoud van energie: de staart klimt, de lage octaven vervagen terwijl de
@@ -166,6 +182,7 @@ Alles wordt als één bestand gecompileerd: `firmware/src/felucca.c` bepaalt de 
 | `firmware/src/synth.c` | het Chua-circuit: diode, RK2-solver in Q20 fixed point, stemmen, uitgang, de trace voor het scherm |
 | `firmware/src/noise.c` | de 30 noise-oscillators (naar Befaco's Noise Plethora) |
 | `firmware/src/shimmer.c` | de shimmer reverb: FDN-galm met octaafverschuiver in de terugkoppeling |
+| `firmware/src/waveguide.c` | de waveguides: THROAT (Kelly-Lochbaum), FLUTE, SYRINX |
 | `firmware/src/resonator.c` | de FX-resonatoren rond de Rings/DaisySP-port (`phys_dsp.c`, `phys_symp.c`, MIT) |
 | `firmware/src/lpg_tables.h` | gegenereerd door `tools/gen_lpg_tables.py`: ADSR-tijden, cutoff, resonantie |
 | `firmware/src/chua_tables.h` | gegenereerd door `tools/gen_chua_tables.c`: α, omlooptijd en RMS per (SHAPE, CHAOS) |

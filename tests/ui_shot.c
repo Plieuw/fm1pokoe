@@ -178,7 +178,8 @@ int main(int argc, char **argv)
     frames(3);
     bad |= shot(dir, "f_fx_off");
     for (i = 0; i < RZ_COUNT; i++) {
-        preset_load(10u + (i == 0u ? 0u : i == 1u ? 1u : 2u));   /* RINGS BELL, SITAR DRONE, CHAOS PIANO */
+        static const uint8_t PI_[RZ_COUNT] = {10, 11, 12, 24, 29, 32};   /* RINGS BELL, SITAR DRONE, CHAOS PIANO, */
+        preset_load(PI_[i]);                                             /* CAT MEOW, NIGHT FLUTE, BIRD SONG */
         synth_note_on(48, 100);
         frames(14);
         snprintf(name, sizeof name, "f_fx_%u", i);

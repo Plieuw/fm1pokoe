@@ -14,6 +14,9 @@ and the drawing code all come from Felucca. Each part keeps its own licence (see
   Bernstein, Julia Mugica and Ivan Paz with Befaco), written from the descriptions in its
   [manual](https://www.befaco.org/docs/Noise_Plethora/Noise_Plethora.pdf); this firmware's own code (`firmware/src/noise.c`),
   no code of the module's
+- Waveguides (`firmware/src/waveguide.c`): this firmware's own code after the published models: J. L. Kelly and
+  C. Lochbaum's vocal tract (1962), P. Cook's slide flute and the Flute of the
+  [Synthesis ToolKit](https://github.com/thestk/stk) (Cook and Scavone): the jet's x (x^2 - 1), no code of STK's
 - Font: [Inter Tight](https://github.com/rsms/inter-tight) by The Inter Project Authors, [SIL OFL 1.1](LICENSES/OFL-InterTight.txt)
 - Second core: its start, mailbox and guards from [X0X](https://github.com/charlesvestal/fm1-x0x) by
   [charlesvestal](https://github.com/charlesvestal) with the dual-core findings of [Melodee](https://github.com/keremimo/melodee)

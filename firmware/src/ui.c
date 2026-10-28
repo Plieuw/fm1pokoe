@@ -18,7 +18,9 @@
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *            SELECT BASIS: the stereo spread, each note the next place of a cycle (left, right, half left, ...);
  *            ALGORITHM ORBIT: how far each voice's picture moves it (the circuit's scroll left / right, a drift)
- *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices);
+ *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices;
+ *            and the waveguides of waveguide.c: THROAT (KNOB 1 the ANIMAL, SELECT the VOWEL), FLUTE (JET, BREATH),
+ *            SYRINX (CHIRP, TWO VOICE));
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
  *   FX (2nd) KNOB 1..4      SIZE, DECAY, SHIMMER, MIX of the shimmer reverb (shimmer.c); ALGORITHM the INTERVAL,
  *            SELECT the TONE; the tail's level over the last seconds drawn (the riser building)
@@ -90,6 +92,22 @@ static const preset_t PRESETS[] = {
      NOSH, NZ(1, 0), 30, 80},                                                              /* into the bell */
     {"SATAN WORKOUT", 85, 76, 0, 2, 76, 100, 74, 60, NOFX, NOSH, NZ(2, 7), 80, 80},       /* harsh and wild */
     {"BITCRUSH WALK", 85, 76, 0, 0, 64, 60, 60, 50, NOFX, NOSH, NZ(2, 8), 64, 100},       /* a crushed random walk */
+    /* the waveguides (FX: THROAT, FLUTE, SYRINX), the voices their source */
+    {"CAT MEOW", 6, 64, 64, 30, 80, 90, 80, 30, RZ_THROAT, 8, 70, 60, 80, 127},      /* a pure cycle into a cat's */
+                                                                                       /* mouth, opening I > A > U */
+    {"COW MOO", 85, 76, 64, 60, 90, 110, 90, 20, RZ_THROAT, 88, 40, 80, 10, 120},      /* the scroll, a long nasal U */
+    {"WOLF HOWL", 6, 100, 64, 90, 100, 110, 110, 30, RZ_THROAT, 72, 60, 90, 20, 115,  /* a slow U > O in a big room */
+     110, 110, 40, 70, SI_OCT, 70},
+    {"TALKING CHAOS", 85, 76, 32, 4, 70, 100, 70, 40, RZ_THROAT, 40, 80, 60, 64, 110},  /* a human throat: turn VOWEL */
+    {"ELEPHANT", 96, 16, 0, 20, 90, 100, 90, 30, RZ_THROAT, 120, 30, 100, 40, 127},   /* the trunk: a low trumpet */
+    {"NIGHT FLUTE", 6, 64, 64, 40, 80, 110, 90, 20, RZ_FLUTE, 30, 70, 90, 50, 127,    /* breathy, in the shimmer */
+     110, 100, 60, 60, SI_OCT, 70},
+    {"OVERBLOWN", 54, 90, 64, 10, 70, 100, 70, 30, RZ_FLUTE, 115, 90, 100, 20, 120},  /* the jet short: octaves */
+    {"PAN NOISE FLUTE", 85, 76, 0, 30, 80, 110, 80, 20, RZ_FLUTE, 50, 60, 90, 90, 127, /* a noise program blows it */
+     NOSH, NZ(0, 9), 70, 50},
+    {"BIRD SONG", 6, 64, 64, 0, 90, 0, 60, 30, RZ_SYRINX, 90, 70, 60, 15, 127,        /* chirps falling away */
+     100, 90, 30, 40, SI_OCT, 100},
+    {"TWO BIRDS", 30, 100, 32, 0, 60, 40, 50, 30, RZ_SYRINX, 60, 90, 70, 110, 127},   /* the two sides a fifth */
     /* the FM oscillator on them (the MOD page) */
     {"FM BELL CLUSTER", 85, 76, 0, 0, 70, 30, 90, 30, RZ_MODAL, 70, 100, 100, 12, 50,    /* sines FMed at 7/2: */
      NOSH, NZ(1, 3), 20, 30, 0, 9, 30, 90, 0, 110},                                        /* metal, a strike */
@@ -740,6 +758,44 @@ static void draw_menv(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the FX page's SELECT (POSITION) per model: its name, its value */
+static void fx_pos_text(char *d, uint32_t n, int brief)
+{
+    uint32_t md = sys.fx_model % RZ_COUNT, p = sys.fx_pos & 127u;
+    char v[12];
+    static const char *const L[RZ_COUNT] = {"POSITION", "AMOUNT", "POSITION", "VOWEL", "BREATH", "TWO VOICE"};
+    static const char *const S[RZ_COUNT] = {"POS", "AMT", "POS", "VOWEL", "BREATH", "TWO"};
+    str_cpy(d, brief ? S[md] : L[md], n);
+    ui_cat(d, n, " ");
+    if (md == RZ_THROAT) {                       /* the vowel: U O A E I, or between two */
+        uint32_t t = p * 4u * 256u / 127u, k = t >> 8, f = t & 255u;
+        k = k > 3u ? 3u : k;
+        if (t >= 4u * 256u) { k = 3u; f = 256u; }
+        if (f < 40u)
+            ui_cat(d, n, WG_VOWEL[k]);
+        else if (f > 216u)
+            ui_cat(d, n, WG_VOWEL[k + 1u]);
+        else {
+            ui_cat(d, n, WG_VOWEL[k]);
+            ui_cat(d, n, ">");
+            ui_cat(d, n, WG_VOWEL[k + 1u]);
+        }
+        return;
+    }
+    if (md == RZ_SYRINX) {                       /* the second whistle: semitones above the first */
+        uint32_t c = p * 700u / 127u;
+        fmt_int(v, (int32_t)(c / 100u));
+        ui_cat(d, n, "+");
+        ui_cat(d, n, v);
+        ui_cat(d, n, ".");
+        fmt_int(v, (int32_t)(c / 10u % 10u));
+        ui_cat(d, n, v);
+        return;
+    }
+    fmt_int(v, (int32_t)p);
+    ui_cat(d, n, v);
+}
+
 /* the oscillator's short name: "CHUA", or the noise program's bank and number ("A5") */
 static void osc_code(char *d, uint32_t n, uint32_t osc)
 {
@@ -859,13 +915,16 @@ static void ui_draw(void)
         ui_cell(T_C4, "4 MIX", b);
     } else if (sys.page == 2u) {
         uint32_t md = sys.fx_model % RZ_COUNT;
+        static const char *const K1[RZ_COUNT] = {"1 STRUCTURE", "1 CHORD", "1 STRUCTURE", "1 ANIMAL", "1 JET", "1 CHIRP"};
         if (md == RZ_SYMP)
             str_cpy(b, RZ_CHORD_NAME[(sys.fx_struct & 127u) >> 4], sizeof b);
+        else if (md == RZ_THROAT)
+            str_cpy(b, WG_ANIMAL[(sys.fx_struct & 127u) * WA_COUNT / 128u], sizeof b);
         else {
             fmt_int(v, sys.fx_struct);
             str_cpy(b, v, sizeof b);
         }
-        ui_cell(T_C1, md == RZ_SYMP ? "1 CHORD" : "1 STRUCTURE", b);
+        ui_cell(T_C1, K1[md], b);
         fmt_int(v, sys.fx_bright);
         ui_cell(T_C2, "2 BRIGHTNESS", v);
         fmt_int(v, sys.fx_damp);
@@ -900,9 +959,9 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, v);
         } else if (sys.page == 2u) {
             str_cpy(a, RZ_NAME[sys.fx_model % RZ_COUNT], sizeof a);
-            ui_cat(a, sizeof a, sys.fx_model % RZ_COUNT == RZ_SYMP ? "   AMT " : "   POS ");
-            fmt_int(v, sys.fx_pos);
-            ui_cat(a, sizeof a, v);
+            ui_cat(a, sizeof a, "   ");
+            fx_pos_text(b, sizeof b, 1);
+            ui_cat(a, sizeof a, b);
         } else if (sys.page == 5u) {             /* MOD ENV: on what */
             str_cpy(a, "MOD ENV   ", sizeof a);
             if (!sys.osc)
@@ -1140,9 +1199,12 @@ static void ui_input(void)
     } else if (s && (sys.page == 2u || sys.page == 3u)) {   /* (MOD, MOD ENV: nothing; RING is on HOME) */
         volatile uint8_t *p = sys.page == 3u ? &sys.sh_tone : &sys.fx_pos;
         *p = (uint8_t)clamp(*p + s, 0, 127);
-        str_cpy(t, sys.page == 3u ? "TONE " : sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ", sizeof t);
-        fmt_int(v, *p);
-        ui_cat(t, sizeof t, v);
+        if (sys.page == 3u) {
+            str_cpy(t, "TONE ", sizeof t);
+            fmt_int(v, *p);
+            ui_cat(t, sizeof t, v);
+        } else
+            fx_pos_text(t, sizeof t, 0);
         ui_say(t);
     }
     if ((s = panel_enc(EN_ALGO)) != 0 && sys.page == 3u) {
