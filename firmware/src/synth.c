@@ -219,11 +219,18 @@ typedef struct {
     uint8_t lpg_n;               /* frames until the next coefficient update */
     uint8_t osc;                 /* the oscillator its state belongs to (sys.osc when it started; a change restarts it) */
     uint8_t rz;                  /* the FX resonator it feeds (resonator.c: the one tuned to its note) */
+    int16_t pan;                 /* its place in the stereo field at BASIS 127, Q15 (- left): the next of PAN_CYCLE */
 } voice_t;
 static voice_t voice[NVOICE];
 #define NP_COUNT 30                              /* the noise programs (noise.c, included below) */
 static void np_start(uint32_t k, uint32_t seed);
 static uint32_t rz_assign(uint32_t note);
+/* BASIS: each note takes the next place of the cycle (left, right, half left, half right, ...); BASIS scales them all,
+ * held notes too. The pan law is a balance: the far side turned down, the centre at full level (BASIS 0: the mono
+ * output as it was, bit for bit) */
+static const int16_t PAN_CYCLE[8] = {-32767, 32767, -16384, 16384, -24576, 24576, -8192, 8192};
+static uint32_t pan_next;
+static void rz_pan(uint32_t r, int32_t pan);
 static uint32_t voice_clock;
 static chua_t ghost = {C1 / 10, 0, 0};          /* the circuit at the current settings, one substep per block */
 static uint32_t chua_restarts;                   /* voices restarted because the solver left the range (a diagnostic) */
@@ -277,6 +284,8 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     }
     v->note = (uint8_t)note;
     v->rz = (uint8_t)rz_assign(note);
+    v->pan = PAN_CYCLE[pan_next++ & 7u];
+    rz_pan(v->rz, v->pan);                          /* (its resonator rings where the note is) */
     v->inc = note_inc(note);
     v->amp = (uint16_t)(vel * 258u);                /* 127 -> 32766 */
     v->stage = ST_ATTACK;                           /* (a retrigger: the attack from where the envelope is) */
@@ -489,26 +498,51 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
  * core's (tests/basis_test.c checks it). Without a second core (the host tests, 2ND CORE OFF, one that did not answer
  * or stopped: then it is held for good) C1_RUN takes nothing and this core renders them all. */
 static int32_t c1_bus[RZ_POLY][CTL];            /* its voices' output, per resonator they feed */
+static int32_t c1_dl[CTL], c1_dr[CTL];           /* and what BASIS takes off the left, the right */
+static int32_t vpan[NVOICE];                     /* this block's pan per voice (PAN_CYCLE x BASIS), Q15 */
+
+/* a voice into the bus of its resonator; BASIS: what its pan takes off the far side into dl / dr */
+static void voice_mix(voice_t *v, uint32_t n, int32_t (*bus)[CTL], int32_t *dl, int32_t *dr, uint32_t *restarts)
+{
+    int32_t t[CTL], *b = bus[v->rz % RZ_POLY], p = vpan[v - voice];
+    uint32_t i;
+    memset(t, 0, sizeof t);
+    render_voice(v, n, t, restarts);
+    for (i = 0; i < n; i++)
+        b[i] += t[i];
+    if (p > 0)                                          /* right: the left turned down */
+        for (i = 0; i < n; i++)
+            dl[i] += (t[i] * p) >> 15;
+    else if (p < 0)
+        for (i = 0; i < n; i++)
+            dr[i] += (t[i] * -p) >> 15;
+}
 static uint32_t c1_restarts, c1_blocks;          /* (diagnostics) */
 static void c1_voices(uint32_t arg)              /* arg: the voices (bit k = voice k) | n << 8 */
 {
     uint32_t k, n = arg >> 8;
     memset(c1_bus, 0, sizeof c1_bus);
+    memset(c1_dl, 0, sizeof c1_dl);
+    memset(c1_dr, 0, sizeof c1_dr);
     for (k = 0; k < NVOICE; k++)
         if (arg >> k & 1u)
-            render_voice(&voice[k], n, c1_bus[voice[k].rz % RZ_POLY], &c1_restarts);
+            voice_mix(&voice[k], n, c1_bus, c1_dl, c1_dr, &c1_restarts);
 }
 
 static void synth_render(int32_t *out, uint32_t n)
 {
     uint32_t i, k, busy = 0, newest = 0, mask = 0, own = 0;
-    int32_t m = (int32_t)sys.master_q12, sum[CTL];
+    int32_t m = (int32_t)sys.master_q12, sum[CTL], dl[CTL], dr[CTL], basis = (int32_t)(sys.basis & 127u);
     voice_t *tv = 0;
     int inner;
     chua_params();
     env_params();
     inner = chua_regime(cc.chaos) != REG_OUTER;
     memset(rz_bus, 0, sizeof rz_bus);                   /* the voices into the bus of the resonator they feed */
+    memset(dl, 0, sizeof dl);
+    memset(dr, 0, sizeof dr);
+    for (k = 0; k < NVOICE; k++)                        /* (read by both cores: settled before the split) */
+        vpan[k] = (int32_t)voice[k].pan * basis / 127;
     for (k = 0; k < NVOICE; k++)                        /* the trace follows the newest voice sounding */
         if (voice[k].stage != ST_OFF && voice[k].age >= newest) {
             newest = voice[k].age;
@@ -548,13 +582,17 @@ static void synth_render(int32_t *out, uint32_t n)
     c1_blocks += mask != 0;
     for (k = 0; k < NVOICE; k++)                        /* (decided above: nothing of the other core's voices read) */
         if (own >> k & 1u)
-            render_voice(&voice[k], n, rz_bus[voice[k].rz % RZ_POLY], &chua_restarts);
+            voice_mix(&voice[k], n, rz_bus, dl, dr, &chua_restarts);
     if (mask) {
         if (C1_WAIT())                                  /* it stopped answering (held from now on): its voices here */
             c1_voices(mask | n << 8);
         for (k = 0; k < RZ_POLY; k++)
             for (i = 0; i < n; i++)
                 rz_bus[k][i] += c1_bus[k][i];
+        for (i = 0; i < n; i++) {
+            dl[i] += c1_dl[i];
+            dr[i] += c1_dr[i];
+        }
     }
     for (i = 0; i < n; i++) {                           /* the dry: all of them */
         int32_t a = 0;
@@ -562,11 +600,13 @@ static void synth_render(int32_t *out, uint32_t n)
             a += rz_bus[k][i];
         sum[i] = a;
     }
-    fx_resonator(sum, n);
+    fx_resonator(sum, dl, dr, n);
     {
         int32_t l[CTL], r[CTL];
-        fx_shimmer(sum, l, r, n);
+        fx_shimmer(sum, l, r, n);                       /* (its tank fed the middle; its dry part panned here) */
         for (i = 0; i < n; i++) {
+            l[i] -= (int32_t)(((int64_t)dl[i] * sh_dry) >> 15);
+            r[i] -= (int32_t)(((int64_t)dr[i] * sh_dry) >> 15);
             out[2u * i] = clamp(soft_clip(l[i]) * m >> 12, -32767, 32767);
             out[2u * i + 1u] = clamp(soft_clip(r[i]) * m >> 12, -32767, 32767);
         }

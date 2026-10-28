@@ -336,7 +336,7 @@ int main(int argc, char **argv)
             sys.fx_mix = 0; sys.fx_model = RZ_MODAL; sys.fx_struct = 70; sys.fx_damp = 100;
             c1_mode = mode;
             sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30; sys.osc = 0;
-            sys.mod_depth = 0;
+            sys.mod_depth = 0; sys.basis = 100; pan_next = 0;   /* (BASIS: the voices panned, each core its own) */
             for (b = 0; b < 2000u; b++) {
                 if (b % 250u == 0u)
                     for (j = 0; j < sizeof CH; j++)
@@ -370,6 +370,7 @@ int main(int argc, char **argv)
         sys.osc = 0;
         sys.fx_mix = 0;
         sys.mod_depth = 0;
+        sys.basis = 0;
         printf("   (blocks with voices on the second core: %u of 2000)\n", blocks);
         check("second core (at once, a thread, one that gives up): the same output bit for bit", same && blocks > 1000u);
     }
@@ -522,6 +523,45 @@ int main(int argc, char **argv)
         check("... full DEPTH, every wave and ratio: each program changes, sounds, bounded, no DC; MOD ENV", okk && moved);
         synth_kill();
         sys.osc = 0; sys.mod_depth = 0; sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64;
+    }
+
+    /* BASIS: at 0 left = right, bit for bit; at 127 the notes go left, right, half left, half right (the far side
+     * down to 0, to half), the resonator's ring with them; held notes follow the knob */
+    {
+        uint32_t fx, j, b, okk = 1, mono = 1;
+        for (fx = 0; fx < 2u; fx++) {
+            double e[4][2];
+            sys.fx_mix = fx ? 110 : 0; sys.fx_model = RZ_MODAL; sys.fx_damp = 60; sys.sh_mix = 0;
+            sys.osc = 0; sys.attack = 0; sys.sustain = 127; sys.release = 10; sys.chaos = 85;
+            for (b = 0; b < 2u; b++) {                       /* 0: BASIS 0, 1: BASIS 127 */
+                synth_kill(); run_ms(1500);
+                sys.basis = b ? 127 : 0;
+                pan_next = 0;
+                for (j = 0; j < 4u; j++) {
+                    uint32_t q;
+                    e[j][0] = e[j][1] = 0;
+                    synth_note_on(48 + 7 * j, 110);
+                    for (q = 0; q < 200u; q++) {
+                        uint32_t w2;
+                        synth_render(buf, CTL);
+                        for (w2 = 0; w2 < CTL; w2++) {
+                            if (!b) mono &= buf[2 * w2] == buf[2 * w2 + 1];
+                            e[j][0] += (double)buf[2 * w2] * buf[2 * w2];
+                            e[j][1] += (double)buf[2 * w2 + 1] * buf[2 * w2 + 1];
+                        }
+                    }
+                    synth_note_off(48 + 7 * j);
+                    run_ms(fx ? 3000 : 400);
+                }
+            }
+            printf("   (BASIS 127%s: L/R energy per note %.3f %.3f %.3f %.3f)\n", fx ? ", resonator" : "",
+                   e[0][0] / (e[0][1] + 1), e[1][0] / (e[1][1] + 1), e[2][0] / (e[2][1] + 1), e[3][0] / (e[3][1] + 1));
+            okk &= e[0][0] > 20 * e[0][1] && e[1][1] > 20 * e[1][0];          /* hard left, hard right */
+            okk &= e[2][0] > 2.5 * e[2][1] && e[3][1] > 2.5 * e[3][0];        /* half: the far side at ~1/4 the energy */
+        }
+        synth_kill();
+        sys.basis = 0; sys.fx_mix = 0;
+        check("BASIS: 0 mono bit for bit; 127 notes cycle left, right, half left, half right, the resonator too", okk && mono);
     }
 
     /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */

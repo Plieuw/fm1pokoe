@@ -161,6 +161,14 @@ int main(int argc, char **argv)
     synth_kill();
     frames(2);
     bad |= shot(dir, "e_env_dark");
+    enc_steps[panel.enc[EN_SELECT]] = 90;  /* BASIS turned (SELECT on the ENV page) */
+    ui_input();
+    frames(2);
+    bad |= shot(dir, "e_env_basis");
+    ui_event_ms = 0;
+    frames(2);
+    bad |= shot(dir, "e_env_basis_status");
+    sys.basis = 0;
     synth_kill();
     sys.page = 0;
     ui_force = 1;

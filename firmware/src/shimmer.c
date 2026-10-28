@@ -65,11 +65,13 @@ static inline int32_t sh_soft(int32_t v)
     return v;
 }
 
+static int32_t sh_dry = 32768;                   /* this block's dry level, Q15 (synth.c pans the dry with it) */
 static void fx_shimmer(const int32_t *in, int32_t *l, int32_t *r, uint32_t n)
 {
     uint32_t i, k, size = sys.sh_size & 127u, iv = sys.sh_interval % SI_COUNT;
     int32_t mix = sys.sh_mix > 127u ? 127 : (int32_t)sys.sh_mix, g[SH_NLINE], damp, fa, fb_, dry, wet;
     uint32_t inc = SH_INC[iv], peak = 0;
+    sh_dry = 32768;
     if (!mix) {
         for (i = 0; i < n; i++)
             l[i] = r[i] = in[i];
@@ -108,6 +110,7 @@ static void fx_shimmer(const int32_t *in, int32_t *l, int32_t *r, uint32_t n)
         }
         dry = mix < 64 ? 32768 : (127 - mix) * 32768 / 63;
         wet = mix > 64 ? 32768 : mix * 32768 / 64;
+        sh_dry = dry;
     }
     for (i = 0; i < n; i++) {
         int32_t x = in[i] >> 1, o[SH_NLINE], s, ps, v, y;

@@ -41,7 +41,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING); nog een keer: de MOD-pagina (de FM-oscillator), nog een keer: terug |
 | ENV | 1× de ENV-pagina, 2× de MOD ENV (de AD-envelope van de FM-oscillator), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings, 2× de shimmer reverb, 3× terug naar HOME |
-| SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · POSITION (resonator) · TONE (shimmer) |
+| SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · BASIS op de ENV-pagina (stereo-spreiding) · POSITION (resonator) · TONE (shimmer) |
 | ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
 | OCT- / OCT+ | octaaf −3..+3 |
@@ -95,7 +95,14 @@ begrensd op het maximum. DEPTH 0 en HEIGHT hoog geeft alleen FM in de envelope (
 vaste FM zoals voorheen. Het scherm toont de vorm boven de DEPTH-lijn en rechts de FM-diepte van de nieuwste stem nu.
 Nog een keer ENV: terug naar HOME.
 
-**Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina doet niets meer), de
+**BASIS (SELECT op de ENV-pagina).** De stereo-spreiding van de stemmen. Elke noot die je speelt krijgt de volgende
+plek in een vaste cyclus: links, rechts, half links, half rechts, driekwart links, driekwart rechts, kwart links, kwart
+rechts, en weer van voren af aan. BASIS schaalt die plekken: 0 is mono (precies zoals voorheen), 127 de volle breedte.
+Ook noten die al klinken schuiven mee als je draait. De resonator van een noot klinkt op dezelfde plek als die noot; de
+shimmer krijgt het midden en maakt er zijn eigen stereo van. De pan-wet is een balans: het midden blijft op vol niveau,
+de andere kant gaat zachter (bij volle breedte uit).
+
+**Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina is nu BASIS), de
 oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).
 
 **De low pass gate.** Op de ENV-pagina is de gate een rond rood lampje (het LED van een vactrol): het brandt fel als de gate open staat en dimt mee met de envelope; ernaast de cutoff. De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt

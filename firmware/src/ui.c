@@ -16,11 +16,12 @@
  *   MOD ENV  (ENV again) the FM oscillator's AD envelope, started by each note: KNOB 1 LENGTH, KNOB 2 SKEW (where the
  *            peak falls), KNOB 3 HEIGHT (how much FM it adds to DEPTH); drawn: its shape over DEPTH, the depth now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
+ *            SELECT BASIS: the stereo spread, each note the next place of a cycle (left, right, half left, ...)
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices);
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
  *   FX (2nd) KNOB 1..4      SIZE, DECAY, SHIMMER, MIX of the shimmer reverb (shimmer.c); ALGORITHM the INTERVAL,
  *            SELECT the TONE; the tail's level over the last seconds drawn (the riser building)
- *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME)
+ *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME); ENV: BASIS
  * Each parameter lives in one place: RING on HOME (KNOB 4), the oscillator on HOME (ALGORITHM).
  *   PRESETS the presets
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
@@ -159,7 +160,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485539u      /* "CHU9": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x4348553Au      /* "CHU:": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -168,7 +169,7 @@ typedef struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
     uint8_t osc, np_x, np_y, np_level;
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
-    uint8_t menv_len, menv_skew, menv_height;
+    uint8_t menv_len, menv_skew, menv_height, basis;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -215,6 +216,7 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.menv_len = (uint8_t)(s.menv_len & 127u);
         sys.menv_skew = (uint8_t)(s.menv_skew & 127u);
         sys.menv_height = (uint8_t)(s.menv_height & 127u);
+        sys.basis = (uint8_t)(s.basis & 127u);
     }
 }
 
@@ -260,6 +262,7 @@ static int settings_save(void)     /* 0 = saved */
     s.menv_len = sys.menv_len;
     s.menv_skew = sys.menv_skew;
     s.menv_height = sys.menv_height;
+    s.basis = sys.basis;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -916,7 +919,12 @@ static void ui_draw(void)
                 ui_cat(a, sizeof a, NP_NAME[(sys.osc - 1u) % NP_COUNT]);
             }
         } else if (sys.page) {
-            str_cpy(a, "ENV   LPG", sizeof a);
+            str_cpy(a, "ENV   BASIS ", sizeof a);
+            if (sys.basis)
+                fmt_int(v, sys.basis);
+            else
+                str_cpy(v, "MONO", sizeof v);
+            ui_cat(a, sizeof a, v);
         } else {                                 /* HOME: the oscillator and the view */
             osc_code(a, sizeof a, sys.osc);
             if (sys.osc) {                       /* (the program's name: no room for the view as well) */
@@ -1111,7 +1119,16 @@ static void ui_input(void)
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
         ui_say(t);
-    } else if (s && (sys.page == 2u || sys.page == 3u)) {   /* (ENV, MOD, MOD ENV: nothing; RING is on HOME) */
+    } else if (s && sys.page == 1u) {           /* ENV: BASIS, the voices' stereo spread */
+        sys.basis = (uint8_t)clamp((int32_t)sys.basis + s, 0, 127);
+        str_cpy(t, "BASIS ", sizeof t);
+        if (sys.basis)
+            fmt_int(v, sys.basis);
+        else
+            str_cpy(v, "MONO", sizeof v);
+        ui_cat(t, sizeof t, v);
+        ui_say(t);
+    } else if (s && (sys.page == 2u || sys.page == 3u)) {   /* (MOD, MOD ENV: nothing; RING is on HOME) */
         volatile uint8_t *p = sys.page == 3u ? &sys.sh_tone : &sys.fx_pos;
         *p = (uint8_t)clamp(*p + s, 0, 127);
         str_cpy(t, sys.page == 3u ? "TONE " : sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ", sizeof t);
