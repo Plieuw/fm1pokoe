@@ -86,7 +86,7 @@ static void rz_reset(rz_t *R, uint32_t md)
     else if (md == RZ_SYRINX)
         R->u.x.rng = 0x9E3779B9u;
     else if (md == RZ_THROAT)
-        ;
+        R->u.t.ag = 4096;                        /* (the automatic gain at 1) */
     else {
         R->u.s.rng = 0x9E3779B9u;
         R->u.s.src = 1u << 30;

@@ -4,7 +4,7 @@
  * tube changes, reflected at its ends. This firmware's own fixed-point code (after the textbook models: Kelly and
  * Lochbaum's vocal tract, Cook's slide flute / STK Flute's jet and bore), signals Q20 like Rings' models.
  *
- *   THROAT   a vocal tract: a tube of up to 24 sections (Kelly-Lochbaum), the voices its glottal source. ANIMAL sets
+ *   THROAT   a vocal tract: a tube of up to 12 sections (Kelly-Lochbaum; each 2 .. 10 samples long), the voices its glottal source. ANIMAL sets
  *            the tube's length (its formants: a cat's short throat, a cow's long one, an elephant's longer still)
  *            and how much the mouth opens with the voice's loudness ("meow", "moo"); VOWEL (POSITION) the tongue:
  *            U, O, A, E, I, morphing; BRIGHTNESS the mouth's radiation; DAMPING how long the tube rings (the
@@ -21,24 +21,23 @@
  * syrinx blow only while it plays, the throat's mouth moves with it. */
 
 /* ------------------------------------------------------------------ THROAT --- */
-#define WG_NSEC 24                               /* sections at most */
-#define WG_KMAX 6                                /* samples per section at most (a section: k samples each way) */
+#define WG_NSEC 12                               /* sections at most (half the junctions of 24: the CPU) */
+#define WG_KMAX 10                               /* samples per section at most (a section: k samples each way) */
 enum { WA_CAT, WA_MONKEY, WA_HUMAN, WA_DOG, WA_WOLF, WA_COW, WA_LION, WA_ELEPHANT, WA_COUNT };
 static const char *const WG_ANIMAL[WA_COUNT] = {"CAT", "MONKEY", "HUMAN", "DOG", "WOLF", "COW", "LION", "ELEPHANT"};
 static const struct {
     uint8_t n, k;                                /* sections, samples each: the tube n k / 44100 s one way (x 350 m/s) */
     uint8_t wah;                                 /* how much the mouth follows the loudness, /128 */
     uint8_t nasal;                               /* the glottis' reflection's floor, /128 (a "closed", nasal tone) */
-    uint8_t gain;                                /* the level out (measured: about the dry's, tests/basis_test.c) */
 } WG_ANI[WA_COUNT] = {
-    {10, 1, 120, 90, 17},                        /* cat: 8 cm, the mouth opening with the meow */
-    {14, 1, 90, 70, 25},                         /* monkey: 11 cm, hoots */
-    {21, 1, 40, 60, 33},                         /* human: 17 cm */
-    {14, 2, 70, 70, 20},                         /* dog: 22 cm, barks open */
-    {20, 2, 60, 80, 10},                         /* wolf: 32 cm, the howl's slow vowel */
-    {24, 2, 80, 100, 7},                         /* cow: 38 cm, "moo": nasal, closed then open */
-    {20, 3, 50, 70, 11},                         /* lion: 48 cm, a roar */
-    {22, 5, 60, 110, 6},                         /* elephant: 87 cm (the trunk), a low rumble */
+    {5, 2, 120, 90},                         /* cat: 8 cm, the mouth opening with the meow */
+    {7, 2, 90, 70},                          /* monkey: 11 cm, hoots */
+    {11, 2, 40, 60},                         /* human: 17 cm */
+    {7, 4, 70, 70},                          /* dog: 22 cm, barks open */
+    {10, 4, 60, 80},                         /* wolf: 32 cm, the howl's slow vowel */
+    {12, 4, 80, 100},                         /* cow: 38 cm, "moo": nasal, closed then open */
+    {10, 6, 50, 70},                         /* lion: 48 cm, a roar */
+    {11, 10, 60, 110},                        /* elephant: 87 cm (the trunk), a low rumble */
 };
 /* the area along the tube, glottis to lips, per vowel (relative, Q4; after Fant's measured shapes, simplified) */
 #define WG_NV 5
@@ -57,6 +56,7 @@ typedef struct {
     int32_t r[WG_NSEC];                          /* the junctions' reflections (Q15), this block */
     int32_t lip, rad, glo;                       /* the lips' low-pass, the mouth's softening, the glottis' */
     int32_t env;                                 /* the input's loudness, Q20 */
+    int32_t iav, oav, ag;                        /* the level: in, out (Q14 averages), the gain (Q12) */
 } wg_throat_t;
 
 /* the loudness of n samples of in (Q20) into *env: ~2 ms up, ~80 ms down (per sample) */
@@ -111,8 +111,8 @@ static void wg_throat_run(wg_throat_t *T, const int32_t *in, int32_t *y, uint32_
         }
         for (j = 0; j + 1u < ns; j++) {          /* the junctions */
             int32_t w = px_m(T->r[j], fo[j] - bo[j + 1u], 15);
-            T->f[j + 1u][p] = px_clamp(fo[j] + w, -16 * PX_ONE, 16 * PX_ONE);
-            T->b[j][p] = px_clamp(bo[j + 1u] + w, -16 * PX_ONE, 16 * PX_ONE);
+            T->f[j + 1u][p] = fo[j] + w;         /* (lossless junctions between lossy ends: bounded, unclamped) */
+            T->b[j][p] = bo[j + 1u] + w;
         }
         T->glo += px_m(14000, bo[0] - T->glo, 15);   /* the glottis: soft (the highs lost there, ~3 kHz) */
         T->f[0][p] = px_clamp((in[i] >> 1) + px_m(rg, T->glo, 15), -16 * PX_ONE, 16 * PX_ONE);
@@ -122,8 +122,24 @@ static void wg_throat_run(wg_throat_t *T, const int32_t *in, int32_t *y, uint32_
         /* out at the mouth: the wave arriving there (the radiation's loss of the lows left out: it would leave a
          * voice below its first formant nearly silent), its top softened (BRIGHTNESS: ~1.5 .. 12 kHz) */
         T->rad += px_m(ro, lo - T->rad, 15);
-        y[i] = px_clamp(T->rad * WG_ANI[an].gain, -64 * PX_ONE, 64 * PX_ONE);
+        y[i] = T->rad;
         T->p = p + 1u >= k ? 0u : p + 1u;
+    }
+    {   /* the level: the tube's resonances lift some vowels and animals far above others; a slow automatic gain
+         * (~0.1 s) holds the mouth at 3.6 x the input's level (the dry's, out of the FX: RZ_GAIN), x 1/8 .. 24 */
+        uint32_t si = 0, so = 0;
+        int32_t gt;
+        for (i = 0; i < n; i++) {
+            si += (uint32_t)(in[i] < 0 ? -in[i] : in[i]) >> 6;
+            so += (uint32_t)(y[i] < 0 ? -y[i] : y[i]) >> 6;
+        }
+        T->iav += ((int32_t)(si / n) - T->iav) / 8;
+        T->oav += ((int32_t)(so / n) - T->oav) / 8;
+        gt = T->oav > 0 ? (int32_t)((uint32_t)T->iav * 14746u / (uint32_t)T->oav) : 4096;   /* Q12 (32 bits) */
+        gt = gt < 512 ? 512 : gt > 98304 ? 98304 : gt;
+        T->ag += (gt - T->ag) / 16;
+        for (i = 0; i < n; i++)
+            y[i] = px_clamp(px_m(y[i], T->ag, 12), -64 * PX_ONE, 64 * PX_ONE);
     }
 }
 
@@ -133,6 +149,10 @@ static inline int32_t wg_jet(int32_t x)          /* STK's JetTable: x (x^2 - 1),
 {
     int32_t c = px_clamp(x, -2 * PX_ONE, 2 * PX_ONE);
     return px_clamp(px_m(c, px_m(c, c, 20) - PX_ONE, 20), -PX_ONE, PX_ONE);
+}
+static inline int32_t wg_tap(const int32_t *l, uint32_t mask, uint32_t w, uint32_t d)   /* d samples back, whole */
+{
+    return l[(w - 1u - (d >> 16)) & mask];
 }
 static inline int32_t wg_read(const int32_t *l, uint32_t mask, uint32_t w, uint32_t d)   /* d samples back, Q16 */
 {
@@ -179,7 +199,7 @@ static void wg_flute_run(wg_flute_t *F, const int32_t *in, int32_t *y, uint32_t 
         t = px_m(o, loss, 15);
         pd = pr + noise + (in[i] >> 3) - (t >> 1);   /* the breath (the voices on it), less the jet's reflection */
         F->jet[F->w & (WG_JETL - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
-        j = wg_jet(wg_read(F->jet, WG_JETL - 1u, F->w + 1u, jd));
+        j = wg_jet(wg_tap(F->jet, WG_JETL - 1u, F->w + 1u, jd));   /* (the jet: a whole-sample delay) */
         F->bore[F->w & (WG_BORE - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
         F->w++;
         o = b - F->ox + px_m(F->oy, 32604, 15); /* out: the bore, its DC blocked (the breath is DC in it) */
@@ -221,10 +241,9 @@ static void wg_syrinx_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_
     loss = 29000 + (int32_t)(((int64_t)damp * 3400) >> 16);
     bf = 14000 + bright / 6;                     /* the beak: 2 sin(pi f / FS), ~1.5 .. 6 kHz (Q15) */
     for (i = 0; i < n; i++) {
-        int32_t o = 0, hi;
+        int32_t o = 0, hi, noise = px_m((int32_t)(px_rand(&S->rng) >> 12) - (1 << 19), pr, 22);   /* (one for both) */
         for (s = 0; s < 2u; s++) {
             int32_t b = wg_read(S->bore[s], WG_SB - 1u, S->w, bd[s]), t, pd, j;
-            int32_t noise = px_m((int32_t)(px_rand(&S->rng) >> 12) - (1 << 19), pr, 22);
             S->lp[s] += px_m(20000, b - S->lp[s], 15);
             t = S->lp[s] - S->dcx[s] + px_m(S->dcy[s], 32604, 15);
             S->dcx[s] = S->lp[s];
@@ -232,7 +251,7 @@ static void wg_syrinx_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_
             t = px_m(t, loss, 15);
             pd = pr + noise + (in[i] >> 4) - (t >> 1);
             S->jet[s][S->w & (WG_SJ - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
-            j = wg_jet(wg_read(S->jet[s], WG_SJ - 1u, S->w + 1u, jd[s]));
+            j = wg_jet(wg_tap(S->jet[s], WG_SJ - 1u, S->w + 1u, jd[s]));
             S->bore[s][S->w & (WG_SB - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
             o += b;
         }
