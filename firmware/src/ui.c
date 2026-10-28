@@ -33,7 +33,8 @@
  *   REC      the FREE EG page (feg.c): KNOB 1 the knob recorded, KNOB 2 LENGTH (NOTE, 1..8 STEPS, 1..4 BARS),
  *            KNOB 3 DEPTH, KNOB 4 the TARGET; SELECT PLAY; REC again there: record (NOTE: REC once more to stop)
  *   SEQ      the KARMA page (karma.c; again: on / off, its LED lit while on): ALGORITHM the GE (the phrase
- *            generator), KNOB 1..4 its four realtime controls (named per GE: DENSITY, RANGE, REPEAT ...), SELECT LATCH
+ *            generator), KNOB 1..4 its four realtime controls (named per GE: DENSITY, RANGE, REPEAT ...), SELECT LATCH,
+ *            PRESETS the tempo (the ARP page's BPM: one for all)
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -854,7 +855,10 @@ static void draw_karma(void)
                     sys.k_on ? ux_mix(T_BG, T_THEME, 40 + (int32_t)i * 2) : T_DIM);
         }
     }
-    str_cpy(a, sys.k_on ? (arp_ext() ? "MIDI CLOCK  " : "INTERNAL  ") : "OFF: PRESS SEQ  ", sizeof a);
+    str_cpy(a, !sys.k_on ? "OFF  " : arp_ext() ? "EXT " : "", sizeof a);
+    fmt_int(v, (int32_t)(arp_ext() ? arp_bpm_now() : sys.arp_bpm));
+    ui_cat(a, sizeof a, v);
+    ui_cat(a, sizeof a, " BPM   ");
     fmt_int(v, (int32_t)len);
     ui_cat(a, sizeof a, v);
     ui_cat(a, sizeof a, G->res == 3u ? " x 1/32" : G->res == 6u ? " x 1/16" : G->res == 8u ? " x 1/8T" :
@@ -1651,6 +1655,12 @@ static void ui_input(void)
             ui_cat(t, sizeof t, " CIRCUIT");
         ui_say(t);
     }
-    if ((s = panel_enc(EN_PRESET)) != 0)
+    if ((s = panel_enc(EN_PRESET)) != 0 && sys.page == 9u) {   /* KARMA: PRESETS is the tempo (the ARP page's BPM) */
+        sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
+        str_cpy(t, arp_ext() ? "MIDI CLOCK: BPM " : "BPM ", sizeof t);
+        fmt_int(v, sys.arp_bpm);
+        ui_cat(t, sizeof t, v);
+        ui_say(t);
+    } else if (s)
         preset_load((uint32_t)((int32_t)sys.preset + (int32_t)NPRESETS * 8 + s));
 }
