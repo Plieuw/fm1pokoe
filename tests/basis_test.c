@@ -336,6 +336,7 @@ int main(int argc, char **argv)
             sys.fx_mix = 0; sys.fx_model = RZ_MODAL; sys.fx_struct = 70; sys.fx_damp = 100;
             c1_mode = mode;
             sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30; sys.osc = 0;
+            sys.mod_depth = 0;
             for (b = 0; b < 2000u; b++) {
                 if (b % 250u == 0u)
                     for (j = 0; j < sizeof CH; j++)
@@ -349,7 +350,11 @@ int main(int argc, char **argv)
                 if (b == 1400u)
                     sys.osc = 7;                 /* noise programs under held notes: GRAIN GLITCH (its buffer), */
                 if (b == 1700u)
-                    sys.osc = 14;                /* SINE FM CLUST */
+                    sys.osc = 14;                /* SINE FM CLUST, */
+                if (b == 1850u) {
+                    sys.mod_depth = 90;          /* the FM oscillator on it */
+                    sys.mod_wave = 70; sys.mod_ratio = 9;
+                }
                 synth_render(buf, CTL);
                 for (j = 0; j < 2u * CTL; j++) {
                     if (mode == 0)
@@ -364,6 +369,7 @@ int main(int argc, char **argv)
         c1_mode = 0;
         sys.osc = 0;
         sys.fx_mix = 0;
+        sys.mod_depth = 0;
         printf("   (blocks with voices on the second core: %u of 2000)\n", blocks);
         check("second core (at once, a thread, one that gives up): the same output bit for bit", same && blocks > 1000u);
     }
@@ -429,6 +435,58 @@ int main(int argc, char **argv)
         synth_kill();
         sys.osc = 0;
         sys.np_x = sys.np_y = sys.np_level = 64;
+    }
+
+    /* the FM oscillator (MOD): at DEPTH 0 its other knobs change nothing, bit for bit; at full DEPTH, every wave and
+     * the lowest and highest ratio, every program changes, sounds and stays bounded without DC */
+    {
+        static const uint8_t CH[3] = {48, 60, 67};
+        static int32_t ref[2 * CTL * 150];
+        uint32_t a, wv, rt, j, b, okk = 1, same = 1, moved = 1;
+        sys.attack = 0; sys.decay = 64; sys.sustain = 127; sys.release = 20; sys.ring = 50;
+        sys.fx_mix = 0; sys.sh_mix = 0; sys.np_level = 64; sys.np_x = sys.np_y = 64;
+        for (a = 0; a < NP_COUNT; a++) {
+            for (wv = 0; wv < 6u; wv++) {
+                double e = 0, dc = 0;
+                int32_t pk = 0;
+                uint32_t diff = 0;
+                synth_kill(); memset(voice, 0, sizeof voice); rng_state = 0x1234567u;
+                sys.osc = (uint8_t)(a + 1u);
+                sys.mod_depth = wv < 2u ? 0 : 127;               /* 0, 1: off (the other knobs moved); 2..5: on */
+                sys.mod_wave = (uint8_t)(wv == 1u ? 127 : (wv - 2u) * 42u + (wv == 5u));
+                sys.mod_ratio = (uint8_t)(wv == 1u ? 15 : wv & 1u ? 0 : NP_NRATIO - 1u);
+                sys.mod_fine = wv == 1u ? 0 : 64;
+                for (j = 0; j < 3u; j++)
+                    synth_note_on(CH[j], 110);
+                for (b = 0; b < 150u; b++) {
+                    synth_render(buf, CTL);
+                    for (j = 0; j < CTL; j++) {
+                        int32_t v = buf[2 * j], av = v < 0 ? -v : v;
+                        if (wv == 0u) ref[b * 2u * CTL + j] = v;
+                        else if (wv == 1u) same &= ref[b * 2u * CTL + j] == v;
+                        else diff += ref[b * 2u * CTL + j] != v;
+                        if (b >= 50u) { e += (double)v * v; dc += v; pk = av > pk ? av : pk; }
+                    }
+                }
+                e = sqrt(e / (100.0 * CTL));
+                dc /= 100.0 * CTL;
+                if (wv >= 2u && diff < CTL * 10u)
+                    moved = 0, printf("   FM: %s wave %u changes only %u samples\n", NP_NAME[a], wv, diff);
+                if (e < 50 || fabs(dc) > 3000 || pk > 32767) {
+                    printf("   FM: %s wave %u: RMS %.0f DC %.0f peak %d\n", NP_NAME[a], wv, e, dc, pk);
+                    okk = 0;
+                }
+            }
+        }
+        for (rt = 0; rt < 128u; rt++)                            /* the morph: continuous, bounded */
+            for (j = 0; j < 64u; j++) {
+                int32_t w0 = np_wave(j << 26, rt), w1 = np_wave(j << 26, rt + 1u);   /* (the knob turned a step) */
+                okk &= w0 >= -32768 && w0 <= 32767 && (rt == 127u || abs(w1 - w0) < 3000);
+            }
+        check("FM oscillator: DEPTH 0 bit for bit off", same);
+        check("... full DEPTH, every wave and ratio: each program changes, sounds, bounded, no DC", okk && moved);
+        synth_kill();
+        sys.osc = 0; sys.mod_depth = 0; sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64;
     }
 
     /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */

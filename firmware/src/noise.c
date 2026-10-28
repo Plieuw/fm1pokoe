@@ -16,6 +16,10 @@
  * faster in grains), a flanger, a 16-bit LFSR, sample & hold, a bit crusher and a small "dirty" reverb (three allpasses
  * and a damped comb). Signals Q15. Each voice has 4096 samples of buffer in the pool (np_buf).
  *
+ * The FM oscillator (the MOD page): per voice a modulator at a ratio of the note, its wave morphing sine ->
+ * triangle -> saw -> square, moves the pitch of every audio-rate oscillator of the program, linear FM (1 + m x depth;
+ * no through zero: down to 1/16 of the frequency). At DEPTH 0 nothing of it runs.
+ *
  *   np_start(k, seed)                 a voice's state at a new note
  *   np_render(k, alg, inc, out, n)    voice k, program alg (0..29), the note's increment: n samples Q15 into out */
 #define NP_COUNT 30
@@ -76,6 +80,7 @@ typedef struct {
     int16_t wt[64];                              /* ARRAY ROCKS: the wavetable */
     int32_t hist[16];                            /* the last outputs every 4 samples (the screen's trace) */
     uint32_t hn;
+    uint32_t mph;                                /* the FM oscillator's phase */
 } np_t;
 static np_t np_state[NVOICE];
 
@@ -129,6 +134,32 @@ static inline uint32_t np_ratio(int32_t k, int32_t lo_oct, int32_t hi_oct)
     return px_exp2(lo_oct * 65536 + (int32_t)(((int64_t)(hi_oct - lo_oct) * 65536 * k) / 32767));
 }
 static inline int32_t np_clip(int32_t v) { return v > 32767 ? 32767 : v < -32767 ? -32767 : v; }
+
+/* the FM oscillator's wave at phase ph, Q15: w 0..127 morphs sine (0) -> triangle (42) -> saw (85) -> square (127),
+ * each crossfaded into the next; all rise through 0 at phase 0 */
+static uint32_t np_morph(uint32_t w)             /* the knob -> segment << 8 | fraction (0..255): the corners at */
+{                                                /* 0, 42, 85, 127 exactly */
+    w = w > 127u ? 127u : w;
+    return w < 42u ? w * 256u / 42u : w < 85u ? 256u + (w - 42u) * 256u / 43u : w < 127u ? 512u + (w - 85u) * 256u / 42u
+                                                                                       : 768u;
+}
+static int32_t np_wave(uint32_t ph, uint32_t w)
+{
+    int32_t a, b;
+    uint32_t t = np_morph(w), f = t & 255u;
+    switch (t >> 8) {
+    default: a = np_sin(ph); b = np_tri(ph + 0x40000000u); break;
+    case 1: a = np_tri(ph + 0x40000000u); b = np_saw(ph + 0x80000000u); break;
+    case 2: a = np_saw(ph + 0x80000000u); b = np_sq(ph); break;
+    case 3: return np_sq(ph);
+    }
+    return a + (((b - a) * (int32_t)f) >> 8);
+}
+#define NP_NRATIO 16
+static const char *const NP_RATIO_NAME[NP_NRATIO] = {"1/4", "1/2", "3/4", "1", "5/4", "3/2", "2", "5/2", "3", "7/2",
+                                                     "4", "5", "6", "7", "8", "11"};
+static const uint32_t NP_RATIO[NP_NRATIO] = {16384, 32768, 49152, 65536, 81920, 98304, 131072, 163840, 196608,
+                                             229376, 262144, 327680, 393216, 458752, 524288, 720896};   /* Q16 */
 /* a random walker in a box of +-box (Q16): steps of +-step, reflected at the walls */
 static inline void np_walk(int32_t *w, uint32_t *rng, int32_t step, int32_t box)
 {
@@ -207,8 +238,23 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     int16_t *b = np_buf[k];
     int32_t x = (int32_t)(sys.np_x & 127u) * 258, y = (int32_t)(sys.np_y & 127u) * 258;   /* Q15 0 .. 32766 */
     uint32_t i, j;
+    uint32_t fk[CTL], fm = sys.mod_depth & 127u;
     if (inc > 0x20000000u)                       /* (an eighth of the rate: room for the ratios above it) */
         inc = 0x20000000u;
+    if (n > CTL)
+        n = CTL;
+    if (fm) {   /* the FM oscillator: per sample the factor on every audio-rate increment, Q16 */
+        uint32_t mi = np_mul(np_mul(inc, NP_RATIO[sys.mod_ratio % NP_NRATIO]),
+                             px_exp2(((int32_t)(sys.mod_fine & 127u) - 64) * 1365 / 16)),   /* +-1 semitone */
+                 wv = sys.mod_wave & 127u;
+        int32_t d = (int32_t)(fm * fm * 3u / 2u);   /* depth^2 x 1.5: 0 .. 24193 (Q14: 0 .. 1.48) */
+        for (i = 0; i < n; i++) {
+            int32_t f = 65536 + ((np_wave(S->mph, wv) * d) >> 13);
+            S->mph += mi;
+            fk[i] = f < 4096 ? 4096u : (uint32_t)f;
+        }
+    }
+#define NPF(v) (fm ? np_mul((v), fk[i]) : (v))   /* an audio-rate increment, the FM on it */
     switch (alg) {
     /* ---------------------------------------------------------- A: textures --- */
     case 0: {   /* RADIO OH NO: four squares cross-modulating in pairs, summed */
@@ -216,10 +262,10 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         uint32_t pw = 0x80000000u + (uint32_t)((y - 16384) * 98304);
         for (i = 0; i < n; i++) {
             int32_t o0 = np_sq(S->ph[0]), o1 = np_pulse(S->ph[1], pw), o2 = np_sq(S->ph[2]), o3 = np_pulse(S->ph[3], pw);
-            S->ph[0] += np_fm(inc, o1, 16384);
-            S->ph[1] += np_fm(i1, o0, 16384);
-            S->ph[2] += np_fm(i2, o3, 16384);
-            S->ph[3] += np_fm(i3, o2, 16384);
+            S->ph[0] += NPF(np_fm(inc, o1, 16384));
+            S->ph[1] += NPF(np_fm(i1, o0, 16384));
+            S->ph[2] += NPF(np_fm(i2, o3, 16384));
+            S->ph[3] += NPF(np_fm(i3, o2, 16384));
             out[i] = (o0 + o1 + o2 + o3) / 4;
         }
         break;
@@ -230,10 +276,10 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
             int32_t m = 0, s, d, fl;
             for (j = 0; j < 4u; j++) {
                 np_walk(&S->walk[j], &S->rng, step, 65536);
-                S->mp[j] += np_mul(inc, (uint32_t)(65536 + (S->walk[j] >> 1)) * (j + 1u) / 2u);
+                S->mp[j] += NPF(np_mul(inc, (uint32_t)(65536 + (S->walk[j] >> 1)) * (j + 1u) / 2u));
                 m += np_pulse(S->mp[j], 0x80000000u);
             }
-            S->ph[0] += np_fm(inc, m / 4, 20000);
+            S->ph[0] += NPF(np_fm(inc, m / 4, 20000));
             s = np_sin(S->ph[0]);
             b[NB_FLANGE + (S->fw & (NL_FLANGE - 1u))] = (int16_t)s;
             S->ph[1] += 3000u * 97u;                 /* the flanger's LFO, ~0.3 Hz */
@@ -250,8 +296,8 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t o0 = alg == 2u ? np_sq(S->ph[0]) : np_sin(S->ph[0]);
             int32_t o1 = alg == 2u ? np_sq(S->ph[1]) : np_sin(S->ph[1]);
-            S->ph[0] += np_fm(inc, o1, y);
-            S->ph[1] += np_fm(i1, o0, y);
+            S->ph[0] += NPF(np_fm(inc, o1, y));
+            S->ph[1] += NPF(np_fm(i1, o0, y));
             out[i] = (o0 * o1) >> 15;
         }
         break;
@@ -260,10 +306,10 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         uint32_t r = 65536u + (uint32_t)x * 4u, i1 = np_mul(inc, r), i2 = np_mul(i1, r), i3 = np_mul(i2, r);
         for (i = 0; i < n; i++) {
             int32_t w0 = np_sin(S->ph[0]), w1 = np_saw(S->ph[1]), w2 = np_sq(S->ph[2]), w3 = np_tri(S->ph[3]), p;
-            S->ph[0] += np_fm(inc, w3, y);
-            S->ph[1] += np_fm(i1, w0, y);
-            S->ph[2] += np_fm(i2, w1, y);
-            S->ph[3] += np_fm(i3, w2, y);
+            S->ph[0] += NPF(np_fm(inc, w3, y));
+            S->ph[1] += NPF(np_fm(i1, w0, y));
+            S->ph[2] += NPF(np_fm(i2, w1, y));
+            S->ph[3] += NPF(np_fm(i3, w2, y));
             p = (w0 * w1) >> 15;
             p = (p * w2) >> 15;
             out[i] = (p * w3) >> 14;
@@ -275,8 +321,8 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         int32_t fold = 32768 + y * 8;                /* gain 1 .. 9 before the fold, Q15 */
         for (i = 0; i < n; i++) {
             int32_t m = np_sq(S->ph[1]), s, v;
-            S->ph[1] += i1;
-            S->ph[0] += np_fm(inc, m, 16384);
+            S->ph[1] += NPF(i1);
+            S->ph[0] += NPF(np_fm(inc, m, 16384));
             s = (int32_t)(((int64_t)np_sin(S->ph[0]) * fold) >> 15);
             v = np_tri((uint32_t)s * 65536u + 0x40000000u);   /* the fold: a triangle of the scaled wave */
             out[i] = np_bp(&S->lo[0], &S->bd[0], v, np_mul(inc * 3u, (uint32_t)(65536 + np_noise(&S->rng))), 6000) * 2;
@@ -291,7 +337,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t o = alg == 8u ? np_saw(S->ph[0]) : np_sq(S->ph[0]);
             int32_t g = np_grain(S, b, o, 98304u, len);   /* read back 1.5x: a fifth up, glitching at each grain */
-            S->ph[0] += np_fm(inc, g, y);
+            S->ph[0] += NPF(np_fm(inc, g, y));
             out[i] = alg == 6u ? (o * g) >> 15 : g;     /* (XOR of two squares: their product) */
         }
         break;
@@ -300,9 +346,9 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         uint32_t base = np_mul(inc >> 6, np_ratio(x, -2, 3)), pw = 0x08000000u + (uint32_t)y * 0x7000u;
         for (i = 0; i < n; i++) {
             int32_t s = 0;
-            S->mp[0] += base;
-            S->mp[1] += np_mul(base, 89784u);    /* x 1.37 */
-            S->mp[2] += np_mul(base, 117309u);   /* x 1.79 */
+            S->mp[0] += NPF(base);
+            S->mp[1] += NPF(np_mul(base, 89784u));    /* x 1.37 */
+            S->mp[2] += NPF(np_mul(base, 117309u));   /* x 1.79 */
             for (j = 0; j < 3u; j++)
                 if (S->mp[j] < pw)
                     s += np_noise(&S->rng);
@@ -316,7 +362,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t s = 0;
             for (j = 0; j < nv; j++) {
-                S->ph[j] += np_mul(inc, 65536u + sp * j);
+                S->ph[j] += NPF(np_mul(inc, 65536u + sp * j));
                 s += np_saw(S->ph[j]);
             }
             out[i] = s / (int32_t)(2u + nv / 2u);
@@ -328,7 +374,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t s = 0;
             for (j = 0; j < 6u; j++) {
-                S->ph[j] += np_mul(inc, (uint32_t)(65536 + ((int32_t)j * 2 - 5) * (x >> 6)));
+                S->ph[j] += NPF(np_mul(inc, (uint32_t)(65536 + ((int32_t)j * 2 - 5) * (x >> 6))));
                 s += np_pulse(S->ph[j], pw);
             }
             out[i] = s / 4;
@@ -340,7 +386,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     case 14: {  /* TRI FM CLUST: six detuned triangles, each FMed by its own sine */
         for (i = 0; i < n; i++) {
             int32_t s = 0, slow;
-            S->mp[5] += inc >> 4;
+            S->mp[5] += NPF(inc >> 4);
             slow = np_sin(S->mp[5]);
             for (j = 0; j < 6u; j++) {
                 uint32_t ci = np_mul(inc, (uint32_t)(65536 + ((int32_t)j * 2 - 5) * (x >> 6)));
@@ -348,10 +394,10 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
                 if (alg == 12u)
                     m = slow;
                 else {
-                    S->mp[j] += np_mul(ci, NP_MODR[j]);
+                    S->mp[j] += NPF(np_mul(ci, NP_MODR[j]));
                     m = np_sin(S->mp[j]);
                 }
-                S->ph[j] += np_fm(ci, m, y);
+                S->ph[j] += NPF(np_fm(ci, m, y));
                 s += alg == 14u ? np_tri(S->ph[j]) : np_sin(S->ph[j]);
             }
             out[i] = s / 4;
@@ -364,12 +410,12 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t s = 0, m;
             if (alg == 15u) {
-                S->mp[0] += inc >> 1;
+                S->mp[0] += NPF(inc >> 1);
                 m = np_sin(S->mp[0]);
             } else
                 m = np_noise(&S->rng);
             for (j = 0; j < 16u; j++) {
-                S->ph[j] += np_fm(np_mul(inc, 65536u + sp * NP_PRIMES[j]), m, y >> 1);
+                S->ph[j] += NPF(np_fm(np_mul(inc, 65536u + sp * NP_PRIMES[j]), m, y >> 1));
                 s += alg == 15u ? np_saw(S->ph[j]) : np_tri(S->ph[j]);
             }
             out[i] = s / 6;
@@ -394,7 +440,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t s = 0;
             for (j = 0; j < 16u; j++) {
-                S->ph[j] += ci[j];
+                S->ph[j] += NPF(ci[j]);
                 s += np_saw(S->ph[j]);
             }
             S->lp += (int32_t)(((int64_t)(s / 6 - S->lp) * tone) >> 15);
@@ -410,7 +456,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
             lfo = np_sin(S->mp[0]);
             for (j = 0; j < 16u; j++) {
                 int32_t dr = (int32_t)(((int64_t)lfo * y * (int32_t)(j + 1u)) >> 30);   /* up to +-16 / 65536 x j */
-                S->ph[j] += np_mul(inc, (uint32_t)(65536 + (int32_t)(sp * j) + dr * 4));
+                S->ph[j] += NPF(np_mul(inc, (uint32_t)(65536 + (int32_t)(sp * j) + dr * 4)));
                 s += np_sq(S->ph[j]);
             }
             out[i] = s / 8;
@@ -422,7 +468,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             uint32_t prev = S->ph[0];
             int32_t bit = S->lfsr & 1u ? 32767 : -32767, w;
-            S->ph[0] += np_fm(inc * 4u, bit, x);
+            S->ph[0] += NPF(np_fm(inc * 4u, bit, x));
             if (S->ph[0] < prev)                     /* a clock: shift the LFSR (Galois, taps 16 14 13 11) */
                 S->lfsr = (S->lfsr >> 1) ^ ((0u - (S->lfsr & 1u)) & 0xB400u);
             w = np_verb(S, b, bit / 2, 16000 + y / 3);
@@ -435,8 +481,8 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t o0 = np_pulse(S->ph[0], 0x80000000u + (uint32_t)(S->last[1] * (y >> 2))),
                     o1 = np_pulse(S->ph[1], 0x80000000u + (uint32_t)(S->last[0] * (y >> 2)));
-            S->ph[0] += np_fm(inc, o1, y >> 1);
-            S->ph[1] += np_fm(i1, o0, y >> 1);
+            S->ph[0] += NPF(np_fm(inc, o1, y >> 1));
+            S->ph[1] += NPF(np_fm(i1, o0, y >> 1));
             S->last[0] = o0;
             S->last[1] = o1;
             out[i] = (o0 + o1) / 2;
@@ -451,7 +497,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
                 int32_t o;
                 if (!(i & 7u))
                     np_walk(&S->walk[j], &S->rng, 600, box);
-                S->ph[j] += np_fm(np_mul(inc, (uint32_t)(65536 + S->walk[j])), prev, y >> 2);
+                S->ph[j] += NPF(np_fm(np_mul(inc, (uint32_t)(65536 + S->walk[j])), prev, y >> 2));
                 o = np_pulse(S->ph[j], 0x80000000u);
                 s += o;
                 prev = o;
@@ -466,7 +512,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             uint32_t prev = S->ph[0];
             int32_t w;
-            S->ph[0] += ri;
+            S->ph[0] += NPF(ri);
             if (S->ph[0] < prev)
                 S->sh = np_noise(&S->rng);
             w = np_verb(S, b, S->sh / 2, 26000);
@@ -478,8 +524,8 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         uint32_t i1 = np_mul(inc, np_ratio(x, -2, 2)), every = 4096u - (uint32_t)y / 9u;
         for (i = 0; i < n; i++) {
             int32_t m = np_sin(S->mp[0]);
-            S->mp[0] += i1;
-            S->ph[0] += np_fm(inc, m, 16384);
+            S->mp[0] += NPF(i1);
+            S->ph[0] += NPF(np_fm(inc, m, 16384));
             out[i] = S->wt[S->ph[0] >> 26];
             if ((uint32_t)++S->cnt >= every) {       /* scramble a step */
                 S->cnt = 0;
@@ -496,7 +542,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         for (i = 0; i < n; i++) {
             int32_t in, s = 0;
             uint32_t prev = S->ph[0];
-            S->ph[0] += inc;
+            S->ph[0] += NPF(inc);
             if (alg == 25u) {
                 if (S->ph[0] < prev)
                     S->sh = np_noise(&S->rng);
@@ -516,7 +562,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     case 27: {  /* SATAN WORKOUT: white noise FMs a sine, then down-sampled and driven into a clip */
         uint32_t every = 1u + (uint32_t)y / 1100u;
         for (i = 0; i < n; i++) {
-            S->ph[0] += np_fm(inc, np_noise(&S->rng), x);
+            S->ph[0] += NPF(np_fm(inc, np_noise(&S->rng), x));
             if ((uint32_t)++S->cnt >= every) {
                 S->cnt = 0;
                 S->hold = np_clip(np_sin(S->ph[0]) * 4);
@@ -533,7 +579,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
             for (j = 0; j < 9u; j++) {
                 if (!(i & 7u))
                     np_walk(&S->walk[j], &S->rng, 500, box);
-                S->ph[j] += np_mul(inc, (uint32_t)(65536 + S->walk[j]) * (1u + j % 3u) / 2u);
+                S->ph[j] += NPF(np_mul(inc, (uint32_t)(65536 + S->walk[j]) * (1u + j % 3u) / 2u));
                 s += np_pulse(S->ph[j], 0x80000000u + (uint32_t)S->walk[j] * 16384u);
             }
             s /= 4;
@@ -551,7 +597,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
             for (j = 0; j < 4u; j++) {
                 if (!(i & 3u))
                     np_walk(&S->walk[j], &S->rng, 900, box);
-                S->ph[j] += np_mul(inc, (uint32_t)(65536 + S->walk[j]) * (j + 2u) / 3u);
+                S->ph[j] += NPF(np_mul(inc, (uint32_t)(65536 + S->walk[j]) * (j + 2u) / 3u));
                 s += np_pulse(S->ph[j], 0x80000000u + (uint32_t)S->walk[(j + 1u) & 3u] * 16384u);
             }
             w = np_verb(S, b, s / 4, 12000 + y / 2);
@@ -560,6 +606,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         break;
     }
     }
+#undef NPF
     {   /* the level */
         int32_t g = (int32_t)NP_GAIN[alg % NP_COUNT] * (int32_t)(sys.np_level & 127u) / 64;
         for (i = 0; i < n; i++)

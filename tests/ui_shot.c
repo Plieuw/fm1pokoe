@@ -212,6 +212,30 @@ int main(int argc, char **argv)
     sys.view = V_TIME;
     frames(8);
     bad |= shot(dir, "h_noise_time");
+    sys.osc = 14;                        /* the MOD page: off, then the waves at a few ratios and depths */
+    edges = btn_bit(B_HOME);
+    ui_input();
+    frames(4);
+    bad |= shot(dir, "i_mod_off");
+    {
+        static const uint8_t M[4][3] = {{0, 6, 60}, {42, 3, 90}, {85, 9, 110}, {127, 1, 127}};
+        for (i = 0; i < 4u; i++) {
+            sys.mod_wave = M[i][0]; sys.mod_ratio = M[i][1]; sys.mod_depth = M[i][2];
+            ui_event_ms = 0;
+            frames(6);
+            snprintf(name, sizeof name, "i_mod_%u", i);
+            bad |= shot(dir, name);
+        }
+    }
+    sys.mod_wave = 64;                   /* a morph between two */
+    frames(3);
+    bad |= shot(dir, "i_mod_morph");
+    sys.osc = 0;
+    frames(3);
+    bad |= shot(dir, "i_mod_chua");
+    sys.mod_depth = 0;
+    edges = btn_bit(B_HOME);
+    ui_input();
     synth_kill();
     preset_load(0);
     ui_force = 1;

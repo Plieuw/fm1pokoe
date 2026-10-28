@@ -38,12 +38,12 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 2 — SHAPE | β 10..34: lage waarden trage, ronde spiralen; hoge waarden snelle, strakke |
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
-| HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING) |
+| HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING); nog een keer: de MOD-pagina (de FM-oscillator), nog een keer: terug |
 | ENV | wisselt naar de ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings, 2× de shimmer reverb, 3× terug naar HOME |
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · RING (ENV) · POSITION (resonator) · TONE (shimmer) |
-| ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
-| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK |
+| ALGORITHM | op HOME en MOD de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
+| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | tweede core aan/uit (vanaf de volgende start) |
@@ -67,6 +67,19 @@ samples eerder, een "attractor" van de ruis; met SELECT op TIME zie je de golfvo
 
 Ze zijn op hetzelfde niveau gezet als het circuit (bij X = Y = 64, gemeten in de test) en blijven in elke hoek van X en
 Y begrensd en zonder DC.
+
+**De FM-oscillator (MOD).** Druk op HOME terwijl je al op HOME staat: de MOD-pagina. Per stem een extra oscillator
+die de toonhoogte van het noise-programma moduleert (lineaire FM): alle oscillators in het programma bewegen mee, dus
+ook de clusters. Hij werkt op alle 30 programma's, niet op het Chua-circuit.
+
+| Bediening | Functie |
+| --- | --- |
+| KNOB 1 WAVE | de golfvorm, morphend: sine (0) → triangle (42) → saw (85) → square (127) |
+| KNOB 2 RATIO | de frequentie ten opzichte van de noot, in stappen: 1/4, 1/2, 3/4, 1, 5/4, 3/2, 2, 5/2, 3, 7/2, 4, 5, 6, 7, 8, 11 |
+| KNOB 3 DEPTH | hoe diep: 0 = uit (rekent dan niet), 127 = ±150 % van de frequentie (onder nul stopt hij op 1/16) |
+| KNOB 4 FINE | ±1 halve toon ontstemd: langzaam zwevende FM |
+
+Het scherm toont links de golfvorm en rechts een sinus die erdoor gemoduleerd wordt (twee periodes van de noot).
 
 **De low pass gate.** Op de ENV-pagina is de gate een rond rood lampje (het LED van een vactrol): het brandt fel als de gate open staat en dimt mee met de envelope; ernaast de cutoff. De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt
 de envelope snel omhoog (~2 ms) en trager omlaag (~30 ms), en zet zowel het volume als de cutoff (25 Hz .. 15 kHz). Het

@@ -10,6 +10,9 @@
  *            KNOB 4 RING    the low pass gate's resonance
  *   NOISE    KNOB 1 X, KNOB 2 Y (the program's two controls), KNOB 3 LEVEL, KNOB 4 RING; drawn: the output against
  *            itself a moment ago (its "attractor")
+ *   MOD      (HOME again) the FM oscillator on the noise programs: KNOB 1 WAVE (sine, triangle, saw, square,
+ *            morphing), KNOB 2 RATIO to the note, KNOB 3 DEPTH (0: off), KNOB 4 FINE; ALGORITHM the oscillator;
+ *            drawn: its wave and a sine it modulates
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices);
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
@@ -44,6 +47,7 @@ typedef struct {
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* SHIMMER; MIX 0 (left out): off */
     uint8_t osc, np_x, np_y;                     /* the oscillator: 0 (left out) the circuit, 1..30 a noise program */
+    uint8_t mod_wave, mod_ratio, mod_depth;      /* its FM oscillator (DEPTH 0, left out: off; FINE 0 cents) */
 } preset_t;
 #define NZ(a, b) (1 + (a) * 10 + (b))            /* noise program A0 = NZ(0, 0) .. C9 = NZ(2, 9) */
 #define NOFX 0, 0, 0, 0, 0, 0
@@ -80,6 +84,13 @@ static const preset_t PRESETS[] = {
      NOSH, NZ(1, 0), 30, 80},                                                              /* into the bell */
     {"SATAN WORKOUT", 85, 76, 0, 2, 76, 100, 74, 60, NOFX, NOSH, NZ(2, 7), 80, 80},       /* harsh and wild */
     {"BITCRUSH WALK", 85, 76, 0, 0, 64, 60, 60, 50, NOFX, NOSH, NZ(2, 8), 64, 100},       /* a crushed random walk */
+    /* the FM oscillator on them (the MOD page) */
+    {"FM BELL CLUSTER", 85, 76, 0, 0, 70, 30, 90, 30, RZ_MODAL, 70, 100, 100, 12, 50,    /* sines FMed at 7/2: */
+     NOSH, NZ(1, 3), 20, 30, 0, 9, 70},                                                    /* metal, rung */
+    {"SQUARE GRAINS", 85, 76, 0, 0, 64, 80, 64, 50, NOFX, NOSH, NZ(0, 7), 80, 30, 127, 1, 60},   /* a sub square */
+    {"SAW RADIO", 85, 76, 0, 4, 70, 100, 70, 40, NOFX, NOSH, NZ(0, 0), 64, 64, 85, 6, 50},   /* a saw an octave up */
+    {"TRI WOBBLE PAD", 85, 76, 0, 80, 96, 110, 100, 40, NOFX,                             /* a slow triangle */
+     110, 100, 80, 70, SI_FIFTH, 90, NZ(1, 7), 40, 50, 42, 0, 40},                         /* under the cluster */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -116,6 +127,10 @@ static void preset_load(uint32_t i)
         sys.np_x = p->np_x;
         sys.np_y = p->np_y;
         sys.np_level = 64;
+        sys.mod_wave = p->mod_wave;
+        sys.mod_ratio = (uint8_t)(p->mod_ratio % NP_NRATIO);
+        sys.mod_depth = p->mod_depth;
+        sys.mod_fine = 64;
     }
 }
 static int preset_edited(void)
@@ -127,11 +142,13 @@ static int preset_edited(void)
            sys.fx_bright != p->fx_bright || sys.fx_damp != p->fx_damp || sys.fx_pos != p->fx_pos)) ||
            sys.sh_mix != p->sh_mix || (p->sh_mix && (sys.sh_size != p->sh_size || sys.sh_decay != p->sh_decay ||
            sys.sh_shimmer != p->sh_shimmer || sys.sh_interval != p->sh_interval || sys.sh_tone != p->sh_tone)) ||
-           sys.osc != p->osc || (p->osc && (sys.np_x != p->np_x || sys.np_y != p->np_y || sys.np_level != 64u));
+           sys.osc != p->osc || (p->osc && (sys.np_x != p->np_x || sys.np_y != p->np_y || sys.np_level != 64u ||
+           sys.mod_depth != p->mod_depth || (p->mod_depth && (sys.mod_wave != p->mod_wave ||
+           sys.mod_ratio != p->mod_ratio || sys.mod_fine != 64u))));
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485536u      /* "CHU6": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485537u      /* "CHU7": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -139,6 +156,7 @@ typedef struct {
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
     uint8_t osc, np_x, np_y, np_level;
+    uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -178,6 +196,10 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.np_x = (uint8_t)(s.np_x & 127u);
         sys.np_y = (uint8_t)(s.np_y & 127u);
         sys.np_level = (uint8_t)(s.np_level & 127u);
+        sys.mod_wave = (uint8_t)(s.mod_wave & 127u);
+        sys.mod_ratio = (uint8_t)(s.mod_ratio % NP_NRATIO);
+        sys.mod_depth = (uint8_t)(s.mod_depth & 127u);
+        sys.mod_fine = (uint8_t)(s.mod_fine & 127u);
     }
 }
 
@@ -216,6 +238,10 @@ static int settings_save(void)     /* 0 = saved */
     s.np_x = sys.np_x;
     s.np_y = sys.np_y;
     s.np_level = sys.np_level;
+    s.mod_wave = sys.mod_wave;
+    s.mod_ratio = sys.mod_ratio;
+    s.mod_depth = sys.mod_depth;
+    s.mod_fine = sys.mod_fine;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -602,6 +628,65 @@ static void draw_sh(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the FM oscillator's wave: its name at the four corners, between them the two and how far ("SIN>TRI 40") */
+static void mod_wave_name(char *d, uint32_t n, uint32_t w)
+{
+    static const char *const W[4] = {"SINE", "TRI", "SAW", "SQUARE"}, *const S2[4] = {"SIN", "TRI", "SAW", "SQR"};
+    uint32_t t = np_morph(w & 127u), k = t >> 8, f = (t & 255u) * 100u / 256u;
+    char v[8];
+    if (k >= 3u || !f) {
+        str_cpy(d, W[k > 3u ? 3u : k], n);
+        return;
+    }
+    str_cpy(d, S2[k], n);
+    ui_cat(d, n, ">");
+    ui_cat(d, n, S2[k + 1u]);
+    ui_cat(d, n, " ");
+    fmt_int(v, (int32_t)f);
+    ui_cat(d, n, v);
+}
+
+/* the MOD page's picture: left one cycle of the FM oscillator's wave, right a sine it modulates (two of the note's
+ * cycles, at the ratio, the depth and the fine tuning set) */
+static void draw_mod(void)
+{
+    const int32_t top = 10, h = 40, mid = top + h, w = 104;
+    int32_t i, px = 0, py = mid;
+    uint32_t wv = sys.mod_wave & 127u, on = sys.mod_depth && sys.osc;
+    cv_begin(240, PLOT_H, T_BG);
+    cv_rect(8, mid, w, 1, T_LINE);
+    cv_rect(128, mid, w, 1, T_LINE);
+    for (i = 0; i <= w; i++) {                   /* the wave */
+        int32_t y = mid - np_wave((uint32_t)i * (0xFFFFFFFFu / (uint32_t)w), wv) * h / 32768;
+        if (i)
+            cv_line(8 + px, py, 8 + i, y, T_THEME);
+        px = i;
+        py = y;
+    }
+    {   /* the modulated sine: the note's phase advanced by (1 + m depth) a step, as noise.c does */
+        uint32_t ph = 0, mph = 0, base = 0xFFFFFFFFu / (uint32_t)w * 2u / 4u;   /* (4 steps a pixel) */
+        uint32_t mi = np_mul(np_mul(base, NP_RATIO[sys.mod_ratio % NP_NRATIO]),
+                             px_exp2(((int32_t)(sys.mod_fine & 127u) - 64) * 1365 / 16));
+        int32_t d = (int32_t)((sys.mod_depth & 127u) * (sys.mod_depth & 127u) * 3u / 2u), k;
+        for (i = 0; i <= w; i++) {
+            int32_t y = mid - np_sin(ph) * h / 32768;
+            if (i)
+                cv_line(128 + px, py, 128 + i, y, on ? T_ACCENT : T_DIM);
+            px = i;
+            py = y;
+            for (k = 0; k < 4; k++) {
+                int32_t f = 65536 + ((np_wave(mph, wv) * d) >> 13);
+                ph += np_mul(base, f < 4096 ? 4096u : (uint32_t)f);
+                mph += mi;
+            }
+        }
+    }
+    cv_text(8, mid + h + 8, &AF_S, "MOD", T_DIM);
+    cv_text(128, mid + h + 8, &AF_S, !sys.osc ? "CHUA: NO FM" : sys.mod_depth ? "THE NOTE, FM" : "DEPTH OFF",
+            sys.osc && sys.mod_depth ? T_MID : T_DIM);
+    cv_blit(0, PLOT_Y);
+}
+
 /* the oscillator's short name: "CHUA", or the noise program's bank and number ("A5") */
 static void osc_code(char *d, uint32_t n, uint32_t osc)
 {
@@ -626,7 +711,26 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 0u && sys.osc) {
+    if (sys.page == 4u) {
+        mod_wave_name(b, sizeof b, sys.mod_wave);
+        ui_cell(T_C1, "1 WAVE", b);
+        str_cpy(b, "x ", sizeof b);
+        ui_cat(b, sizeof b, NP_RATIO_NAME[sys.mod_ratio % NP_NRATIO]);
+        ui_cell(T_C2, "2 RATIO", b);
+        if (sys.mod_depth)
+            fmt_int(v, sys.mod_depth);
+        else
+            str_cpy(v, "OFF", sizeof v);
+        ui_cell(T_C3, "3 DEPTH", v);
+        {
+            int32_t c = ((int32_t)(sys.mod_fine & 127u) - 64) * 100 / 63;
+            str_cpy(b, c > 0 ? "+" : "", sizeof b);
+            fmt_int(v, c);
+            ui_cat(b, sizeof b, v);
+            ui_cat(b, sizeof b, " CT");
+        }
+        ui_cell(T_C4, "4 FINE", b);
+    } else if (sys.page == 0u && sys.osc) {
         uint32_t alg = (sys.osc - 1u) % NP_COUNT;
         str_cpy(a, "1 ", sizeof a);
         ui_cat(a, sizeof a, NP_X[alg]);
@@ -729,6 +833,13 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, sys.fx_model % RZ_COUNT == RZ_SYMP ? "   AMT " : "   POS ");
             fmt_int(v, sys.fx_pos);
             ui_cat(a, sizeof a, v);
+        } else if (sys.page == 4u) {             /* MOD: what it modulates */
+            osc_code(a, sizeof a, sys.osc);
+            ui_cat(a, sizeof a, sys.osc ? " FM" : ": FM ON NOISE ONLY");
+            if (sys.osc) {
+                ui_cat(a, sizeof a, "   ");
+                ui_cat(a, sizeof a, NP_NAME[(sys.osc - 1u) % NP_COUNT]);
+            }
         } else if (sys.page) {
             str_cpy(a, "ENV   RING ", sizeof a);
             fmt_int(v, sys.ring);
@@ -760,6 +871,8 @@ static void ui_draw(void)
         draw_fx();
     else if (sys.page == 3u)
         draw_sh();
+    else if (sys.page == 4u)
+        draw_mod();
     else
         draw_plot();
     ui_force = 0;
@@ -802,7 +915,7 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_OCTDN]);
     if (sys.octave > 0)
         led_on(nl, panel.btn[B_OCTUP]);
-    if (sys.page == 0u)
+    if (sys.page == 0u || sys.page == 4u)
         led_on(nl, panel.btn[B_HOME]);
     if (sys.page == 1u)
         led_on(nl, panel.btn[B_ENV]);
@@ -854,11 +967,9 @@ static void ui_input(void)
         case B_SAVE:
             ui_say(settings_save() == 0 ? "SAVED" : flash_ok ? "SAVE FAILED" : "NO FLASH");
             break;
-        case B_HOME:                                    /* the circuit's page: the oscillator */
-            if (sys.page) {
-                sys.page = 0;
-                ui_force = 1;
-            }
+        case B_HOME:                                    /* the oscillator's page, again: the MOD page, again back */
+            sys.page = sys.page == 0u ? 4u : 0u;
+            ui_force = 1;
             break;
         case B_ENV:                                     /* the ENV page and back */
             sys.page = sys.page == 1u ? 0u : 1u;
@@ -881,7 +992,16 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 0u && sys.osc) {
+    if (sys.page == 4u) {
+        knob(&sys.mod_wave, EN_K1, 0);
+        if ((s = panel_enc(EN_K2)) != 0) {           /* (the ratio in steps, a detent each) */
+            sys.mod_ratio = (uint8_t)clamp((int32_t)sys.mod_ratio + s, 0, NP_NRATIO - 1);
+            ui_hot = 1;
+            ui_hot_ms = fm1_ms;
+        }
+        knob(&sys.mod_depth, EN_K3, 2);
+        knob(&sys.mod_fine, EN_K4, 3);
+    } else if (sys.page == 0u && sys.osc) {
         knob(&sys.np_x, EN_K1, 0);
         knob(&sys.np_y, EN_K2, 1);
         knob(&sys.np_level, EN_K3, 2);
@@ -931,7 +1051,7 @@ static void ui_input(void)
         str_cpy(t, "MODEL ", sizeof t);
         ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
         ui_say(t);
-    } else if (s && !sys.page) {                 /* HOME: the oscillator, CHUA and the 30 noise programs */
+    } else if (s && (!sys.page || sys.page == 4u)) {   /* HOME, MOD: the oscillator, CHUA, the 30 noise programs */
         sys.osc = (uint8_t)(((int32_t)sys.osc + (int32_t)(NP_COUNT + 1u) * 8 + s) % (int32_t)(NP_COUNT + 1u));
         osc_code(t, sizeof t, sys.osc);
         if (sys.osc) {
