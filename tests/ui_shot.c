@@ -156,6 +156,11 @@ int main(int argc, char **argv)
     synth_note_on(60, 100);
     frames(3);
     bad |= shot(dir, "e_env_pluck");
+    frames(12);
+    bad |= shot(dir, "e_env_dimming");
+    synth_kill();
+    frames(2);
+    bad |= shot(dir, "e_env_dark");
     synth_kill();
     sys.page = 0;
     ui_force = 1;

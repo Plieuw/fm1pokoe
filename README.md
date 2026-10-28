@@ -52,7 +52,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | USB | class-compliant MIDI + USB-audio-ingang (opnemen in je DAW) |
 | OCT- + OCT+ 5 s ingedrukt | UBOOT (update-modus) |
 
-**De low pass gate.** De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt
+**De low pass gate.** Op de ENV-pagina is de gate een rond rood lampje (het LED van een vactrol): het brandt fel als de gate open staat en dimt mee met de envelope; ernaast de cutoff. De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt
 de envelope snel omhoog (~2 ms) en trager omlaag (~30 ms), en zet zowel het volume als de cutoff (25 Hz .. 15 kHz). Het
 filter is een resonant state-variable low pass (zero-delay feedback, stabiel bij elke cutoff en resonantie). Met RING
 hoog rinkelt het: een "ping" als de gate opengaat, en een staart die doorklinkt terwijl hij dichtgaat. Probeer RING

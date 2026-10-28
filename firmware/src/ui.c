@@ -381,67 +381,76 @@ static void env_time(char *b, uint32_t n, uint32_t v)
     }
 }
 
-/* the ENV page's picture: the ADSR on a log-time axis (each segment as wide as its knob is far), the sustain held a
- * while, filled; the newest voice's gate level as a line, and the cutoff it sets */
+/* the ENV page's picture: the gate's lamp. A round red light, as the LED inside a vactrol, lit by the newest voice's
+ * gate control: full when the gate is open, dimming as the envelope falls (with the vactrol's own lag), a dark red
+ * glass when nothing sounds; its glow spreads with the level. Beside it the cutoff the gate sets now. */
+#define LAMP_X 120
+#define LAMP_Y 58
+#define LAMP_R 30                                /* the glass */
+#define LAMP_G 56                                /* the glow's reach */
+static uint16_t rgb565(int32_t r, int32_t g, int32_t b)
+{
+    r = clamp(r, 0, 255); g = clamp(g, 0, 255); b = clamp(b, 0, 255);
+    return (uint16_t)(((uint32_t)r >> 3) << 11 | ((uint32_t)g >> 2) << 5 | (uint32_t)b >> 3);
+}
 static void draw_env(void)
 {
-    const int32_t top = 10, bot = PLOT_H - 14, hh = bot - top;
-    int32_t wa = 8 + sys.attack * 2 / 5, wd = 8 + sys.decay * 2 / 5, wr = 8 + sys.release * 2 / 5, ws = 40;
-    int32_t x0 = (240 - (wa + wd + ws + wr)) / 2, x, prev = bot, sus = bot - (int32_t)sys.sustain * hh / 127;
-    uint16_t fill = ux_mix(T_BG, T_THEME, 18);
+    int32_t lv = sys.env_stage != 0u ? sys.env_view : 0;       /* 0..255 */
+    int32_t br = (T_BG >> 11 & 31) * 255 / 31, bg_ = (T_BG >> 5 & 63) * 255 / 63, bb = (T_BG & 31) * 255 / 31;
+    int32_t x, y, rr = LAMP_R * LAMP_R, gg = LAMP_G * LAMP_G;
+    /* the lit glass's colour at this level: dark red (60, 6, 4) .. bright red (255, 40, 24), the centre hot */
+    int32_t cr = 60 + 195 * lv / 255, cg = 6 + 34 * lv / 255, cb = 4 + 20 * lv / 255;
     cv_begin(240, PLOT_H, T_BG);
-    cv_rect(8, bot, 224, 1, T_LINE);
-    for (x = 0; x < wa + wd + ws + wr; x++) {                /* the curve, column by column */
-        int32_t y;
-        if (x < wa)
-            y = bot - hh * x / wa;
-        else if (x < wa + wd) {                              /* exponential: ~4 time constants across */
-            int32_t t = (x - wa) * 4096 / wd, e = 4096;
-            int32_t k;
-            for (k = 0; k < 4; k++)                          /* e = exp(-4 t) by four steps of (1 - t)^... */
-                e = e * (4096 - t) / 4096;
-            y = sus - (sus - top) * e / 4096;
-        } else if (x < wa + wd + ws)
-            y = sus;
-        else {
-            int32_t t = (x - wa - wd - ws) * 4096 / wr, e = 4096, k;
-            for (k = 0; k < 4; k++)
-                e = e * (4096 - t) / 4096;
-            y = bot - (bot - sus) * e / 4096;
+    for (y = LAMP_Y - LAMP_G; y <= LAMP_Y + LAMP_G; y++)
+        for (x = LAMP_X - LAMP_G; x <= LAMP_X + LAMP_G; x++) {
+            int32_t dx = x - LAMP_X, dy = y - LAMP_Y, d2 = dx * dx + dy * dy, r, g, b;
+            if (d2 > gg)
+                continue;
+            if (d2 <= rr) {
+                /* the glass: brighter in the middle (1 - 0.4 (d / R)^2), a soft rim, and a highlight up left */
+                int32_t sh = 256 - 102 * d2 / rr, hx = dx + 11, hy = dy + 12, h2 = hx * hx + hy * hy, spec;
+                r = cr * sh / 256; g = cg * sh / 256; b = cb * sh / 256;
+                if (lv > 160) {                                  /* very bright: the core whitens a little */
+                    int32_t w = (lv - 160) * (256 - 256 * d2 / rr) / 95;
+                    r += (255 - r) * w / 512; g += (220 - g) * w / 512; b += (200 - b) * w / 512;
+                }
+                spec = h2 < 64 ? (64 - h2) * (40 + lv / 2) / 64 : 0;   /* the glass's reflection, lit or not */
+                r += spec; g += spec * 3 / 4; b += spec * 3 / 4;
+                if (d2 > rr - 2 * LAMP_R) {                      /* the edge: antialiased against the glow */
+                    int32_t k = (rr - d2) * 256 / (2 * LAMP_R), a = lv * 7 / 10;   /* (the glow at the rim) */
+                    int32_t or_ = br + (255 - br) * a / 256, og = bg_ + (30 - bg_) * a / 256, ob = bb + (18 - bb) * a / 256;
+                    r = or_ + (r - or_) * k / 256; g = og + (g - og) * k / 256; b = ob + (b - ob) * k / 256;
+                }
+            } else {
+                /* the glow: (1 - t)^2 of the level, t from the rim (0) to its reach (1) */
+                int32_t t = (d2 - rr) * 256 / (gg - rr), f = (256 - t) * (256 - t) / 256, a = f * lv / 255;
+                a = a * 7 / 10;                                  /* (a glow, not a second lamp) */
+                r = br + (255 - br) * a / 256;
+                g = bg_ + (30 - bg_) * a / 256;
+                b = bb + (18 - bb) * a / 256;
+            }
+            cv_pset(x, y, rgb565(r, g, b));
         }
-        cv_rect(x0 + x, y, 1, bot - y, fill);
-        if (x)
-            cv_line(x0 + x - 1, prev, x0 + x, y, T_THEME);
-        prev = y;
-    }
-    {
-        static const char *const L[4] = {"A", "D", "S", "R"};
-        const int32_t xs[4] = {x0 + wa / 2, x0 + wa + wd / 2, x0 + wa + wd + ws / 2, x0 + wa + wd + ws + wr / 2};
-        int32_t i;
-        for (i = 0; i < 4; i++)
-            cv_text(xs[i] - 3, bot + 1, &AF_S, L[i], T_MID);
-    }
-    if (sys.env_stage != 0u) {                               /* a voice sounds: its gate's level, and the cutoff */
-        int32_t y = bot - (int32_t)sys.env_view * hh / 255;
-        uint32_t i = sys.env_view, hz = 25u, k;
-        char b[16], d[12];
+    if (sys.env_stage != 0u) {                               /* the cutoff the gate sets now */
+        uint32_t i = (uint32_t)lv, hz = 25u, k;
+        char b2[16], d[12];
         for (k = 0; k < i; k++)                              /* 25 Hz x 600^(i / 255): x 1.0254 a step */
             hz = hz + (hz * 26u + 512u) / 1024u;
-        cv_rect(8, y, 224, 1, T_ACCENT);
         if (hz < 1000u) {
             fmt_int(d, (int32_t)hz);
-            str_cpy(b, d, sizeof b);
-            ui_cat(b, sizeof b, " Hz");
+            str_cpy(b2, d, sizeof b2);
+            ui_cat(b2, sizeof b2, " Hz");
         } else {
             fmt_int(d, (int32_t)(hz / 1000u));
-            str_cpy(b, d, sizeof b);
-            ui_cat(b, sizeof b, ".");
+            str_cpy(b2, d, sizeof b2);
+            ui_cat(b2, sizeof b2, ".");
             fmt_int(d, (int32_t)(hz / 100u % 10u));
-            ui_cat(b, sizeof b, d);
-            ui_cat(b, sizeof b, " kHz");
+            ui_cat(b2, sizeof b2, d);
+            ui_cat(b2, sizeof b2, " kHz");
         }
-        cv_text_r(232, y > top + 16 ? y - 16 : y + 3, &AF_S, b, T_ACCENT, T_BG);
+        cv_text_r(232, LAMP_Y - AF_S.h / 2, &AF_S, b2, T_MID, T_BG);
     }
+    cv_text(8, LAMP_Y - AF_S.h / 2, &AF_S, "GATE", T_DIM);
     cv_blit(0, PLOT_Y);
 }
 
