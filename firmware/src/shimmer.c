@@ -58,8 +58,8 @@ static inline int32_t sh_soft(int32_t v)
 {
     int32_t a = v < 0 ? -v : v;
     if (a > 16000) {
-        int32_t e = a - 16000;
-        a = 16000 + (int32_t)((int64_t)e * 16000 / (16000 + e));
+        uint32_t e = (uint32_t)(a - 16000) > 131071u ? 131071u : (uint32_t)(a - 16000);   /* (32-bit division: the */
+        a = 16000 + (int32_t)(e * 16000u / (16000u + e));                                   /* toolchain has no 64) */
         v = v < 0 ? -a : a;
     }
     return v;
@@ -93,7 +93,7 @@ static void fx_shimmer(const int32_t *in, int32_t *l, int32_t *r, uint32_t n)
             int32_t d = (int32_t)t - (int32_t)sh.len[k];
             sh.len[k] = (uint32_t)((int32_t)sh.len[k] + (d > 16 ? 16 : d < -16 ? -16 : d));
             /* gain 2^(-9.966 len / rt) (60 dB in rt samples) */
-            g[k] = (int32_t)(px_exp2(-(int32_t)(((uint64_t)653126u * sh.len[k]) / rt)) >> 1);   /* Q15 */
+            g[k] = (int32_t)(px_exp2(-(int32_t)((653126u * sh.len[k]) / rt)) >> 1);   /* Q15 (< 2^32: 32-bit division) */
         }
         /* the damping one-pole: a = 1 - exp(-2 pi fc / FS) = 1 - 2^(-2 pi fc / (FS ln 2)) */
         damp = 32768 - (int32_t)(px_exp2(-(int32_t)(((uint64_t)fc * 13794u) >> 10)) >> 1);

@@ -70,8 +70,8 @@ static int32_t rz_knee(int32_t s)                /* only peaks saturate: above 2
 {
     int32_t a = s < 0 ? -s : s;
     if (a > 24000) {
-        int32_t e = a - 24000;
-        a = 24000 + (int32_t)((int64_t)e * 8767 / (8767 + e));
+        uint32_t e = (uint32_t)(a - 24000) > 262143u ? 262143u : (uint32_t)(a - 24000);   /* (32-bit division: the */
+        a = 24000 + (int32_t)(e * 8767u / (8767u + e));                                     /* toolchain has no 64) */
         s = s < 0 ? -a : a;
     }
     return s;
