@@ -172,6 +172,17 @@ int main(int argc, char **argv)
         bad |= shot(dir, name);
         synth_kill();
     }
+    sys.page = 3;                        /* the SHIMMER page: HEAVEN RISER, a note and its tail rising, then off */
+    preset_load(14);
+    synth_note_on(48, 110);
+    frames(30);
+    synth_note_off(48);
+    frames(80);
+    bad |= shot(dir, "g_shimmer");
+    sys.sh_mix = 0;
+    frames(4);
+    bad |= shot(dir, "g_shimmer_off");
+    synth_kill();
     sys.page = 0;
     sys.fx_mix = 0;
     ui_force = 1;

@@ -392,6 +392,7 @@ static uint32_t voice_h(const voice_t *v, int32_t *hs)
 }
 
 #include "resonator.c"                          /* the FX resonators (Rings' models), after the voices */
+#include "shimmer.c"                            /* the shimmer reverb, after the resonator: the stereo output */
 
 /* one voice's block into sum[0..n-1] (mono); restarts: the counter of the core it runs on */
 static voice_t *render_tv;                       /* the voice the trace follows (set before the voices render) */
@@ -517,9 +518,13 @@ static void synth_render(int32_t *out, uint32_t n)
             sum[i] += c1_sum[i];
     }
     fx_resonator(sum, n);
-    for (i = 0; i < n; i++) {
-        int32_t s = clamp(soft_clip(sum[i]) * m >> 12, -32767, 32767);
-        out[2u * i] = out[2u * i + 1u] = s;
+    {
+        int32_t l[CTL], r[CTL];
+        fx_shimmer(sum, l, r, n);
+        for (i = 0; i < n; i++) {
+            out[2u * i] = clamp(soft_clip(l[i]) * m >> 12, -32767, 32767);
+            out[2u * i + 1u] = clamp(soft_clip(r[i]) * m >> 12, -32767, 32767);
+        }
     }
     sys.voices = (uint8_t)busy;
 }

@@ -40,10 +40,10 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
 | HOME | de oscillator: de circuitpagina (CHAOS, SHAPE, OUTPUT, RING en de attractor) |
 | ENV | wisselt naar de ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
-| FX | wisselt naar de FX-pagina: de resonatoren van Mutable Instruments Rings (zie hieronder) |
-| SELECT | RING (circuit- en ENV-pagina), POSITION (FX-pagina) |
+| FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings, 2× de shimmer reverb, 3× terug naar HOME |
+| SELECT | RING (circuit- en ENV-pagina), POSITION (resonator), TONE (shimmer) |
 | ALGORITHM | weergave: 3D (draaiend), X-Y, X-Z, Y-Z, TIME |
-| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR |
+| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | tweede core aan/uit (vanaf de volgende start) |
@@ -71,6 +71,23 @@ Rings en DaisySP (Emilie Gillet, Electrosmith; MIT) die Felucca al had (`phys_ds
 KNOB 2 BRIGHTNESS, KNOB 3 DAMPING (zoals Rings: rechtsom langer), KNOB 4 MIX (0 = uit, dan rekent er niets). Het
 scherm toont de resonanties op een frequentie-as (de meeresonerende snaren blauw) en de uitgang eronder.
 
+**De shimmer reverb (FX, tweede scherm).** Een stereo galm (4 vertragingslijnen met een Householder-matrix) met een
+toonhoogteverschuiver in de terugkoppeling. Elke ronde door de galm (60–110 ms) schuift een deel van de staart een
+interval omhoog en gaat terug de galm in, met behoud van energie: de staart klimt, de lage octaven vervagen terwijl de
+hoge aanzwellen, tot TONE de top dempt. Dat is de riser.
+
+| Bediening | Functie |
+| --- | --- |
+| KNOB 1 SIZE | de ruimte: 60–110 ms lange lijnen (glijdt bij draaien) |
+| KNOB 2 DECAY | nagalmtijd 0,4–30 s |
+| KNOB 3 SHIMMER | hoe snel het klimt: 0 is een gewone galm, 127 zo'n 2–3 octaven per seconde |
+| KNOB 4 MIX | droog/nat; 0 = uit (dan rekent er niets) |
+| ALGORITHM | het interval: +OCT, +5TH, +OCT+5TH, +2 OCT |
+| SELECT | TONE: donker (1,5 kHz) tot open (16 kHz) |
+
+Het scherm toont het niveau van de staart over de laatste ~4 seconden (je ziet de riser aanzwellen en wegsterven) en
+rechts de trap van het interval. De uitgang is nu stereo; met de shimmer uit blijft hij mono en bit voor bit hetzelfde.
+
 Het scherm toont de toestand (x, y, z) van de nieuwste stem; speelt er niets, dan een "spookcircuit" dat op de huidige
 instellingen meedraait. Dat spookcircuit levert ook de beginstand van nieuwe stemmen (al op de attractor, met een kleine
 afwijking per stem zodat akkoorden niet in de pas lopen).
@@ -82,6 +99,7 @@ Alles wordt als één bestand gecompileerd: `firmware/src/felucca.c` bepaalt de 
 | Bestand | Wat |
 | --- | --- |
 | `firmware/src/synth.c` | het Chua-circuit: diode, RK2-solver in Q20 fixed point, stemmen, uitgang, de trace voor het scherm |
+| `firmware/src/shimmer.c` | de shimmer reverb: FDN-galm met octaafverschuiver in de terugkoppeling |
 | `firmware/src/resonator.c` | de FX-resonatoren rond de Rings/DaisySP-port (`phys_dsp.c`, `phys_symp.c`, MIT) |
 | `firmware/src/lpg_tables.h` | gegenereerd door `tools/gen_lpg_tables.py`: ADSR-tijden, cutoff, resonantie |
 | `firmware/src/chua_tables.h` | gegenereerd door `tools/gen_chua_tables.c`: α, omlooptijd en RMS per (SHAPE, CHAOS) |

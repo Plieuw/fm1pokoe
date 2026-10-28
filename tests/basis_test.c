@@ -479,6 +479,88 @@ int main(int argc, char **argv)
         check("FX resonators: every model x STRUCTURE x DAMPING x note bounded; MIX 0 bit for bit dry", okk);
     }
 
+    /* the shimmer: bounded in every corner (SIZE x DECAY x SHIMMER x INTERVAL, held chords), no DC; it rises (the
+     * tail's spectral weight climbs); MIX 0 bit for bit dry, and mono (left = right) */
+    {
+        uint32_t sz, dc, sm, iv, b2, okk = 1;
+        int32_t pk2 = 0;
+        int64_t dcs = 0;
+        sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 0; sys.decay = 60; sys.sustain = 100;
+        sys.release = 60; sys.ring = 50; sys.fx_mix = 0; sys.sh_tone = 127; sys.sh_mix = 127;
+        for (sz = 0; sz < 128u; sz += 127u)
+            for (dc = 0; dc < 128u; dc += 127u)
+                for (sm = 0; sm < 128u; sm += 63u)
+                    for (iv = 0; iv < SI_COUNT; iv++) {
+                        sys.sh_size = (uint8_t)sz; sys.sh_decay = (uint8_t)dc; sys.sh_shimmer = (uint8_t)sm;
+                        sys.sh_interval = (uint8_t)iv;
+                        synth_note_on(36, 127); synth_note_on(48, 127); synth_note_on(55, 127); synth_note_on(64, 127);
+                        for (b2 = 0; b2 < 400u; b2++) {
+                            if (b2 == 200u)
+                                synth_all_off();
+                            synth_render(buf, CTL);
+                            for (w = 0; w < 2u * CTL; w++) {
+                                int32_t a2 = buf[w] < 0 ? -buf[w] : buf[w];
+                                pk2 = a2 > pk2 ? a2 : pk2;
+                                if (b2 >= 300u)
+                                    dcs += buf[w];
+                            }
+                        }
+                        synth_kill();
+                    }
+        printf("   (shimmer: peak %d, mean of the tails %.1f)\n", pk2, (double)dcs / (64.0 * 100 * 2 * CTL));
+        okk &= pk2 <= 32767 && dcs / (64 * 100 * 2 * CTL) < 64 && dcs / (64 * 100 * 2 * CTL) > -64;
+        {   /* it rises: a pure note's tail with SHIMMER 100, +OCT: its zero crossings a second double and more */
+            uint32_t z0 = 0, z1 = 0, j;
+            int32_t pv = 0;
+            sys.sh_mix = 0;
+            fx_shimmer(buf, buf, buf, 0);          /* (clear) */
+            sys.chaos = 6; sys.output = 64; sys.sustain = 0; sys.decay = 70; sys.release = 60; sys.ring = 30;
+            sys.sh_mix = 127; sys.sh_size = 110; sys.sh_decay = 110; sys.sh_shimmer = 100; sys.sh_interval = SI_OCT;
+            sys.sh_tone = 100;
+            synth_note_on(48, 110);
+            for (b2 = 0; b2 < 1600u; b2++) {
+                if (b2 == 20u)
+                    synth_note_off(48);
+                synth_render(buf, CTL);
+                for (j = 0; j < CTL; j++) {
+                    int32_t v2 = buf[2 * j];
+                    if ((pv < 0) != (v2 < 0)) {
+                        if (b2 >= 20u && b2 < 220u) z0++;
+                        if (b2 >= 1000u && b2 < 1200u) z1++;
+                    }
+                    pv = v2;
+                }
+            }
+            printf("   (tail zero crossings: %u at 0.0..0.15 s after the note, %u at 0.7..0.85 s)\n", z0, z1);
+            okk &= z1 > 2u * z0;
+            synth_kill();
+        }
+        {   /* MIX 0: the same output as with the shimmer never on, left = right */
+            static int32_t ref3[2 * CTL * 300];
+            int pass, same = 1;
+            for (pass = 0; pass < 2; pass++) {
+                synth_kill(); memset(voice, 0, sizeof voice);
+                ghost.x = C1 / 10; ghost.y = ghost.z = 0; rng_state = 0x1234567u; voice_clock = 0;
+                sys.sh_mix = 0;
+                if (pass)
+                    sys.sh_interval = SI_2OCT;
+                synth_note_on(55, 100);
+                for (b2 = 0; b2 < 300u; b2++) {
+                    synth_render(buf, CTL);
+                    for (w = 0; w < 2u * CTL; w++) {
+                        if (!pass) ref3[b2 * 2u * CTL + w] = buf[w];
+                        else same &= ref3[b2 * 2u * CTL + w] == buf[w];
+                    }
+                    for (w = 0; w < CTL; w++)
+                        same &= buf[2 * w] == buf[2 * w + 1];
+                }
+            }
+            okk &= same;
+        }
+        synth_kill();
+        check("shimmer: every corner bounded, no DC, the tail rises; MIX 0 bit for bit dry and mono", okk);
+    }
+
     /* MASTER at 0: silence */
     sys.master_q12 = 0;
     peak = 0;
@@ -494,6 +576,7 @@ int main(int argc, char **argv)
         static const struct {
             uint8_t chaos, shape, output, attack, decay, sustain, release, ring;
             uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
+            uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
         } P[] = {   /* ui.c PRESETS */
             {85, 76, 0, 6, 80, 110, 70, 50}, {85, 90, 64, 0, 62, 0, 66, 110}, {6, 64, 64, 10, 70, 120, 64, 30},
             {38, 64, 32, 4, 60, 90, 66, 60}, {54, 56, 64, 2, 64, 80, 72, 70}, {30, 100, 32, 0, 50, 0, 52, 100},
@@ -503,6 +586,9 @@ int main(int argc, char **argv)
             {85, 64, 32, 20, 80, 110, 90, 30, RZ_SYMP, 16, 80, 105, 70, 90},
             {30, 76, 64, 0, 64, 40, 74, 50, RZ_STRING, 100, 70, 96, 20, 85},
             {110, 40, 0, 4, 76, 90, 80, 60, RZ_MODAL, 116, 40, 80, 24, 70},
+            {6, 64, 64, 30, 80, 100, 96, 30, 0, 0, 0, 0, 0, 0, 110, 110, 100, 96, SI_OCT, 100},
+            {85, 76, 32, 60, 90, 110, 100, 50, 0, 0, 0, 0, 0, 0, 127, 120, 50, 80, SI_OCT, 80},
+            {54, 90, 64, 0, 62, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 70, 90, 110, 120, 100, SI_FIFTH, 110},
         };
         wav_hdr(wav, 0);
         for (w = 0; w < sizeof P / sizeof P[0]; w++) {
@@ -511,6 +597,8 @@ int main(int argc, char **argv)
             sys.release = P[w].release; sys.ring = P[w].ring;
             sys.fx_model = P[w].fx_model; sys.fx_struct = P[w].fx_struct; sys.fx_bright = P[w].fx_bright;
             sys.fx_damp = P[w].fx_damp; sys.fx_pos = P[w].fx_pos; sys.fx_mix = P[w].fx_mix;
+            sys.sh_size = P[w].sh_size; sys.sh_decay = P[w].sh_decay; sys.sh_shimmer = P[w].sh_shimmer;
+            sys.sh_mix = P[w].sh_mix; sys.sh_interval = P[w].sh_interval; sys.sh_tone = P[w].sh_tone;
             for (k = 0; k < sizeof ARP; k++) {
                 fm1_in.notes = 1u << key_of(ARP[k]);
                 run_ms(170);

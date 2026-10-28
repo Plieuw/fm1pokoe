@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* CHUA UI (main loop only): the attractor drawn live, the knobs, presets, LEDs, the settings in flash.
  *
- * Three pages: HOME the circuit (the oscillator), ENV and FX theirs (pressed again: back HOME); the LED of the page's
- * button is lit:
+ * Four pages: HOME the circuit (the oscillator), ENV its page (again: back HOME), FX the resonator, FX again the
+ * shimmer, FX again back HOME; the LED of the page's button is lit:
  *   CIRCUIT  KNOB 1 CHAOS   the regime: cycle, period 2, spiral, double scroll, outer cycle
  *            KNOB 2 SHAPE   beta: slow round spirals .. tight fast ones
  *            KNOB 3 OUTPUT  which voltage you hear: X, X+Y, Y, Y+Z, Z
@@ -10,6 +10,8 @@
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonator (resonator.c: Rings' models);
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
+ *   FX (2nd) KNOB 1..4      SIZE, DECAY, SHIMMER, MIX of the shimmer reverb (shimmer.c); ALGORITHM the INTERVAL,
+ *            SELECT the TONE; the tail's level over the last seconds drawn (the riser building)
  *   SELECT   RING (on the CIRCUIT and ENV pages)
  *   PRESETS the presets                      ALGORITHM  the view: 3D (turning), X-Y, X-Z, Y-Z, TIME
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
@@ -37,6 +39,7 @@ typedef struct {
     const char *name;
     uint8_t chaos, shape, output, attack, decay, sustain, release, ring;
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
+    uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* SHIMMER; MIX 0 (left out): off */
 } preset_t;
 static const preset_t PRESETS[] = {
     {"DOUBLE SCROLL", 85, 76, 0, 6, 80, 110, 70, 50},     /* the classic double scroll, x (the scroll jumps) */
@@ -53,6 +56,12 @@ static const preset_t PRESETS[] = {
     {"SITAR DRONE", 85, 64, 32, 20, 80, 110, 90, 30, RZ_SYMP, 16, 80, 105, 70, 90},  /* sympathetic strings, 5TH */
     {"CHAOS PIANO", 30, 76, 64, 0, 64, 40, 74, 50, RZ_STRING, 100, 70, 96, 20, 85},  /* a stiff string, dispersion */
     {"BURIED BAR", 110, 40, 0, 4, 76, 90, 80, 60, RZ_MODAL, 116, 40, 80, 24, 70},     /* a tuned bar under the crisis */
+    {"HEAVEN RISER", 6, 64, 64, 30, 80, 100, 96, 30, 0, 0, 0, 0, 0, 0,              /* a pure cycle that climbs */
+     110, 110, 100, 96, SI_OCT, 100},
+    {"OCTAVE CLOUD", 85, 76, 32, 60, 90, 110, 100, 50, 0, 0, 0, 0, 0, 0,            /* the double scroll in a slow */
+     127, 120, 50, 80, SI_OCT, 80},                                                  /* octave haze */
+    {"FIFTH ASCENT", 54, 90, 64, 0, 62, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 70,  /* struck bells rising in */
+     90, 110, 120, 100, SI_FIFTH, 110},                                              /* fifths */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -76,6 +85,14 @@ static void preset_load(uint32_t i)
         sys.fx_pos = p->fx_pos;
     }
     sys.fx_mix = p->fx_mix;
+    if (p->sh_mix) {                             /* (as the resonator: a preset without the shimmer turns it off) */
+        sys.sh_size = p->sh_size;
+        sys.sh_decay = p->sh_decay;
+        sys.sh_shimmer = p->sh_shimmer;
+        sys.sh_interval = p->sh_interval;
+        sys.sh_tone = p->sh_tone;
+    }
+    sys.sh_mix = p->sh_mix;
 }
 static int preset_edited(void)
 {
@@ -83,16 +100,19 @@ static int preset_edited(void)
     return sys.chaos != p->chaos || sys.shape != p->shape || sys.output != p->output || sys.attack != p->attack ||
            sys.decay != p->decay || sys.sustain != p->sustain || sys.release != p->release || sys.ring != p->ring ||
            sys.fx_mix != p->fx_mix || (p->fx_mix && (sys.fx_model != p->fx_model || sys.fx_struct != p->fx_struct ||
-           sys.fx_bright != p->fx_bright || sys.fx_damp != p->fx_damp || sys.fx_pos != p->fx_pos));
+           sys.fx_bright != p->fx_bright || sys.fx_damp != p->fx_damp || sys.fx_pos != p->fx_pos)) ||
+           sys.sh_mix != p->sh_mix || (p->sh_mix && (sys.sh_size != p->sh_size || sys.sh_decay != p->sh_decay ||
+           sys.sh_shimmer != p->sh_shimmer || sys.sh_interval != p->sh_interval || sys.sh_tone != p->sh_tone));
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485534u      /* "CHU4": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485535u      /* "CHU5": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
     uint8_t chaos, shape, output, attack, release, view, preset, cpu2, decay, sustain, ring;
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
+    uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -122,6 +142,12 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.fx_damp = (uint8_t)(s.fx_damp & 127u);
         sys.fx_pos = (uint8_t)(s.fx_pos & 127u);
         sys.fx_mix = (uint8_t)(s.fx_mix & 127u);
+        sys.sh_size = (uint8_t)(s.sh_size & 127u);
+        sys.sh_decay = (uint8_t)(s.sh_decay & 127u);
+        sys.sh_shimmer = (uint8_t)(s.sh_shimmer & 127u);
+        sys.sh_mix = (uint8_t)(s.sh_mix & 127u);
+        sys.sh_interval = (uint8_t)(s.sh_interval % SI_COUNT);
+        sys.sh_tone = (uint8_t)(s.sh_tone & 127u);
     }
 }
 
@@ -150,6 +176,12 @@ static int settings_save(void)     /* 0 = saved */
     s.fx_damp = sys.fx_damp;
     s.fx_pos = sys.fx_pos;
     s.fx_mix = sys.fx_mix;
+    s.sh_size = sys.sh_size;
+    s.sh_decay = sys.sh_decay;
+    s.sh_shimmer = sys.sh_shimmer;
+    s.sh_mix = sys.sh_mix;
+    s.sh_interval = sys.sh_interval;
+    s.sh_tone = sys.sh_tone;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -478,6 +510,55 @@ static void draw_fx(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the SHIMMER page's picture: the tail's level over the last ~4 s (one column a UI frame, scrolling left: the riser
+ * building and fading), and on the right the interval's staircase: the steps the tail climbs */
+static uint8_t sh_hist[200];
+static uint32_t sh_seen;
+static void draw_sh(void)
+{
+    const int32_t top = 8, bot = PLOT_H - 10, hh = bot - top;
+    uint32_t i, w = sh_view.w, pk = 0;
+    static const uint8_t SEMI[SI_COUNT] = {12, 7, 19, 24};
+    if (w - sh_seen > SH_ENV)
+        sh_seen = w - SH_ENV;
+    for (; sh_seen != w; sh_seen++) {
+        uint32_t e = sh_view.env[sh_seen & (SH_ENV - 1u)];
+        pk = e > pk ? e : pk;
+    }
+    for (i = 0; i + 1u < sizeof sh_hist; i++)
+        sh_hist[i] = sh_hist[i + 1u];
+    {   /* the level in decibels, roughly: 6 dB a bit of the peak, 2 bits of fraction; 0 .. 255 over ~70 dB */
+        uint32_t b = 0, t = pk, lv;
+        while (t) { b++; t >>= 1; }
+        lv = b > 4u ? (b - 4u) * 20u + (b >= 3u ? ((pk >> (b - 3u)) & 3u) * 5u : 0u) : 0u;
+        sh_hist[sizeof sh_hist - 1u] = (uint8_t)(sys.sh_mix ? (lv > 255u ? 255u : lv) : 0u);
+    }
+    cv_begin(240, PLOT_H, T_BG);
+    cv_rect(8, bot, 200, 1, T_LINE);
+    for (i = 0; i < sizeof sh_hist; i++) {
+        int32_t h = (int32_t)sh_hist[i] * hh / 255;
+        if (h > 0)
+            cv_rect(8 + (int32_t)i, bot - h, 1, h, i + 40u >= sizeof sh_hist ? T_THEME : ux_mix(T_BG, T_THEME, 55));
+    }
+    {   /* the staircase: four steps of the interval */
+        int32_t x0 = 214, sw = 6, st = (int32_t)SEMI[sys.sh_interval % SI_COUNT] * hh / 60;
+        for (i = 0; i < 4u; i++) {
+            int32_t y = bot - (int32_t)i * st - 2;
+            if (y < top)
+                break;
+            cv_rect(x0 + (int32_t)i * sw, y, sw, 2, sys.sh_mix ? T_ACCENT : T_DIM);
+            if (i)
+                cv_rect(x0 + (int32_t)i * sw, y, 1, st, sys.sh_mix ? T_ACCENT : T_DIM);
+        }
+    }
+    if (!sys.sh_mix) {
+        memset(sh_hist, 0, sizeof sh_hist);      /* (off: the history starts again when it is turned on) */
+        cv_rect(8, top, 200, hh, T_BG);
+        cv_text(84, top + hh / 2 - AF_S.h / 2, &AF_S, "MIX OFF", T_MID);
+    }
+    cv_blit(0, PLOT_Y);
+}
+
 static void ui_draw(void)
 {
     char a[40], b[24], v[12];
@@ -516,6 +597,28 @@ static void ui_draw(void)
         }
         fmt_int(v, sys.ring);
         ui_cell(T_C4, "4 RING", v);
+    } else if (sys.page == 3u) {
+        fmt_int(v, sys.sh_size);
+        ui_cell(T_C1, "1 SIZE", v);
+        {   /* RT60, as the DSP has it: 0.4 s x 75^(d / 127) */
+            uint32_t ms = (uint32_t)(((uint64_t)400u * px_exp2((int32_t)((sys.sh_decay & 127u) * 408220u / 127u))) >> 16);
+            fmt_int(v, (int32_t)(ms / 1000u));
+            str_cpy(b, v, sizeof b);
+            ui_cat(b, sizeof b, ".");
+            fmt_int(v, (int32_t)(ms / 100u % 10u));
+            ui_cat(b, sizeof b, v);
+            ui_cat(b, sizeof b, " s");
+        }
+        ui_cell(T_C2, "2 DECAY", b);
+        fmt_int(v, sys.sh_shimmer);
+        ui_cell(T_C3, "3 SHIMMER", v);
+        if (sys.sh_mix) {
+            fmt_int(v, (int32_t)(sys.sh_mix * 100u / 127u));
+            str_cpy(b, v, sizeof b);
+            ui_cat(b, sizeof b, " %");
+        } else
+            str_cpy(b, "OFF", sizeof b);
+        ui_cell(T_C4, "4 MIX", b);
     } else if (sys.page == 2u) {
         uint32_t md = sys.fx_model % RZ_COUNT;
         if (md == RZ_SYMP)
@@ -552,7 +655,12 @@ static void ui_draw(void)
     if (ui_event_ms && fm1_ms - ui_event_ms < 2000u)
         ui_status(ui_event);
     else {
-        if (sys.page == 2u) {
+        if (sys.page == 3u) {
+            str_cpy(a, SH_INTERVAL_NAME[sys.sh_interval % SI_COUNT], sizeof a);
+            ui_cat(a, sizeof a, "   TONE ");
+            fmt_int(v, sys.sh_tone);
+            ui_cat(a, sizeof a, v);
+        } else if (sys.page == 2u) {
             str_cpy(a, RZ_NAME[sys.fx_model % RZ_COUNT], sizeof a);
             ui_cat(a, sizeof a, sys.fx_model % RZ_COUNT == RZ_SYMP ? "   AMT " : "   POS ");
             fmt_int(v, sys.fx_pos);
@@ -580,6 +688,8 @@ static void ui_draw(void)
         draw_env();
     else if (sys.page == 2u)
         draw_fx();
+    else if (sys.page == 3u)
+        draw_sh();
     else
         draw_plot();
     ui_force = 0;
@@ -626,7 +736,7 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_HOME]);
     if (sys.page == 1u)
         led_on(nl, panel.btn[B_ENV]);
-    if (sys.page == 2u || sys.fx_mix)                   /* (FX lit: its page, or the resonator on) */
+    if (sys.page >= 2u || sys.fx_mix || sys.sh_mix)     /* (FX lit: its pages, or the resonator or the shimmer on) */
         led_on(nl, panel.btn[B_FX]);
     for (i = 0; i < FM1_NCOL; i++)
         fm1_led[i] = nl[i];
@@ -684,8 +794,8 @@ static void ui_input(void)
             sys.page = sys.page == 1u ? 0u : 1u;
             ui_force = 1;
             break;
-        case B_FX:                                      /* the FX page and back */
-            sys.page = sys.page == 2u ? 0u : 2u;
+        case B_FX:                                      /* the resonator, the shimmer, back HOME */
+            sys.page = sys.page == 2u ? 3u : sys.page == 3u ? 0u : 2u;
             ui_force = 1;
             break;
         case B_GLO:
@@ -706,6 +816,11 @@ static void ui_input(void)
         knob(&sys.shape, EN_K2, 1);
         knob(&sys.output, EN_K3, 2);
         knob(&sys.ring, EN_K4, 3);
+    } else if (sys.page == 3u) {
+        knob(&sys.sh_size, EN_K1, 0);
+        knob(&sys.sh_decay, EN_K2, 1);
+        knob(&sys.sh_shimmer, EN_K3, 2);
+        knob(&sys.sh_mix, EN_K4, 3);
     } else if (sys.page == 2u) {
         knob(&sys.fx_struct, EN_K1, 0);
         knob(&sys.fx_bright, EN_K2, 1);
@@ -718,14 +833,20 @@ static void ui_input(void)
         knob(&sys.release, EN_K4, 3);
     }
     if ((s = panel_enc(EN_SELECT)) != 0) {
-        volatile uint8_t *p = sys.page == 2u ? &sys.fx_pos : &sys.ring;
+        volatile uint8_t *p = sys.page == 3u ? &sys.sh_tone : sys.page == 2u ? &sys.fx_pos : &sys.ring;
         *p = (uint8_t)clamp(*p + s, 0, 127);
-        str_cpy(t, sys.page == 2u ? (sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ") : "RING ", sizeof t);
+        str_cpy(t, sys.page == 3u ? "TONE " : sys.page == 2u ? (sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ")
+                                                             : "RING ", sizeof t);
         fmt_int(v, *p);
         ui_cat(t, sizeof t, v);
         ui_say(t);
     }
-    if ((s = panel_enc(EN_ALGO)) != 0 && sys.page == 2u) {
+    if ((s = panel_enc(EN_ALGO)) != 0 && sys.page == 3u) {
+        sys.sh_interval = (uint8_t)((sys.sh_interval + SI_COUNT * 8 + s) % SI_COUNT);
+        str_cpy(t, "INTERVAL ", sizeof t);
+        ui_cat(t, sizeof t, SH_INTERVAL_NAME[sys.sh_interval]);
+        ui_say(t);
+    } else if (s && sys.page == 2u) {
         sys.fx_model = (uint8_t)((sys.fx_model + RZ_COUNT * 8 + s) % RZ_COUNT);
         str_cpy(t, "MODEL ", sizeof t);
         ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
