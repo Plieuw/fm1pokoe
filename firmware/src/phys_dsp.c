@@ -688,13 +688,15 @@ static void px_string_run(const px_string_blk_t *B, px_string_t *S, const int32_
                 dce = (int32_t)(acc & 0x3FFFFFFF);
                 dcx = s;
                 dcy = y;
-                s = y;
+                s = y - px_m(y, 121740, 30);         /* (CHUA: x (1 + R) / 2, its gain at the top 2 / (1 + R) taken
+                                                      * back: in the loop at full DAMPING it made the string grow) */
             }
             {   /* OnePole low-pass */
                 int32_t v = px_m(B->G, s - lp, 30);
                 s = lp + v;
                 lp = s + v;
             }
+            s -= s >> 18;                                /* (CHUA: and a leak, RT60 ~40 s, for the interpolation's) */
             S->line[wp] = s;                             /* DelayLine::Write */
             wp = (wp - 1u) & PX_LMASK;
             o1 = o0;

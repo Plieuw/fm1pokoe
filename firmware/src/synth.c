@@ -218,10 +218,12 @@ typedef struct {
     uint8_t note, stage, fresh;  /* fresh: the DC blocker starts at the first sample */
     uint8_t lpg_n;               /* frames until the next coefficient update */
     uint8_t osc;                 /* the oscillator its state belongs to (sys.osc when it started; a change restarts it) */
+    uint8_t rz;                  /* the FX resonator it feeds (resonator.c: the one tuned to its note) */
 } voice_t;
 static voice_t voice[NVOICE];
 #define NP_COUNT 30                              /* the noise programs (noise.c, included below) */
 static void np_start(uint32_t k, uint32_t seed);
+static uint32_t rz_assign(uint32_t note);
 static uint32_t voice_clock;
 static chua_t ghost = {C1 / 10, 0, 0};          /* the circuit at the current settings, one substep per block */
 static uint32_t chua_restarts;                   /* voices restarted because the solver left the range (a diagnostic) */
@@ -274,6 +276,7 @@ static void synth_note_on(uint32_t note, uint32_t vel)
         v->fresh = 1;
     }
     v->note = (uint8_t)note;
+    v->rz = (uint8_t)rz_assign(note);
     v->inc = note_inc(note);
     v->amp = (uint16_t)(vel * 258u);                /* 127 -> 32766 */
     v->stage = ST_ATTACK;                           /* (a retrigger: the attack from where the envelope is) */
@@ -397,6 +400,11 @@ static uint32_t voice_h(const voice_t *v, int32_t *hs)
     return n;
 }
 
+#ifndef C1_RUN                                   /* (the second core: see c1_voices below) */
+#define C1_ON() 0                                /* a second core is answering */
+#define C1_RUN(fn, arg) 0                        /* hand it fn(arg): 1 = taken */
+#define C1_WAIT() 0                              /* wait for it: 0 = done */
+#endif
 #include "resonator.c"                          /* the FX resonators (Rings' models), after the voices */
 #include "shimmer.c"                            /* the shimmer reverb, after the resonator: the stereo output */
 #include "noise.c"                              /* the noise oscillators (after Befaco's Noise Plethora) */
@@ -480,21 +488,15 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
  * the split, and only the trace's voice writes the trace. The sums are integers, so the output is bit for bit one
  * core's (tests/basis_test.c checks it). Without a second core (the host tests, 2ND CORE OFF, one that did not answer
  * or stopped: then it is held for good) C1_RUN takes nothing and this core renders them all. */
-#ifndef C1_RUN
-#define C1_ON() 0                                /* a second core is answering */
-#define C1_RUN(fn, arg) 0                        /* hand it fn(arg): 1 = taken */
-#define C1_WAIT() 0                              /* wait for it: 0 = done */
-#endif
-static int32_t c1_sum[CTL];
+static int32_t c1_bus[RZ_POLY][CTL];            /* its voices' output, per resonator they feed */
 static uint32_t c1_restarts, c1_blocks;          /* (diagnostics) */
 static void c1_voices(uint32_t arg)              /* arg: the voices (bit k = voice k) | n << 8 */
 {
     uint32_t k, n = arg >> 8;
-    for (k = 0; k < n; k++)
-        c1_sum[k] = 0;
+    memset(c1_bus, 0, sizeof c1_bus);
     for (k = 0; k < NVOICE; k++)
         if (arg >> k & 1u)
-            render_voice(&voice[k], n, c1_sum, &c1_restarts);
+            render_voice(&voice[k], n, c1_bus[voice[k].rz % RZ_POLY], &c1_restarts);
 }
 
 static void synth_render(int32_t *out, uint32_t n)
@@ -506,8 +508,7 @@ static void synth_render(int32_t *out, uint32_t n)
     chua_params();
     env_params();
     inner = chua_regime(cc.chaos) != REG_OUTER;
-    for (i = 0; i < n; i++)
-        sum[i] = 0;
+    memset(rz_bus, 0, sizeof rz_bus);                   /* the voices into the bus of the resonator they feed */
     for (k = 0; k < NVOICE; k++)                        /* the trace follows the newest voice sounding */
         if (voice[k].stage != ST_OFF && voice[k].age >= newest) {
             newest = voice[k].age;
@@ -547,12 +548,19 @@ static void synth_render(int32_t *out, uint32_t n)
     c1_blocks += mask != 0;
     for (k = 0; k < NVOICE; k++)                        /* (decided above: nothing of the other core's voices read) */
         if (own >> k & 1u)
-            render_voice(&voice[k], n, sum, &chua_restarts);
+            render_voice(&voice[k], n, rz_bus[voice[k].rz % RZ_POLY], &chua_restarts);
     if (mask) {
         if (C1_WAIT())                                  /* it stopped answering (held from now on): its voices here */
             c1_voices(mask | n << 8);
-        for (i = 0; i < n; i++)
-            sum[i] += c1_sum[i];
+        for (k = 0; k < RZ_POLY; k++)
+            for (i = 0; i < n; i++)
+                rz_bus[k][i] += c1_bus[k][i];
+    }
+    for (i = 0; i < n; i++) {                           /* the dry: all of them */
+        int32_t a = 0;
+        for (k = 0; k < RZ_POLY; k++)
+            a += rz_bus[k][i];
+        sum[i] = a;
     }
     fx_resonator(sum, n);
     {

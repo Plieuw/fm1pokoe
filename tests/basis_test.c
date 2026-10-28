@@ -332,6 +332,8 @@ int main(int argc, char **argv)
             rng_state = 0x1234567u;
             voice_clock = 0;
             c1_blocks = 0;
+            memset(rz, 0, sizeof rz); rz_clock = rz_view_r = 0;
+            sys.fx_mix = 0; sys.fx_model = RZ_MODAL; sys.fx_struct = 70; sys.fx_damp = 100;
             c1_mode = mode;
             sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30; sys.osc = 0;
             for (b = 0; b < 2000u; b++) {
@@ -340,6 +342,10 @@ int main(int argc, char **argv)
                         (b / 250u + j) & 1u ? synth_note_on(CH[j] + b / 250u, 100) : synth_note_off(CH[j] + b / 250u - 1u);
                 if (b == 1000u)
                     sys.chaos = 120;
+                if (b == 300u)
+                    sys.fx_mix = 100;            /* the resonators (four: half on the second core), */
+                if (b == 800u)
+                    sys.fx_model = RZ_SYMP;      /* the sympathetic strings */
                 if (b == 1400u)
                     sys.osc = 7;                 /* noise programs under held notes: GRAIN GLITCH (its buffer), */
                 if (b == 1700u)
@@ -357,6 +363,7 @@ int main(int argc, char **argv)
         }
         c1_mode = 0;
         sys.osc = 0;
+        sys.fx_mix = 0;
         printf("   (blocks with voices on the second core: %u of 2000)\n", blocks);
         check("second core (at once, a thread, one that gives up): the same output bit for bit", same && blocks > 1000u);
     }
@@ -545,6 +552,65 @@ int main(int argc, char **argv)
         synth_kill();
         sys.fx_mix = 0;
         check("FX resonators: every model x STRUCTURE x DAMPING x note bounded; MIX 0 bit for bit dry", okk);
+    }
+
+    /* polyphonic resonators: a chord's notes each take their own resonator, tuned to it; the wet output (MIX 127)
+     * holds every note of the chord; a fifth note takes the oldest; all bounded (four ringing at once); once quiet
+     * none runs */
+    {
+        static const uint8_t CH[4] = {48, 52, 55, 59};
+        uint32_t md, j, b2, okk = 1, dist = 1, tuned = 1, heard = 1;
+        int32_t pk2 = 0;
+        sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 0; sys.decay = 70; sys.sustain = 100;
+        sys.release = 60; sys.ring = 50; sys.fx_bright = 90; sys.fx_pos = 20; sys.fx_mix = 127; sys.fx_damp = 110;
+        sys.osc = 0;
+        for (md = 0; md < RZ_COUNT; md++) {
+            double re[4] = {0}, im[4] = {0}, tot = 0;
+            uint32_t t = 0;
+            synth_kill();
+            sys.fx_model = (uint8_t)md; sys.fx_struct = md == RZ_MODAL ? 34 : 20;
+            sys.fx_mix = 0; run_ms(10); sys.fx_mix = 127;     /* (state anew) */
+            for (j = 0; j < 4u; j++)
+                synth_note_on(CH[j], 110);
+            for (j = 0; j < 4u; j++) {
+                uint32_t q;
+                for (q = 0; q < j; q++)
+                    dist &= voice[j].rz != voice[q].rz;
+                tuned &= rz[voice[j].rz].note == CH[j];
+            }
+            run_ms(100);
+            for (b2 = 0; b2 < 600u; b2++) {
+                synth_render(buf, CTL);
+                for (w = 0; w < CTL; w++, t++) {
+                    double v = buf[2 * w];
+                    int32_t a2 = buf[2 * w] < 0 ? -buf[2 * w] : buf[2 * w];
+                    pk2 = a2 > pk2 ? a2 : pk2;
+                    tot += v * v;
+                    for (j = 0; j < 4u; j++) {                 /* each note's fundamental */
+                        double ph = 2 * M_PI * 440.0 * pow(2, (CH[j] - 69) / 12.0) * t / FS;
+                        re[j] += v * cos(ph); im[j] += v * sin(ph);
+                    }
+                }
+            }
+            for (j = 0; j < 4u; j++) {                         /* its share of the energy: > 0.5 % */
+                double e = 2 * (re[j] * re[j] + im[j] * im[j]) / t / tot;
+                if (e < 0.005) {
+                    printf("   %s: note %u only %.4f of the energy\n", RZ_NAME[md], CH[j], e);
+                    heard = 0;
+                }
+            }
+        }
+        synth_note_on(62, 110);                                  /* a fifth note, all four held: the oldest */
+        okk &= voice[4].rz == voice[0].rz && rz[voice[4].rz].note == 62;
+        sys.fx_damp = 0;                                         /* (the shortest decay: they go quiet) */
+        synth_kill();
+        run_ms(4000);
+        for (j = 0; j < RZ_POLY; j++)
+            okk &= rz[j].quiet >= RZ_QUIET;
+        printf("   (polyphonic resonators: peak %d)\n", pk2);
+        sys.fx_mix = 0;
+        check("FX resonators polyphonic: a chord, one tuned resonator a note, all heard", dist && tuned && heard);
+        check("... a fifth note takes the oldest; bounded; quiet ones stop running", okk && pk2 <= 32767);
     }
 
     /* the shimmer: bounded in every corner (SIZE x DECAY x SHIMMER x INTERVAL, held chords), no DC; it rises (the

@@ -74,8 +74,12 @@ filter is een resonant state-variable low pass (zero-delay feedback, stabiel bij
 hoog rinkelt het: een "ping" als de gate opengaat, en een staart die doorklinkt terwijl hij dichtgaat. Probeer RING
 PLUCK of BONGO GATE (sustain 0: elke noot is een aanslag).
 
-**De resonatoren (FX).** De resonatormodellen van Mutable Instruments Rings, gevoed door de Chua-klank zoals de
-IN-ingang van Rings zijn resonator voedt, en gestemd op de laatst gespeelde noot. De DSP is de fixed-point port van
+**De resonatoren (FX).** De resonatormodellen van Mutable Instruments Rings, gevoed door de oscillators zoals de
+IN-ingang van Rings zijn resonatoren voedt. Polyfoon, zoals Rings op polyfonie 4: vier resonatoren, elk gestemd op een
+noot. Elke stem voedt alleen de resonator van zijn eigen noot, dus een akkoord klinkt als akkoord. Een nieuwe noot
+neemt de resonator die die noot al heeft, anders een vrije (de langst ongebruikte), anders de oudste; die klinkt dan
+verder op de nieuwe toonhoogte, net als bij Rings. Resonatoren die stil zijn rekenen niet mee, en de tweede core neemt
+de helft van de klinkende voor zijn rekening. Het scherm toont de resonator van de nieuwste noot. De DSP is de fixed-point port van
 Rings en DaisySP (Emilie Gillet, Electrosmith; MIT) die Felucca al had (`phys_dsp.c`, `phys_symp.c`).
 
 | Model (ALGORITHM) | Wat | KNOB 1 STRUCTURE | SELECT |
