@@ -317,7 +317,7 @@ static void k_sound(uint32_t note, uint32_t vel, int32_t pan, uint32_t dur)
         kar.nact--;
     }
     synth_pan_next = (int16_t)pan;
-    synth_pan_set = 1;
+    synth_pan_set = k_ge()->pan != PN_NONE;      /* (a GE without its own: BASIS's cycle, as played by hand) */
     gen_on(note, vel);
     synth_pan_set = 0;
     kar.act[kar.nact].note = (uint8_t)note;
