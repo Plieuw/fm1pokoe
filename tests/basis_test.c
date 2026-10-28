@@ -333,13 +333,17 @@ int main(int argc, char **argv)
             voice_clock = 0;
             c1_blocks = 0;
             c1_mode = mode;
-            sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30;
+            sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30; sys.osc = 0;
             for (b = 0; b < 2000u; b++) {
                 if (b % 250u == 0u)
                     for (j = 0; j < sizeof CH; j++)
                         (b / 250u + j) & 1u ? synth_note_on(CH[j] + b / 250u, 100) : synth_note_off(CH[j] + b / 250u - 1u);
                 if (b == 1000u)
                     sys.chaos = 120;
+                if (b == 1400u)
+                    sys.osc = 7;                 /* noise programs under held notes: GRAIN GLITCH (its buffer), */
+                if (b == 1700u)
+                    sys.osc = 14;                /* SINE FM CLUST */
                 synth_render(buf, CTL);
                 for (j = 0; j < 2u * CTL; j++) {
                     if (mode == 0)
@@ -352,8 +356,72 @@ int main(int argc, char **argv)
                 blocks = c1_blocks;
         }
         c1_mode = 0;
+        sys.osc = 0;
         printf("   (blocks with voices on the second core: %u of 2000)\n", blocks);
         check("second core (at once, a thread, one that gives up): the same output bit for bit", same && blocks > 1000u);
+    }
+
+    /* the noise programs (noise.c): each sounds, at about the circuit's level at X = Y = 64, and stays bounded and
+     * without DC in every corner of X and Y, chords included; switching under held notes is clean */
+    {
+        static const uint8_t XY[5][2] = {{64, 64}, {0, 0}, {127, 0}, {0, 127}, {127, 127}};
+        static const uint8_t CH[4] = {48, 55, 60, 67};
+        uint32_t a, c, j, b, okk = 1;
+        double lo = 1e9, hi = 0;
+        sys.attack = 0; sys.decay = 64; sys.sustain = 127; sys.release = 20; sys.ring = 50;
+        sys.fx_mix = 0; sys.sh_mix = 0; sys.np_level = 64;
+        if (getenv("NP_LEVELS")) {                       /* the circuit, the same way: the level to match */
+            double e = 0;
+            synth_kill(); run_ms(50); sys.osc = 0;
+            for (j = 0; j < 4u; j++) synth_note_on(CH[j], 110);
+            run_ms(200);
+            for (b = 0; b < 400u; b++) { synth_render(buf, CTL); for (j = 0; j < CTL; j++) e += (double)buf[2 * j] * buf[2 * j]; }
+            printf("   LEVEL CHUA %.0f\n", sqrt(e / (400.0 * CTL)));
+        }
+        for (a = 0; a < NP_COUNT; a++) {
+            for (c = 0; c < 5u; c++) {
+                double e = 0, dc = 0;
+                int32_t pk = 0;
+                synth_kill();
+                run_ms(50);
+                sys.osc = (uint8_t)(a + 1u);
+                sys.np_x = XY[c][0];
+                sys.np_y = XY[c][1];
+                for (j = 0; j < 4u; j++)
+                    synth_note_on(CH[j], 110);
+                run_ms(200);
+                for (b = 0; b < 400u; b++) {                /* ~290 ms */
+                    synth_render(buf, CTL);
+                    for (j = 0; j < CTL; j++) {
+                        int32_t v = buf[2 * j], av = v < 0 ? -v : v;
+                        e += (double)v * v;
+                        dc += v;
+                        pk = av > pk ? av : pk;
+                    }
+                }
+                e = sqrt(e / (400.0 * CTL));
+                dc /= 400.0 * CTL;
+                if (c == 0u && getenv("NP_LEVELS"))
+                    printf("   LEVEL %u %.0f\n", a, e);
+                if (c == 0u) {
+                    lo = e < lo ? e : lo;
+                    hi = e > hi ? e : hi;
+                    if (e < 2700 || e > 11000) {             /* (the circuit: ~5400) */
+                        printf("   %s: RMS %.0f at X = Y = 64\n", NP_NAME[a], e);
+                        okk = 0;
+                    }
+                }
+                if (e < 50 || fabs(dc) > 3000 || pk > 32767) {
+                    printf("   %s X %u Y %u: RMS %.0f DC %.0f peak %d\n", NP_NAME[a], XY[c][0], XY[c][1], e, dc, pk);
+                    okk = 0;
+                }
+            }
+        }
+        printf("   (noise programs at X = Y = 64: RMS %.0f .. %.0f)\n", lo, hi);
+        check("noise: all 30 programs sound, levelled, bounded, no DC in X / Y corners", okk);
+        synth_kill();
+        sys.osc = 0;
+        sys.np_x = sys.np_y = sys.np_level = 64;
     }
 
     /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */
@@ -577,6 +645,7 @@ int main(int argc, char **argv)
             uint8_t chaos, shape, output, attack, decay, sustain, release, ring;
             uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
             uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
+            uint8_t osc, np_x, np_y;
         } P[] = {   /* ui.c PRESETS */
             {85, 76, 0, 6, 80, 110, 70, 50}, {85, 90, 64, 0, 62, 0, 66, 110}, {6, 64, 64, 10, 70, 120, 64, 30},
             {38, 64, 32, 4, 60, 90, 66, 60}, {54, 56, 64, 2, 64, 80, 72, 70}, {30, 100, 32, 0, 50, 0, 52, 100},
@@ -589,6 +658,13 @@ int main(int argc, char **argv)
             {6, 64, 64, 30, 80, 100, 96, 30, 0, 0, 0, 0, 0, 0, 110, 110, 100, 96, SI_OCT, 100},
             {85, 76, 32, 60, 90, 110, 100, 50, 0, 0, 0, 0, 0, 0, 127, 120, 50, 80, SI_OCT, 80},
             {54, 90, 64, 0, 62, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 70, 90, 110, 120, 100, SI_FIFTH, 110},
+            {85, 76, 0, 0, 70, 100, 70, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 40, 90},
+            {85, 76, 0, 20, 80, 90, 96, 30, 0, 0, 0, 0, 0, 0, 100, 100, 60, 70, SI_OCT, 90, 7, 70, 50},
+            {85, 76, 0, 0, 40, 0, 44, 70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 96, 64},
+            {85, 76, 0, 80, 96, 110, 100, 50, 0, 0, 0, 0, 0, 0, 110, 110, 90, 80, SI_FIFTH, 100, 18, 50, 40},
+            {85, 76, 0, 0, 62, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 80, 0, 0, 0, 0, 0, 0, 11, 30, 80},
+            {85, 76, 0, 2, 76, 100, 74, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 80, 80},
+            {85, 76, 0, 0, 64, 60, 60, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 29, 64, 100},
         };
         wav_hdr(wav, 0);
         for (w = 0; w < sizeof P / sizeof P[0]; w++) {
@@ -599,6 +675,7 @@ int main(int argc, char **argv)
             sys.fx_damp = P[w].fx_damp; sys.fx_pos = P[w].fx_pos; sys.fx_mix = P[w].fx_mix;
             sys.sh_size = P[w].sh_size; sys.sh_decay = P[w].sh_decay; sys.sh_shimmer = P[w].sh_shimmer;
             sys.sh_mix = P[w].sh_mix; sys.sh_interval = P[w].sh_interval; sys.sh_tone = P[w].sh_tone;
+            sys.osc = P[w].osc; sys.np_x = P[w].np_x; sys.np_y = P[w].np_y;
             for (k = 0; k < sizeof ARP; k++) {
                 fm1_in.notes = 1u << key_of(ARP[k]);
                 run_ms(170);

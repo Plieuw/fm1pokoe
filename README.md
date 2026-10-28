@@ -38,12 +38,12 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 2 — SHAPE | β 10..34: lage waarden trage, ronde spiralen; hoge waarden snelle, strakke |
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
-| HOME | de oscillator: de circuitpagina (CHAOS, SHAPE, OUTPUT, RING en de attractor) |
+| HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING) |
 | ENV | wisselt naar de ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings, 2× de shimmer reverb, 3× terug naar HOME |
-| SELECT | RING (circuit- en ENV-pagina), POSITION (resonator), TONE (shimmer) |
-| ALGORITHM | weergave: 3D (draaiend), X-Y, X-Z, Y-Z, TIME |
-| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT |
+| SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · RING (ENV) · POSITION (resonator) · TONE (shimmer) |
+| ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator) · het interval (shimmer) |
+| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | tweede core aan/uit (vanaf de volgende start) |
@@ -51,6 +51,22 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | MIDI in (USB en TRS) | note on/off op elk kanaal, CC 123 = all notes off |
 | USB | class-compliant MIDI + USB-audio-ingang (opnemen in je DAW) |
 | OCT- + OCT+ 5 s ingedrukt | UBOOT (update-modus) |
+
+**De noise-oscillators.** Draai op HOME aan ALGORITHM: na CHUA komen 30 noise-programma's naar de Noise Plethora
+van Befaco (drie banken van tien, zoals op de module). Het zijn eigen fixed-point versies van wat de handleiding per
+programma beschrijft, gemaakt voor een keyboard: de noot zet de hoofdfrequentie, KNOB 1 en 2 zijn X en Y van het
+programma (de cel toont wat ze doen), KNOB 3 het niveau, KNOB 4 de RING van de gate. Elke stem draait een eigen kopie,
+door dezelfde ADSR en low pass gate (en de FX) als het circuit. Het scherm tekent de uitgang tegen zichzelf een paar
+samples eerder, een "attractor" van de ruis; met SELECT op TIME zie je de golfvorm.
+
+| Bank | Programma's (X / Y) |
+| --- | --- |
+| A — textures | A0 RADIO OH NO (osc 2 / PWM) · A1 RWALK FLANGE (loopsnelheid / flanger) · A2 XMOD RING SQR · A3 XMOD RING SINE (osc 2 / FM) · A4 CROSS MOD RING (verhoudingen / FM) · A5 RESONOISE (mod-verhouding / fold) · A6–A8 GRAIN GLITCH 1–3 (korrel / FM) · A9 BASURILLA (LFO-snelheid / breedte) |
+| B — HH clusters | B0 CLUSTER SAW (spreiding / aantal stemmen) · B1 PW CLUSTER (ontstemming / pulsbreedte) · B2 CR CLUSTER · B3 SINE FM CLUST · B4 TRI FM CLUST (ontstemming / FM) · B5 PRIME CLUSTER (spreiding / FM) · B6 PRIME C NOISE (spreiding / ruis-FM) · B7 FIBONACCI · B8 PARTIAL CLUST (spreiding / toon) · B9 PHASING CLUST (spreiding / drift) |
+| C — harsh & wild | C0 BASURA TOTAL (LFSR / galm) · C1 ATARI · C2 WAKING FILOM. (osc 2 of box / FM) · C3 P S H (snelheid / galm) · C4 ARRAY ROCKS (mod-verhouding / husselen) · C5 EXIST. PAIN · C6 WHO KNOWS (sweep-snelheid / diepte) · C7 SATAN WORKOUT (FM / crush) · C8 RWALK BITCRUSH · C9 RWALK LFREE (box / galm) |
+
+Ze zijn op hetzelfde niveau gezet als het circuit (bij X = Y = 64, gemeten in de test) en blijven in elke hoek van X en
+Y begrensd en zonder DC.
 
 **De low pass gate.** Op de ENV-pagina is de gate een rond rood lampje (het LED van een vactrol): het brandt fel als de gate open staat en dimt mee met de envelope; ernaast de cutoff. De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt
 de envelope snel omhoog (~2 ms) en trager omlaag (~30 ms), en zet zowel het volume als de cutoff (25 Hz .. 15 kHz). Het
@@ -99,6 +115,7 @@ Alles wordt als één bestand gecompileerd: `firmware/src/felucca.c` bepaalt de 
 | Bestand | Wat |
 | --- | --- |
 | `firmware/src/synth.c` | het Chua-circuit: diode, RK2-solver in Q20 fixed point, stemmen, uitgang, de trace voor het scherm |
+| `firmware/src/noise.c` | de 30 noise-oscillators (naar Befaco's Noise Plethora) |
 | `firmware/src/shimmer.c` | de shimmer reverb: FDN-galm met octaafverschuiver in de terugkoppeling |
 | `firmware/src/resonator.c` | de FX-resonatoren rond de Rings/DaisySP-port (`phys_dsp.c`, `phys_symp.c`, MIT) |
 | `firmware/src/lpg_tables.h` | gegenereerd door `tools/gen_lpg_tables.py`: ADSR-tijden, cutoff, resonantie |

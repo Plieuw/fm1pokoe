@@ -10,6 +10,10 @@ and the drawing code all come from Felucca. Each part keeps its own licence (see
 - FX resonators: the models of [Rings](https://github.com/pichenettes/eurorack) by Emilie Gillet (Mutable Instruments) and
   [DaisySP](https://github.com/electro-smith/DaisySP) by Electrosmith and Emilie Gillet ([MIT](LICENSES/MIT-Rings.txt),
   [MIT](LICENSES/MIT-DaisySP.txt)), in Felucca's fixed-point port
+- Noise oscillators: after the programs of [Befaco](https://www.befaco.org)'s **Noise Plethora** (designed by Jeremy
+  Bernstein, Julia Mugica and Ivan Paz with Befaco), written from the descriptions in its
+  [manual](https://www.befaco.org/docs/Noise_Plethora/Noise_Plethora.pdf); this firmware's own code (`firmware/src/noise.c`),
+  no code of the module's
 - Font: [Inter Tight](https://github.com/rsms/inter-tight) by The Inter Project Authors, [SIL OFL 1.1](LICENSES/OFL-InterTight.txt)
 - Second core: its start, mailbox and guards from [X0X](https://github.com/charlesvestal/fm1-x0x) by
   [charlesvestal](https://github.com/charlesvestal) with the dual-core findings of [Melodee](https://github.com/keremimo/melodee)

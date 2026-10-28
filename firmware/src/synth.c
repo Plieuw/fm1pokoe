@@ -217,8 +217,11 @@ typedef struct {
     uint16_t amp;                /* velocity, Q15 */
     uint8_t note, stage, fresh;  /* fresh: the DC blocker starts at the first sample */
     uint8_t lpg_n;               /* frames until the next coefficient update */
+    uint8_t osc;                 /* the oscillator its state belongs to (sys.osc when it started; a change restarts it) */
 } voice_t;
 static voice_t voice[NVOICE];
+#define NP_COUNT 30                              /* the noise programs (noise.c, included below) */
+static void np_start(uint32_t k, uint32_t seed);
 static uint32_t voice_clock;
 static chua_t ghost = {C1 / 10, 0, 0};          /* the circuit at the current settings, one substep per block */
 static uint32_t chua_restarts;                   /* voices restarted because the solver left the range (a diagnostic) */
@@ -259,7 +262,10 @@ static void synth_note_on(uint32_t note, uint32_t vel)
         v = best;
     }
     if (v->stage == ST_OFF) {                       /* a new circuit: where the ghost is (on the attractor), nudged a */
-        v->s = ghost;                               /* little so that voices in a chord do not run in lockstep */
+        v->osc = (uint8_t)(sys.osc > NP_COUNT ? 0u : sys.osc);   /* little so that voices in a chord do not run in */
+        if (v->osc)                                 /* lockstep; a noise program: its state anew */
+            np_start((uint32_t)(v - voice), rng());
+        v->s = ghost;
         v->s.x += (int32_t)(rng() & 0x3FFFu) - 0x2000;
         v->s.y += (int32_t)(rng() & 0x0FFFu) - 0x0800;
         v->env = v->ctl = 0;
@@ -393,29 +399,48 @@ static uint32_t voice_h(const voice_t *v, int32_t *hs)
 
 #include "resonator.c"                          /* the FX resonators (Rings' models), after the voices */
 #include "shimmer.c"                            /* the shimmer reverb, after the resonator: the stereo output */
+#include "noise.c"                              /* the noise oscillators (after Befaco's Noise Plethora) */
 
 /* one voice's block into sum[0..n-1] (mono); restarts: the counter of the core it runs on */
 static voice_t *render_tv;                       /* the voice the trace follows (set before the voices render) */
 static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restarts)
 {
-    int32_t hs, ahs, bhs;
-    uint32_t ns, i, j, h_all;
-    ns = voice_h(v, &hs);
-    ahs = (int32_t)(((int64_t)cc.alpha * hs) >> 16);
-    bhs = (int32_t)(((int64_t)cc.beta * hs) >> 16);
-    h_all = (uint32_t)hs * ns;
+    int32_t hs = 0, ahs = 0, bhs = 0, src[CTL];
+    uint32_t ns = 0, i, j, h_all = 0, osc = sys.osc, k = (uint32_t)(v - voice);
+    if (osc > NP_COUNT)
+        osc = 0;
+    if (osc != v->osc) {                                /* (the oscillator changed under the note: its state anew) */
+        v->osc = (uint8_t)osc;
+        if (osc)
+            np_start(k, 0x85EBCA6Bu * (v->note + 1u));
+        else
+            v->s = ghost;
+        v->fresh = 1;
+    }
+    if (osc)
+        np_render(k, osc - 1u, v->inc, src, n);
+    else {
+        ns = voice_h(v, &hs);
+        ahs = (int32_t)(((int64_t)cc.alpha * hs) >> 16);
+        bhs = (int32_t)(((int64_t)cc.beta * hs) >> 16);
+        h_all = (uint32_t)hs * ns;
+    }
     for (i = 0; i < n; i++) {
         int32_t s;
         int done = env_frame(v);
-        for (j = 0; j < ns; j++)
-            chua_step(&v->s, hs, ahs, bhs);
-        if (chua_out_of_range(&v->s)) {                 /* (the solver lost it: start over on the attractor) */
-            (*restarts)++;
-            v->s = ghost;
-            v->fresh = 1;
+        if (osc)
+            s = src[i];
+        else {
+            for (j = 0; j < ns; j++)
+                chua_step(&v->s, hs, ahs, bhs);
+            if (chua_out_of_range(&v->s)) {             /* (the solver lost it: start over on the attractor) */
+                (*restarts)++;
+                v->s = ghost;
+                v->fresh = 1;
+            }
+            s = (int32_t)(((int64_t)(v->s.x >> 8) * cc.gx + (int64_t)(v->s.y >> 8) * cc.gy +
+                           (int64_t)(v->s.z >> 8) * cc.gz) >> 12);
         }
-        s = (int32_t)(((int64_t)(v->s.x >> 8) * cc.gx + (int64_t)(v->s.y >> 8) * cc.gy +
-                       (int64_t)(v->s.z >> 8) * cc.gz) >> 12);
         if (v->fresh) {
             v->fresh = 0;
             v->dc = s * 256;
@@ -424,12 +449,24 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
         s -= v->dc >> 8;
         sum[i] += lpg_frame(v, s) >> 1;
         if (v == render_tv) {
-            v->trace_t += h_all;
-            if (v->trace_t >= CHUA_TRACE_DT) {
-                v->trace_t -= CHUA_TRACE_DT;
-                if (v->trace_t > CHUA_TRACE_DT)
-                    v->trace_t = 0;
-                trace_put(&v->s);
+            if (osc) {                                  /* the noise: the output against itself 8 and 16 samples back */
+                np_t *S = &np_state[k];
+                if (!(i & 3u)) {
+                    chua_t t;
+                    S->hist[S->hn++ & 15u] = s;
+                    t.x = s * 32;
+                    t.y = S->hist[(S->hn - 3u) & 15u] * 32;
+                    t.z = S->hist[(S->hn - 5u) & 15u] * 32;
+                    trace_put(&t);
+                }
+            } else {
+                v->trace_t += h_all;
+                if (v->trace_t >= CHUA_TRACE_DT) {
+                    v->trace_t -= CHUA_TRACE_DT;
+                    if (v->trace_t > CHUA_TRACE_DT)
+                        v->trace_t = 0;
+                    trace_put(&v->s);
+                }
             }
         }
         if (done)

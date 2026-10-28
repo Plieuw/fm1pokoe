@@ -192,6 +192,30 @@ int main(int argc, char **argv)
     sys.fx_mix = 0;
     ui_force = 1;
 
+    preset_load(0);                      /* the noise programs: ALGORITHM on HOME, then a few of them drawn */
+    sys.view = V_XY;
+    synth_note_on(48, 100);
+    enc_steps[panel.enc[EN_ALGO]] = 6;   /* CHUA -> A5 RESONOISE */
+    ui_input();
+    frames(10);
+    bad |= shot(dir, "h_noise_select");
+    {
+        static const uint8_t O[] = {6, 14, 21, 28};   /* RESONOISE, SINE FM CLUST, BASURA TOTAL, SATAN WORKOUT */
+        for (i = 0; i < sizeof O; i++) {
+            sys.osc = O[i];
+            ui_event_ms = 0;
+            frames(14);
+            snprintf(name, sizeof name, "h_noise_%u", O[i]);
+            bad |= shot(dir, name);
+        }
+    }
+    sys.view = V_TIME;
+    frames(8);
+    bad |= shot(dir, "h_noise_time");
+    synth_kill();
+    preset_load(0);
+    ui_force = 1;
+
     sys.octave = 2;                      /* the widest values: a knob just turned, a message */
     sys.release = 127;
     sys.cpu_q8 = 255;

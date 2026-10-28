@@ -3,17 +3,20 @@
  *
  * Four pages: HOME the circuit (the oscillator), ENV its page (again: back HOME), FX the resonator, FX again the
  * shimmer, FX again back HOME; the LED of the page's button is lit:
+ *   HOME     ALGORITHM the oscillator: CHUA (the circuit) or one of the 30 noise programs (noise.c: A0..C9)
  *   CIRCUIT  KNOB 1 CHAOS   the regime: cycle, period 2, spiral, double scroll, outer cycle
  *            KNOB 2 SHAPE   beta: slow round spirals .. tight fast ones
  *            KNOB 3 OUTPUT  which voltage you hear: X, X+Y, Y, Y+Z, Z
  *            KNOB 4 RING    the low pass gate's resonance
+ *   NOISE    KNOB 1 X, KNOB 2 Y (the program's two controls), KNOB 3 LEVEL, KNOB 4 RING; drawn: the output against
+ *            itself a moment ago (its "attractor")
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonator (resonator.c: Rings' models);
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
  *   FX (2nd) KNOB 1..4      SIZE, DECAY, SHIMMER, MIX of the shimmer reverb (shimmer.c); ALGORITHM the INTERVAL,
  *            SELECT the TONE; the tail's level over the last seconds drawn (the riser building)
- *   SELECT   RING (on the CIRCUIT and ENV pages)
- *   PRESETS the presets                      ALGORITHM  the view: 3D (turning), X-Y, X-Z, Y-Z, TIME
+ *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME); ENV: RING
+ *   PRESETS the presets
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO          2ND CORE on / off (saved at once; from the next power-on: the core starts only at boot)
  *   MASTER pot   volume
@@ -40,7 +43,11 @@ typedef struct {
     uint8_t chaos, shape, output, attack, decay, sustain, release, ring;
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* SHIMMER; MIX 0 (left out): off */
+    uint8_t osc, np_x, np_y;                     /* the oscillator: 0 (left out) the circuit, 1..30 a noise program */
 } preset_t;
+#define NZ(a, b) (1 + (a) * 10 + (b))            /* noise program A0 = NZ(0, 0) .. C9 = NZ(2, 9) */
+#define NOFX 0, 0, 0, 0, 0, 0
+#define NOSH 0, 0, 0, 0, 0, 0
 static const preset_t PRESETS[] = {
     {"DOUBLE SCROLL", 85, 76, 0, 6, 80, 110, 70, 50},     /* the classic double scroll, x (the scroll jumps) */
     {"RING PLUCK", 85, 90, 64, 0, 62, 0, 66, 110},        /* the gate pinged: a short ring on the spiral */
@@ -62,6 +69,17 @@ static const preset_t PRESETS[] = {
      127, 120, 50, 80, SI_OCT, 80},                                                  /* octave haze */
     {"FIFTH ASCENT", 54, 90, 64, 0, 62, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 70,  /* struck bells rising in */
      90, 110, 120, 100, SI_FIFTH, 110},                                              /* fifths */
+    /* the noise programs (noise.c): the gate as on the circuit, the CHAOS / SHAPE / OUTPUT kept for going back */
+    {"RADIO OH NO", 85, 76, 0, 0, 70, 100, 70, 40, NOFX, NOSH, NZ(0, 0), 40, 90},          /* a broken radio */
+    {"GRAIN SHOWER", 85, 76, 0, 20, 80, 90, 96, 30, NOFX,                                 /* glitch grains */
+     100, 100, 60, 70, SI_OCT, 90, NZ(0, 6), 70, 50},                                    /* rising in octaves */
+    {"PRIME HATS", 85, 76, 0, 0, 40, 0, 44, 70, NOFX, NOSH, NZ(1, 5), 96, 64},           /* metal clusters: hats */
+    {"FIBONACCI PAD", 85, 76, 0, 80, 96, 110, 100, 50, NOFX,                             /* a stretched cluster */
+     110, 110, 90, 80, SI_FIFTH, 100, NZ(1, 7), 50, 40},
+    {"CLUSTER BELL", 85, 76, 0, 0, 62, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 80,        /* a saw cluster struck */
+     NOSH, NZ(1, 0), 30, 80},                                                              /* into the bell */
+    {"SATAN WORKOUT", 85, 76, 0, 2, 76, 100, 74, 60, NOFX, NOSH, NZ(2, 7), 80, 80},       /* harsh and wild */
+    {"BITCRUSH WALK", 85, 76, 0, 0, 64, 60, 60, 50, NOFX, NOSH, NZ(2, 8), 64, 100},       /* a crushed random walk */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -93,6 +111,12 @@ static void preset_load(uint32_t i)
         sys.sh_tone = p->sh_tone;
     }
     sys.sh_mix = p->sh_mix;
+    sys.osc = (uint8_t)(p->osc % (NP_COUNT + 1u));
+    if (p->osc) {                                /* (a circuit preset leaves the noise knobs) */
+        sys.np_x = p->np_x;
+        sys.np_y = p->np_y;
+        sys.np_level = 64;
+    }
 }
 static int preset_edited(void)
 {
@@ -102,17 +126,19 @@ static int preset_edited(void)
            sys.fx_mix != p->fx_mix || (p->fx_mix && (sys.fx_model != p->fx_model || sys.fx_struct != p->fx_struct ||
            sys.fx_bright != p->fx_bright || sys.fx_damp != p->fx_damp || sys.fx_pos != p->fx_pos)) ||
            sys.sh_mix != p->sh_mix || (p->sh_mix && (sys.sh_size != p->sh_size || sys.sh_decay != p->sh_decay ||
-           sys.sh_shimmer != p->sh_shimmer || sys.sh_interval != p->sh_interval || sys.sh_tone != p->sh_tone));
+           sys.sh_shimmer != p->sh_shimmer || sys.sh_interval != p->sh_interval || sys.sh_tone != p->sh_tone)) ||
+           sys.osc != p->osc || (p->osc && (sys.np_x != p->np_x || sys.np_y != p->np_y || sys.np_level != 64u));
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485535u      /* "CHU5": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485536u      /* "CHU6": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
     uint8_t chaos, shape, output, attack, release, view, preset, cpu2, decay, sustain, ring;
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
+    uint8_t osc, np_x, np_y, np_level;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -148,6 +174,10 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.sh_mix = (uint8_t)(s.sh_mix & 127u);
         sys.sh_interval = (uint8_t)(s.sh_interval % SI_COUNT);
         sys.sh_tone = (uint8_t)(s.sh_tone & 127u);
+        sys.osc = (uint8_t)(s.osc % (NP_COUNT + 1u));
+        sys.np_x = (uint8_t)(s.np_x & 127u);
+        sys.np_y = (uint8_t)(s.np_y & 127u);
+        sys.np_level = (uint8_t)(s.np_level & 127u);
     }
 }
 
@@ -182,6 +212,10 @@ static int settings_save(void)     /* 0 = saved */
     s.sh_mix = sys.sh_mix;
     s.sh_interval = sys.sh_interval;
     s.sh_tone = sys.sh_tone;
+    s.osc = sys.osc;
+    s.np_x = sys.np_x;
+    s.np_y = sys.np_y;
+    s.np_level = sys.np_level;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -568,6 +602,13 @@ static void draw_sh(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the oscillator's short name: "CHUA", or the noise program's bank and number ("A5") */
+static void osc_code(char *d, uint32_t n, uint32_t osc)
+{
+    char c[3] = {(char)('A' + (osc - 1u) / 10u), (char)('0' + (osc - 1u) % 10u), 0};
+    str_cpy(d, osc ? c : "CHUA", n);
+}
+
 static void ui_draw(void)
 {
     char a[40], b[24], v[12];
@@ -585,7 +626,21 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 0u) {
+    if (sys.page == 0u && sys.osc) {
+        uint32_t alg = (sys.osc - 1u) % NP_COUNT;
+        str_cpy(a, "1 ", sizeof a);
+        ui_cat(a, sizeof a, NP_X[alg]);
+        fmt_int(v, sys.np_x);
+        ui_cell(T_C1, a, v);
+        str_cpy(a, "2 ", sizeof a);
+        ui_cat(a, sizeof a, NP_Y[alg]);
+        fmt_int(v, sys.np_y);
+        ui_cell(T_C2, a, v);
+        fmt_int(v, sys.np_level);
+        ui_cell(T_C3, "3 LEVEL", v);
+        fmt_int(v, sys.ring);
+        ui_cell(T_C4, "4 RING", v);
+    } else if (sys.page == 0u) {
         str_cpy(a, "1 CHAOS ", sizeof a);
         fmt_int(v, sys.chaos);
         ui_cat(a, sizeof a, v);
@@ -674,13 +729,19 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, sys.fx_model % RZ_COUNT == RZ_SYMP ? "   AMT " : "   POS ");
             fmt_int(v, sys.fx_pos);
             ui_cat(a, sizeof a, v);
-        } else {
-            str_cpy(a, sys.page ? "ENV   RING " : "RING ", sizeof a);
+        } else if (sys.page) {
+            str_cpy(a, "ENV   RING ", sizeof a);
             fmt_int(v, sys.ring);
             ui_cat(a, sizeof a, v);
-            ui_cat(a, sizeof a, "   ");
-            if (!sys.page)
+        } else {                                 /* HOME: the oscillator and the view */
+            osc_code(a, sizeof a, sys.osc);
+            if (sys.osc) {                       /* (the program's name: no room for the view as well) */
+                ui_cat(a, sizeof a, " ");
+                ui_cat(a, sizeof a, NP_NAME[(sys.osc - 1u) % NP_COUNT]);
+            } else {
+                ui_cat(a, sizeof a, "   ");
                 ui_cat(a, sizeof a, VIEW_NAME[sys.view % V_COUNT]);
+            }
         }
         ui_cat(a, sizeof a, "   OCT ");
         if (sys.octave > 0)
@@ -820,7 +881,12 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 0u) {
+    if (sys.page == 0u && sys.osc) {
+        knob(&sys.np_x, EN_K1, 0);
+        knob(&sys.np_y, EN_K2, 1);
+        knob(&sys.np_level, EN_K3, 2);
+        knob(&sys.ring, EN_K4, 3);
+    } else if (sys.page == 0u) {
         knob(&sys.chaos, EN_K1, 0);
         knob(&sys.shape, EN_K2, 1);
         knob(&sys.output, EN_K3, 2);
@@ -841,7 +907,12 @@ static void ui_input(void)
         knob(&sys.sustain, EN_K3, 2);
         knob(&sys.release, EN_K4, 3);
     }
-    if ((s = panel_enc(EN_SELECT)) != 0) {
+    if ((s = panel_enc(EN_SELECT)) != 0 && sys.page == 0u) {   /* HOME: SELECT turns the view */
+        sys.view = (uint8_t)((sys.view + V_COUNT * 8 + s) % V_COUNT);
+        str_cpy(t, "VIEW ", sizeof t);
+        ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
+        ui_say(t);
+    } else if (s) {
         volatile uint8_t *p = sys.page == 3u ? &sys.sh_tone : sys.page == 2u ? &sys.fx_pos : &sys.ring;
         *p = (uint8_t)clamp(*p + s, 0, 127);
         str_cpy(t, sys.page == 3u ? "TONE " : sys.page == 2u ? (sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ")
@@ -860,10 +931,14 @@ static void ui_input(void)
         str_cpy(t, "MODEL ", sizeof t);
         ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
         ui_say(t);
-    } else if (s && !sys.page) {
-        sys.view = (uint8_t)((sys.view + V_COUNT * 8 + s) % V_COUNT);
-        str_cpy(t, "VIEW ", sizeof t);
-        ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
+    } else if (s && !sys.page) {                 /* HOME: the oscillator, CHUA and the 30 noise programs */
+        sys.osc = (uint8_t)(((int32_t)sys.osc + (int32_t)(NP_COUNT + 1u) * 8 + s) % (int32_t)(NP_COUNT + 1u));
+        osc_code(t, sizeof t, sys.osc);
+        if (sys.osc) {
+            ui_cat(t, sizeof t, " ");
+            ui_cat(t, sizeof t, NP_NAME[sys.osc - 1u]);
+        } else
+            ui_cat(t, sizeof t, " CIRCUIT");
         ui_say(t);
     }
     if ((s = panel_enc(EN_PRESET)) != 0)
