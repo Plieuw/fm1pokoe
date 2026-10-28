@@ -81,13 +81,20 @@ jobs:
       - name: Build
         shell: bash
         run: |
+          set -o pipefail
+          report() {   # a failed build's last lines as an annotation on the run's page
+            tail -n 25 build-log.txt | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' > build-tail.txt
+            echo "::error title=build failed::$(cat build-tail.txt)"
+            exit 1
+          }
           if [ -n "${{ steps.ver.outputs.release }}" ]; then
-            ./build.sh --release "${{ steps.ver.outputs.release }}"
+            ./build.sh --release "${{ steps.ver.outputs.release }}" 2>&1 | tee build-log.txt || report
             cp "build/felucca-${{ steps.ver.outputs.release }}.fwsc" build/chua.fwsc
           else
-            FELUCCA_VERSION="${{ steps.ver.outputs.label }}" ./build.sh
+            FELUCCA_VERSION="${{ steps.ver.outputs.label }}" ./build.sh 2>&1 | tee build-log.txt || report
             cp build/felucca.fwsc build/chua.fwsc
           fi
+          grep -E "^  (ok|FAIL) " build-log.txt | sed 's/^/::notice title=build check::/' || true
 
       - name: Tests
         run: sh tests/run_tests.sh
