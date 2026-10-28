@@ -610,6 +610,7 @@ int main(int argc, char **argv)
      * gate ends each note; turning it off lets the held notes sound as they are */
     {
         uint32_t okk = 1, w0, j, b, ons;
+        okk &= ARP_NTYPE == 32u && !strcmp(arp_type_name(15), "TECHNO-A") && !strcmp(arp_type_name(29), "BASSLINE D");   /* (the AN1x's 30 + 2) */
         static const uint8_t UP2[6] = {60, 64, 67, 72, 76, 79};
         synth_kill(); keys_all_off(); run_ms(50);
         sys.osc = 0; sys.fx_mix = 0; sys.sh_mix = 0; sys.attack = 0; sys.sustain = 100; sys.release = 20;
@@ -689,8 +690,10 @@ int main(int argc, char **argv)
                 run_ms(300);
                 if (!strcmp(ARP_STEPS[t3 - AT_BASIC].name, "TECHNO-A"))
                     okk &= arp_view.note[w0 & 31u] == 48u;
-                if (!strcmp(ARP_STEPS[t3 - AT_BASIC].name, "ECHO"))
+                if (!strcmp(ARP_STEPS[t3 - AT_BASIC].name, "ECHO (DJX)"))
                     okk &= arp_view.note[(w0 + 1u) & 31u] == arp_view.note[w0 & 31u];
+                if (!strcmp(ARP_STEPS[t3 - AT_BASIC].name, "DA HOUSE"))   /* the bass, then the right hand */
+                    okk &= arp_view.note[w0 & 31u] == 48u && arp_view.note[(w0 + 2u) & 31u] == 64u;
             }
             sys.arp_type = AT_UP1; sys.arp_swing = 127; arp.running = 1;
             w3 = arp_view.w;

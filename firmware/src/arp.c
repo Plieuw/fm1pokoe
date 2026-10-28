@@ -9,9 +9,8 @@
  *              3/8 .. 1/32, dotted and triplets), KNOB 3 GATE, KNOB 4 SWING (50 .. 83 %, as the AN1x);
  *              ALGORITHM the pattern; SELECT HOLD (latch)
  *
- * The patterns (after the Yamaha AN1x's and DJX's arpeggiators): the order types (up, down, up & down, random over
- * 1, 2, 4 octaves; up & down B) and step patterns from a table (ARP_STEPS): each step picks a held note by its place
- * (low to high), an octave, an accent, a rest, a tie, the chord or an echo.
+ * The patterns: the Yamaha AN1x's thirty Arpeggiator Types (1-15 orders, 16-30 step patterns) and two of the DJX's,
+ * see ARP_STEPS.
  *
  *   arp_add(note, vel), arp_remove(note)   keys.c: a note held, let go (with ARP on)
  *   arp_block(n)                          keys.c: the clock and the steps, once a block (n samples)
@@ -25,19 +24,20 @@ static const uint8_t ARP_TPS[ARP_NDIV] = {36, 24, 18, 16, 12, 9, 8, 6, 4, 3};
 static const char *const ARP_DIV_NAME[ARP_NDIV] = {"3/8", "1/4", "3/16", "1/6", "1/8", "3/32", "1/12", "1/16",
                                                    "1/24", "1/32"};
 
-/* the patterns. The AN1x's "separated chord" types: up, down, up & down, random over 1, 2 or 4 octaves (its manual,
- * p. 34: types 1-15; their exact list is in its separate Data List, not at hand: these are its families), the DJX's
- * Up & Down B (the ends twice), and the DJX's eleven named patterns (its manual, p. 38: names and one-line
- * descriptions; the steps are this firmware's reading of them).
+/* the patterns: the AN1x's thirty Arpeggiator Types (its Data List, p. 5: names and one-line comments) and two more
+ * of the DJX's (its manual, p. 38). Types 1-15 are orders, worked out (UpDwB: the ends twice, as the DJX's
+ * Up & Down B, "slightly different" from UpDwA); 16-30 are step patterns: the comments give their character only, the
+ * steps are this firmware's reading of them (TekkEcho's "moving filter" as a velocity sweep: the gate opens wider).
  * A step: sel the held note by place (0 the lowest; past the highest: on into the next octave), or ARP_REST,
- * ARP_TIE (the last goes on), ARP_ALL (the chord), ARP_PREV (an echo: the last note again); oct octaves up (-1 ..
- * 3); acc 0 normal, 1 accent, 2 soft, 3 an echo's ghost */
-enum { ARP_REST = 100, ARP_TIE, ARP_ALL, ARP_PREV };
+ * ARP_TIE (the last goes on), ARP_ALL (the chord), ARP_UPPER (the chord but the lowest: DAHouse's right hand),
+ * ARP_PREV (an echo: the last note again); oct octaves up (-1 .. 3); acc 0 normal, 1 accent, 2 soft, 3 a ghost */
+enum { ARP_REST = 100, ARP_TIE, ARP_ALL, ARP_UPPER, ARP_PREV };
 enum { AN, AA, AS, AG };                         /* (accents) */
 typedef struct { uint8_t sel; int8_t oct; uint8_t acc; } arp_step_t;
 typedef struct { const char *name; uint8_t n; arp_step_t s[32]; } arp_pat_t;
 #define R_ {ARP_REST, 0, AN}
 #define C_(a) {ARP_ALL, 0, a}
+#define U_(a) {ARP_UPPER, 0, a}
 #define E_(a) {ARP_PREV, 0, a}
 static const arp_pat_t ARP_STEPS[] = {
     {"TECHNO-A", 16, {{0, -1, AA}, {0, 0, AS}, {1, 0, AN}, {0, 0, AS}, {0, -1, AN}, {0, 0, AS}, {2, 0, AN}, {0, 0, AS},
@@ -48,37 +48,54 @@ static const arp_pat_t ARP_STEPS[] = {
                       {3, 1, AA}, {2, 1, AN}, {1, 1, AN}, {0, 1, AN}, {3, 0, AA}, {2, 0, AN}, {1, 0, AN}, {0, 0, AS}}},
     {"TECHNO-D", 16, {{0, 0, AA}, {0, 0, AS}, {0, 0, AG}, {0, 0, AS}, {1, 0, AA}, {0, 0, AS}, {0, 0, AG}, {0, 0, AS},
                       {0, 0, AA}, {0, 0, AS}, {2, 0, AN}, {0, 0, AS}, {1, 0, AA}, {0, 0, AG}, {0, 0, AS}, {0, 0, AS}}},
-    {"DANCE/HOUSE", 16, {R_, R_, C_(AA), R_, R_, C_(AN), R_, C_(AS), R_, R_, C_(AA), R_, C_(AN), R_, C_(AS), R_}},
-    {"SYNCOPATION", 16, {{0, -1, AA}, R_, {0, 2, AN}, {1, 0, AN}, R_, {2, 1, AA}, {0, -1, AN}, R_,
+    {"DA HOUSE", 16, {{0, -1, AA}, R_, U_(AN), R_, {0, -1, AN}, {0, -1, AS}, U_(AA), R_,
+                      {0, -1, AA}, R_, U_(AN), {0, 0, AS}, R_, {0, -1, AN}, U_(AA), R_}},
+    {"SYNCOPA A", 16, {{0, 0, AA}, R_, R_, {1, 0, AN}, R_, {2, 0, AN}, R_, {0, 1, AA},
+                       R_, R_, {1, 0, AN}, R_, {2, 0, AA}, R_, {1, 0, AS}, R_}},
+    {"SYNCOPA B", 16, {{0, -1, AA}, R_, {0, 2, AN}, {1, 0, AN}, R_, {2, 1, AA}, {0, -1, AN}, R_,
                          {1, 2, AN}, R_, {0, 0, AA}, {2, 2, AS}, R_, {1, -1, AN}, {0, 1, AA}, R_}},
-    {"BASELINE", 16, {{0, -1, AA}, {0, -1, AS}, R_, {0, 0, AN}, {0, -1, AN}, R_, {1, -1, AA}, {0, -1, AS},
-                      {0, -1, AA}, R_, {0, 0, AN}, {0, -1, AS}, R_, {1, -1, AN}, {0, 0, AA}, {0, -1, AS}}},
-    {"ECHO", 32, {{0, 0, AA}, E_(AS), R_, E_(AG), {1, 0, AA}, E_(AS), R_, E_(AG), {2, 0, AA}, E_(AS), R_, E_(AG),
-                  {3, 0, AA}, E_(AS), R_, E_(AG), {4, 0, AA}, E_(AS), R_, E_(AG), {3, 0, AA}, E_(AS), R_, E_(AG),
-                  {2, 0, AA}, E_(AS), R_, E_(AG), {1, 0, AA}, E_(AS), R_, E_(AG)}},
-    {"TECHNO ECHO", 16, {{0, 0, AA}, E_(AS), {1, 0, AN}, E_(AG), {2, 0, AA}, E_(AS), {0, 1, AN}, E_(AG),
-                         {0, -1, AA}, E_(AS), {2, 0, AN}, E_(AG), {1, 1, AA}, E_(AS), {0, 1, AN}, E_(AG)}},
-    {"SWEEP", 32, {{0, 0, AA}, {1, 0, AN}, {2, 0, AN}, {3, 0, AN}, {4, 0, AA}, {5, 0, AN}, {6, 0, AN}, {7, 0, AN},
-                   {8, 0, AA}, {9, 0, AN}, {10, 0, AN}, {11, 0, AN}, {12, 0, AA}, {13, 0, AN}, {14, 0, AN}, {15, 0, AA},
-                   {15, 0, AA}, {14, 0, AN}, {13, 0, AN}, {12, 0, AN}, {11, 0, AA}, {10, 0, AN}, {9, 0, AN}, {8, 0, AN},
-                   {7, 0, AA}, {6, 0, AN}, {5, 0, AN}, {4, 0, AN}, {3, 0, AA}, {2, 0, AN}, {1, 0, AN}, {0, 0, AS}}},
-    {"PULSE", 32, {{0, 0, AA}, {0, 0, AS}, {0, 2, AN}, {0, 0, AS}, {0, 0, AA}, {0, 3, AG}, {0, 0, AS}, {0, 1, AN},
+    {"SYNCO ECHO", 16, {{0, 0, AA}, R_, E_(AS), {1, 0, AN}, R_, E_(AG), {2, 0, AA}, R_,
+                        E_(AS), {0, 1, AN}, R_, E_(AG), {1, 0, AA}, E_(AS), R_, E_(AG)}},
+    {"TEKK ECHO A", 16, {{0, 0, AG}, E_(AG), {1, 0, AS}, E_(AG), {2, 0, AS}, E_(AS), {0, 1, AN}, E_(AS),
+                         {1, 1, AN}, E_(AS), {2, 1, AA}, E_(AN), {0, 2, AA}, E_(AN), {2, 1, AA}, E_(AS)}},
+    {"TEKK ECHO B", 16, {{0, 2, AA}, E_(AN), {2, 1, AA}, E_(AN), {1, 1, AA}, E_(AS), {0, 1, AN}, E_(AS),
+                         {2, 0, AN}, E_(AS), {1, 0, AS}, E_(AG), {0, 0, AS}, E_(AG), {1, 0, AG}, E_(AG)}},
+    {"PULSE LINE", 32, {{0, 0, AA}, {0, 0, AS}, {0, 2, AN}, {0, 0, AS}, {0, 0, AA}, {0, 3, AG}, {0, 0, AS}, {0, 1, AN},
                    {0, 0, AA}, {0, 0, AS}, {0, 2, AN}, {0, 0, AS}, {0, 0, AA}, {0, 1, AN}, {0, 3, AG}, {0, 0, AS},
                    {1, 0, AA}, {1, 0, AS}, {1, 2, AN}, {1, 0, AS}, {1, 0, AA}, {1, 3, AG}, {1, 0, AS}, {1, 1, AN},
                    {0, 0, AA}, {0, 0, AS}, {0, 2, AN}, {0, 3, AG}, {0, 0, AA}, {0, 1, AN}, {0, 2, AS}, {0, 3, AG}}},
+    {"BASSLINE A", 16, {{0, -1, AA}, {0, -1, AS}, R_, {0, 0, AN}, {0, -1, AN}, R_, {1, -1, AA}, {0, -1, AS},
+                      {0, -1, AA}, R_, {0, 0, AN}, {0, -1, AS}, R_, {1, -1, AN}, {0, 0, AA}, {0, -1, AS}}},
+    {"BASSLINE B", 16, {{0, -1, AA}, {0, -1, AG}, {0, 0, AS}, {0, -1, AA}, R_, {0, -1, AS}, {1, -1, AA}, {0, -1, AG},
+                        {0, -1, AA}, {0, 0, AS}, R_, {0, -1, AN}, {1, -1, AA}, {0, -1, AG}, {0, 0, AA}, {0, -1, AS}}},
+    {"BASSLINE C", 16, {{0, -1, AA}, R_, {1, -1, AN}, R_, {2, -1, AN}, R_, {1, -1, AN}, R_,
+                        {0, -1, AA}, R_, {0, 0, AN}, R_, {2, -1, AN}, R_, {1, -1, AS}, {0, -1, AN}}},
+    {"BASSLINE D", 16, {{0, -1, AA}, {0, 0, AS}, R_, {0, -1, AN}, {0, 0, AS}, R_, {0, -1, AA}, {1, 0, AN},
+                        {0, -1, AN}, {0, 0, AS}, R_, {0, -1, AA}, {0, 0, AN}, {1, -1, AS}, {0, -1, AA}, {0, 0, AS}}},
+    {"ECHO (DJX)", 32, {{0, 0, AA}, E_(AS), R_, E_(AG), {1, 0, AA}, E_(AS), R_, E_(AG), {2, 0, AA}, E_(AS), R_, E_(AG),
+                  {3, 0, AA}, E_(AS), R_, E_(AG), {4, 0, AA}, E_(AS), R_, E_(AG), {3, 0, AA}, E_(AS), R_, E_(AG),
+                  {2, 0, AA}, E_(AS), R_, E_(AG), {1, 0, AA}, E_(AS), R_, E_(AG)}},
+    {"SWEEP (DJX)", 32, {{0, 0, AA}, {1, 0, AN}, {2, 0, AN}, {3, 0, AN}, {4, 0, AA}, {5, 0, AN}, {6, 0, AN}, {7, 0, AN},
+                   {8, 0, AA}, {9, 0, AN}, {10, 0, AN}, {11, 0, AN}, {12, 0, AA}, {13, 0, AN}, {14, 0, AN}, {15, 0, AA},
+                   {15, 0, AA}, {14, 0, AN}, {13, 0, AN}, {12, 0, AN}, {11, 0, AA}, {10, 0, AN}, {9, 0, AN}, {8, 0, AN},
+                   {7, 0, AA}, {6, 0, AN}, {5, 0, AN}, {4, 0, AN}, {3, 0, AA}, {2, 0, AN}, {1, 0, AN}, {0, 0, AS}}},
 };
 #undef R_
 #undef C_
+#undef U_
 #undef E_
 #define ARP_NSTEPS (sizeof ARP_STEPS / sizeof ARP_STEPS[0])
-/* the order types: AN1x families x 1, 2, 4 octaves, then the DJX's Up & Down B */
-enum { AT_UP1, AT_UP2, AT_UP4, AT_DN1, AT_DN2, AT_DN4, AT_UD1, AT_UD2, AT_UD4, AT_RND1, AT_RND2, AT_RND4, AT_UDB,
-       AT_BASIC };
+/* the order types, the AN1x's 1-15: up, down, up & down A (the ends once), B (the ends twice), random, each over
+ * 1, 2, 4 octaves */
+enum { AT_UP1, AT_UP2, AT_UP4, AT_DN1, AT_DN2, AT_DN4, AT_UD1, AT_UD2, AT_UD4, AT_UDB1, AT_UDB2, AT_UDB4, AT_RND1,
+       AT_RND2, AT_RND4, AT_BASIC };
 #define AT_UP AT_UP2                             /* (tests: up over two octaves) */
 #define AT_UPDOWN AT_UD2
+#define AT_UDB AT_UDB1
 static const char *const ARP_BASIC_NAME[AT_BASIC] = {"UP OCT1", "UP OCT2", "UP OCT4", "DOWN OCT1", "DOWN OCT2",
-                                                     "DOWN OCT4", "UP&DOWN OCT1", "UP&DOWN OCT2", "UP&DOWN OCT4",
-                                                     "RANDOM OCT1", "RANDOM OCT2", "RANDOM OCT4", "UP&DOWN B"};
+                                                     "DOWN OCT4", "UPDW A OCT1", "UPDW A OCT2", "UPDW A OCT4",
+                                                     "UPDW B OCT1", "UPDW B OCT2", "UPDW B OCT4", "RANDOM OCT1",
+                                                     "RANDOM OCT2", "RANDOM OCT4"};
 #define ARP_NTYPE (AT_BASIC + ARP_NSTEPS)
 static const char *arp_type_name(uint32_t t)
 {
@@ -204,21 +221,21 @@ static uint32_t arp_vel(uint32_t v, uint32_t acc)
 static void arp_do_step(void)
 {
     uint8_t s[ARP_MAXN], v[ARP_MAXN];
-    uint32_t n = arp_sorted(s, v), type = sys.arp_type % ARP_NTYPE, i, nt;
+    uint32_t n = arp_sorted(s, v), type = sys.arp_type % ARP_NTYPE, i, nt, shown = 0;
     if (!n)
         return;
     if (type < AT_BASIC) {
-        static const uint8_t OCT[AT_BASIC] = {1, 2, 4, 1, 2, 4, 1, 2, 4, 1, 2, 4, 1};
-        uint32_t total = n * OCT[type], p = arp.pos, idx;
+        static const uint8_t OCT[3] = {1, 2, 4};
+        uint32_t total = n * OCT[type % 3u], p = arp.pos, idx, fam = type / 3u;
         arp_off_all();
-        if (type <= AT_UP4)
+        if (fam == 0u)
             idx = p % total;
-        else if (type <= AT_DN4)
+        else if (fam == 1u)
             idx = total - 1u - p % total;
-        else if (type <= AT_UD4) {               /* (the ends once: 0 1 2 3 2 1 ...) */
+        else if (fam == 2u) {                    /* A: the ends once (0 1 2 3 2 1 ...) */
             uint32_t c = total > 1u ? 2u * total - 2u : 1u, q = p % c;
             idx = q < total ? q : c - q;
-        } else if (type == AT_UDB) {             /* (the ends twice: 0 1 2 3 3 2 1 0 ...) */
+        } else if (fam == 3u) {                  /* B: the ends twice (0 1 2 3 3 2 1 0 ...) */
             uint32_t q = p % (2u * total);
             idx = q < total ? q : 2u * total - 1u - q;
         } else {
@@ -251,17 +268,17 @@ static void arp_do_step(void)
             arp_view.note[arp_view.w++ & 31u] = arp_last;
             return;
         }
-        for (i = 0; i < n; i++) {
-            uint32_t k = st->sel == ARP_ALL ? i : st->sel;
+        for (i = st->sel == ARP_UPPER && n > 1u ? 1u : 0u; i < n; i++) {
+            uint32_t k = st->sel == ARP_ALL || st->sel == ARP_UPPER ? i : st->sel;
             int32_t o = (int32_t)(k / n) + st->oct, x = (int32_t)s[k % n] + 12 * o;
             while (x < 12)                       /* (an octave down from the bottom: up again) */
                 x += 12;
             arp_sound((uint32_t)x, arp_vel(v[k % n], st->acc));
-            if (!i) {
+            if (!shown++) {
                 arp_last = (uint8_t)x;
                 arp_view.note[arp_view.w++ & 31u] = (uint8_t)x;
             }
-            if (st->sel != ARP_ALL)
+            if (st->sel != ARP_ALL && st->sel != ARP_UPPER)
                 break;
         }
     }

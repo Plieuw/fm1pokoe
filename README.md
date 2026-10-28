@@ -125,12 +125,13 @@ opnieuw); komt er 0,5 s geen clock, dan loopt hij op zijn eigen BPM. Naar de arp
 | ALGORITHM | het patroon (zie hieronder) |
 | SELECT | HOLD: rechtsom aan (de noten blijven spelen als je loslaat, een nieuw akkoord vervangt ze), linksom uit |
 
-De patronen: de AN1x-families "separated chords": UP, DOWN, UP&DOWN en RANDOM over 1, 2 of 4 octaven; de DJX's
-UP&DOWN B (de uitersten twee keer); en de elf benoemde DJX-patronen TECHNO-A (Eurobeat), TECHNO-B (UK), TECHNO-C
-(Japans), TECHNO-D (Duits), DANCE/HOUSE, SYNCOPATION, BASELINE (best met één of twee noten), ECHO, TECHNO ECHO, SWEEP en
-PULSE. De handleidingen geven van die laatste alleen de naam en een beschrijving van één regel (de exacte noten van
-de AN1x-types staan in zijn aparte Data List): de stappen zijn mijn invulling van die beschrijvingen. Het scherm toont
-de laatste 32 stappen als een rol.
+De patronen: de dertig Arpeggiator Types van de AN1x (uit zijn Data List) en twee van de DJX. 1–15: UP, DOWN,
+UPDW A (de uitersten één keer), UPDW B (de uitersten twee keer) en RANDOM, elk over 1, 2 of 4 octaven. 16–30: TECHNO-A
+(Euro), TECHNO-B (UK, met velocity), TECHNO-C (Japans), TECHNO-D (Duits), DA HOUSE (bas links, akkoorden rechts),
+SYNCOPA A, SYNCOPA B (grote octaafsprongen), SYNCO ECHO, TEKK ECHO A en B, PULSE LINE, BASSLINE A–D. Daarna ECHO en
+SWEEP van de DJX. De Data List geeft van 16–30 alleen de naam en één regel commentaar, de handleidingen geen noten: die
+stappen zijn mijn invulling van die beschrijvingen ("moving filter" bij TEKK ECHO als een velocity-zwaai). Het scherm
+toont de laatste 32 stappen als een rol.
 
 **Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina is nu BASIS), de
 oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).
