@@ -46,15 +46,20 @@ run() {                                     # (on GitHub Actions a failure is al
     return 0
 }
 
+# the sanitizers' memory layout breaks under the high address randomisation of newer kernels (older libasan, as
+# Debian 12's: a crash or a hang at random, nothing to do with the code): their tests run without it where we may
+NORAND=""
+setarch "$(uname -m)" -R true >/dev/null 2>&1 && NORAND="setarch $(uname -m) -R"
+
 $CC -o "$OUT/basis_test" tests/basis_test.c -lm -pthread
 run "keyboard and CHUA synth: keys, octave, MIDI, voices, the circuit vs double precision, ranges, pitch" "$OUT/basis_test" "$OUT/basis.wav"
 ${CC%% *} -O1 -g -w -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
     -o "$OUT/basis_test_san" tests/basis_test.c -lm -pthread
-run "keyboard and synth under ASan / UBSan" "$OUT/basis_test_san"
+run "keyboard and synth under ASan / UBSan" ${NORAND} "$OUT/basis_test_san"
 printf 'int main(void){return 0;}\n' > "$OUT/tsan_probe.c"
-if ${CC%% *} -fsanitize=thread -o "$OUT/tsan_probe" "$OUT/tsan_probe.c" 2>/dev/null && "$OUT/tsan_probe" 2>/dev/null &&
+if ${CC%% *} -fsanitize=thread -o "$OUT/tsan_probe" "$OUT/tsan_probe.c" 2>/dev/null && ${NORAND} "$OUT/tsan_probe" 2>/dev/null &&
    ${CC%% *} -O1 -g -w -fsanitize=thread -o "$OUT/basis_test_tsan" tests/basis_test.c -lm -pthread 2>/dev/null; then
-    run "keyboard and synth, the second core as a real thread, under ThreadSanitizer" "$OUT/basis_test_tsan"
+    run "keyboard and synth, the second core as a real thread, under ThreadSanitizer" ${NORAND} "$OUT/basis_test_tsan"
 else
     echo "== skip ThreadSanitizer (not available here: the compiler, or the memory layout of this machine)"
 fi
