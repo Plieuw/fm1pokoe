@@ -44,6 +44,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · BASIS op de ENV-pagina (stereo-spreiding) · POSITION (resonator) · TONE (shimmer) |
 | ALGORITHM | op de ENV-pagina ORBIT (de stemmen bewegen mee met hun plaatje) · op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
+| ARP | de ARP-pagina; nog een keer: de arpeggiator aan/uit (het lampje brandt zolang hij aan staat) |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | tweede core aan/uit (vanaf de volgende start) |
@@ -109,6 +110,27 @@ Het rondcirkelen binnen een lus (op de toonhoogte van de noot) wordt eruit gefil
 plaatje is ruis) zwerft elke ~0,2 s naar een nieuwe willekeurige plek. ORBIT bepaalt hoe ver; het komt bovenop de
 plek van BASIS (samen hooguit helemaal links of rechts), dus ORBIT werkt ook met BASIS op 0. De resonator van een noot
 beweegt mee met zijn stem. Op de ENV-pagina staat onderin "BASIS 90  ORBIT 40".
+
+**De arpeggiator (ARP).** ARP opent de ARP-pagina; nog een keer ARP zet hem aan of uit (het lampje brandt zolang
+hij aan staat). Aan: de noten die je vasthoudt (toetsen en MIDI in) klinken niet zelf, de arpeggiator speelt ze.
+Zolang er MIDI clock binnenkomt (USB of TRS, 24 per kwartnoot) loopt hij daarop mee (START begint het patroon
+opnieuw); komt er 0,5 s geen clock, dan loopt hij op zijn eigen BPM. Naar de arpeggiators van de Yamaha AN1x en DJX.
+
+| Bediening | Functie |
+| --- | --- |
+| KNOB 1 BPM | 40..250 (onder MIDI clock staat er EXT en het gemeten tempo) |
+| KNOB 2 SUBDIVIDE | de tien van de AN1x: 3/8, 1/4, 3/16, 1/6, 1/8, 3/32, 1/12, 1/16, 1/24, 1/32 |
+| KNOB 3 GATE | hoe lang elke noot klinkt: 8..100 % van de stap |
+| KNOB 4 SWING | 50 % (geen) .. 83 % (de meeste), zoals de AN1x: elke tweede stap later |
+| ALGORITHM | het patroon (zie hieronder) |
+| SELECT | HOLD: rechtsom aan (de noten blijven spelen als je loslaat, een nieuw akkoord vervangt ze), linksom uit |
+
+De patronen: de AN1x-families "separated chords": UP, DOWN, UP&DOWN en RANDOM over 1, 2 of 4 octaven; de DJX's
+UP&DOWN B (de uitersten twee keer); en de elf benoemde DJX-patronen TECHNO-A (Eurobeat), TECHNO-B (UK), TECHNO-C
+(Japans), TECHNO-D (Duits), DANCE/HOUSE, SYNCOPATION, BASELINE (best met één of twee noten), ECHO, TECHNO ECHO, SWEEP en
+PULSE. De handleidingen geven van die laatste alleen de naam en een beschrijving van één regel (de exacte noten van
+de AN1x-types staan in zijn aparte Data List): de stappen zijn mijn invulling van die beschrijvingen. Het scherm toont
+de laatste 32 stappen als een rol.
 
 **Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina is nu BASIS), de
 oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).

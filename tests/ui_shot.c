@@ -64,7 +64,7 @@ static uint32_t fm1_input_edges(uint32_t *released) { uint32_t p = edges; (void)
 static struct { uint8_t config, suspended; } usb = {1, 0};
 static uint8_t flash_ok = 1;
 enum { OBJ_SETTINGS };
-static uint8_t flash_store[64];
+static uint8_t flash_store[256];
 static int saved;
 static int st_load(uint32_t obj, void *dst, uint32_t max) { (void)obj; if (!saved) return -1; memcpy(dst, flash_store, max); return (int)max; }
 static int st_save(uint32_t obj, const void *src, uint32_t len) { (void)obj; memcpy(flash_store, src, len); saved = 1; return 0; }
@@ -267,6 +267,21 @@ int main(int argc, char **argv)
     ui_force = 1;
     synth_kill();
     preset_load(0);
+    ui_force = 1;
+
+    sys.page = 6;                        /* the ARP page: off, then on with a roll of steps (no keys.c here: filled in) */
+    ui_force = 1;
+    frames(2);
+    bad |= shot(dir, "k_arp_off");
+    sys.arp_on = 1; sys.arp_type = AT_UPDOWN; sys.arp_swing = 40; sys.arp_hold = 1;
+    for (i = 0; i < 32u; i++) {
+        static const uint8_t N[10] = {60, 64, 67, 72, 76, 79, 76, 72, 67, 64};
+        arp_view.note[arp_view.w++ & 31u] = i % 8u == 7u ? 0u : N[i % 10u];
+    }
+    ui_event_ms = 0;
+    frames(2);
+    bad |= shot(dir, "k_arp_on");
+    sys.arp_on = 0; sys.arp_hold = 0; sys.page = 0;
     ui_force = 1;
 
     sys.octave = 2;                      /* the widest values: a knob just turned, a message */

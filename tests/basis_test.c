@@ -605,6 +605,116 @@ int main(int argc, char **argv)
         check("BASIS: 0 mono bit for bit; 127 cycles L, R, half L, half R (resonator too); ORBIT moves with the scroll", okk && mono);
     }
 
+    /* the arpeggiator: on its own clock (120 BPM, 1/16: 8 steps a second) UP plays the held chord low to high over
+     * the octaves; MIDI clock (24 a quarter) takes over and sets the tempo; without it again (0.5 s) its own; the
+     * gate ends each note; turning it off lets the held notes sound as they are */
+    {
+        uint32_t okk = 1, w0, j, b, ons;
+        static const uint8_t UP2[6] = {60, 64, 67, 72, 76, 79};
+        synth_kill(); keys_all_off(); run_ms(50);
+        sys.osc = 0; sys.fx_mix = 0; sys.sh_mix = 0; sys.attack = 0; sys.sustain = 100; sys.release = 20;
+        sys.arp_type = AT_UP; sys.arp_bpm = 120; sys.arp_div = 7; sys.arp_gate = 60; sys.arp_swing = 0;
+        sys.arp_hold = 0; sys.arp_on = 1;
+        run_ms(10);
+        w0 = arp_view.w;
+        midi_in(0x90, 64, 100); midi_in(0x90, 60, 100); midi_in(0x90, 67, 100);
+        run_ms(1000);
+        printf("   (ARP 120 BPM 1/16: %u steps in 1 s; notes", arp_view.w - w0);
+        for (j = 0; j < 8u; j++)
+            printf(" %u", arp_view.note[(w0 + j) & 31u]);
+        printf(")\n");
+        okk &= arp_view.w - w0 >= 8u && arp_view.w - w0 <= 9u;
+        for (j = 0; j < 8u; j++)
+            okk &= arp_view.note[(w0 + j) & 31u] == UP2[j % 6u];
+        ons = 0;
+        for (j = 0; j < NVOICE; j++)
+            ons += voice[j].stage == ST_ATTACK || voice[j].stage == ST_SUSTAIN;
+        okk &= ons <= 1u;                                    /* (one note at a time) */
+        /* MIDI clock at 150 BPM: 24 a quarter -> 1/16 every 6 clocks; 2 s: 20 steps */
+        w0 = arp_view.w;
+        for (b = 0; b < 48u * 2u; b++) {                     /* 48 clocks a second at 120 .. 60 at 150 */
+            midi_in(0xF8, 0, 0);
+            run_ms(1000 / 60);                               /* (16.6 ms: ~150 BPM) */
+        }
+        printf("   (ARP under MIDI clock: %u steps for 96 clocks, %u BPM seen)\n", arp_view.w - w0, arp_bpm_now());
+        okk &= arp_view.w - w0 >= 15u && arp_view.w - w0 <= 17u && arp_ext();
+        okk &= arp_bpm_now() >= 140u && arp_bpm_now() <= 160u;
+        run_ms(700);                                         /* no clock: its own again */
+        okk &= !arp_ext();
+        sys.arp_on = 0;                                      /* off: the chord held sounds */
+        run_ms(20);
+        ons = 0;
+        for (j = 0; j < NVOICE; j++)
+            ons += voice[j].stage == ST_ATTACK || voice[j].stage == ST_SUSTAIN;
+        okk &= ons == 3u;
+        midi_in(0x80, 60, 0); midi_in(0x80, 64, 0); midi_in(0x80, 67, 0);
+        run_ms(20);
+        {   /* HOLD: the chord let go plays on; each pattern type plays something, bounded */
+            uint32_t t2;
+            sys.arp_on = 1; sys.arp_hold = 1;
+            run_ms(10);
+            midi_in(0x90, 62, 90); midi_in(0x90, 65, 90);
+            run_ms(100);
+            midi_in(0x80, 62, 0); midi_in(0x80, 65, 0);
+            for (t2 = 0; t2 < ARP_NTYPE; t2++) {
+                sys.arp_type = (uint8_t)t2;
+                w0 = arp_view.w;
+                peak = 0;
+                run_ms(600);
+                okk &= arp_view.w - w0 >= 4u && peak <= 32767;
+            }
+            sys.arp_hold = 0;
+            run_ms(50);
+            okk &= arp.n == 0u;
+        }
+        {   /* the patterns' steps: UP&DOWN B turns with its ends twice; TECHNO-A opens on the root an octave down;
+             * ECHO repeats its note; SWING 83 %: the second of each pair two thirds of a step late */
+            static const uint8_t UDB[8] = {60, 64, 67, 67, 64, 60, 60, 64};
+            uint32_t t3, k3, at[4] = {0, 0, 0, 0}, w3, smp = 0;
+            sys.arp_hold = 0;
+            run_ms(20);
+            sys.arp_hold = 1;
+            sys.arp_type = AT_UDB;
+            midi_in(0x90, 60, 100); midi_in(0x90, 64, 100); midi_in(0x90, 67, 100);
+            run_ms(5);
+            midi_in(0x80, 60, 0); midi_in(0x80, 64, 0); midi_in(0x80, 67, 0);
+            w0 = arp_view.w - 1u;                    /* (the first step went at once) */
+            run_ms(1000);
+            for (k3 = 0; k3 < 8u; k3++)
+                okk &= arp_view.note[(w0 + k3) & 31u] == UDB[k3];
+            for (t3 = AT_BASIC; t3 < ARP_NTYPE; t3++) {
+                sys.arp_type = (uint8_t)t3;
+                arp.running = 1;                     /* (from its first step) */
+                w0 = arp_view.w;
+                run_ms(300);
+                if (!strcmp(ARP_STEPS[t3 - AT_BASIC].name, "TECHNO-A"))
+                    okk &= arp_view.note[w0 & 31u] == 48u;
+                if (!strcmp(ARP_STEPS[t3 - AT_BASIC].name, "ECHO"))
+                    okk &= arp_view.note[(w0 + 1u) & 31u] == arp_view.note[w0 & 31u];
+            }
+            sys.arp_type = AT_UP1; sys.arp_swing = 127; arp.running = 1;
+            w3 = arp_view.w;
+            for (k3 = 0; k3 < 4u && smp < 2u * FS; ) {   /* when the steps come (in samples) */
+                block();
+                smp += CTL;
+                if (arp_view.w != w3) {
+                    w3 = arp_view.w;
+                    at[k3++] = smp;
+                }
+            }
+            printf("   (SWING 83 %%: steps at %u %u %u %u samples)\n", at[0], at[1], at[2], at[3]);
+            /* 120 BPM 1/16: 5512 a step; swung: 0, +3675 (2/3 late), 11025, +3675 */
+            okk &= at[1] - at[0] > 8500u && at[1] - at[0] < 9900u && at[2] - at[0] > 10900u && at[2] - at[0] < 11200u;
+            sys.arp_swing = 0;
+            sys.arp_hold = 0;
+            run_ms(20);
+        }
+        sys.arp_on = 0;
+        run_ms(20);
+        synth_kill();
+        check("ARP: own clock, MIDI clock in and out, gate, off, HOLD, every pattern, UP&DOWN B, echo, swing", okk);
+    }
+
     /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */
     {
         voice_t v;

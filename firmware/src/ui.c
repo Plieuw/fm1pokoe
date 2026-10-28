@@ -27,6 +27,8 @@
  *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME); ENV: BASIS
  * Each parameter lives in one place: RING on HOME (KNOB 4), the oscillator on HOME (ALGORITHM).
  *   PRESETS the presets
+ *   ARP      (the ARP button; again: on / off, its LED lit while on) the arpeggiator (arp.c): KNOB 1 BPM (EXT under
+ *            MIDI clock), KNOB 2 SUBDIVIDE, KNOB 3 GATE, KNOB 4 SWING; ALGORITHM the pattern, SELECT HOLD
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO          2ND CORE on / off (saved at once; from the next power-on: the core starts only at boot)
  *   MASTER pot   volume
@@ -179,7 +181,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x4348553Bu      /* "CHU;": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x4348553Du      /* "CHU=": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -189,6 +191,7 @@ typedef struct {
     uint8_t osc, np_x, np_y, np_level;
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
     uint8_t menv_len, menv_skew, menv_height, basis, orbit;
+    uint8_t arp_on, arp_type, arp_bpm, arp_div, arp_gate, arp_swing, arp_hold;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -237,6 +240,13 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.menv_height = (uint8_t)(s.menv_height & 127u);
         sys.basis = (uint8_t)(s.basis & 127u);
         sys.orbit = (uint8_t)(s.orbit & 127u);
+        sys.arp_on = (uint8_t)(s.arp_on != 0);
+        sys.arp_type = (uint8_t)(s.arp_type % ARP_NTYPE);
+        sys.arp_bpm = (uint8_t)clamp(s.arp_bpm, 40, 250);
+        sys.arp_div = (uint8_t)(s.arp_div % ARP_NDIV);
+        sys.arp_gate = (uint8_t)(s.arp_gate & 127u);
+        sys.arp_swing = (uint8_t)(s.arp_swing & 127u);
+        sys.arp_hold = (uint8_t)(s.arp_hold != 0);
     }
 }
 
@@ -284,6 +294,13 @@ static int settings_save(void)     /* 0 = saved */
     s.menv_height = sys.menv_height;
     s.basis = sys.basis;
     s.orbit = sys.orbit;
+    s.arp_on = sys.arp_on;
+    s.arp_type = sys.arp_type;
+    s.arp_bpm = sys.arp_bpm;
+    s.arp_div = sys.arp_div;
+    s.arp_gate = sys.arp_gate;
+    s.arp_swing = sys.arp_swing;
+    s.arp_hold = sys.arp_hold;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -729,6 +746,35 @@ static void draw_mod(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the ARP page's picture: the last 32 steps as a roll (their notes' heights, rests empty), the newest bright; ON / OFF
+ * and the tempo's beat flashing */
+static void draw_arp(void)
+{
+    const int32_t top = 8, bot = PLOT_H - 14, hh = bot - top, w = 7;
+    uint32_t i, wv = arp_view.w, lo = 127, hi = 0;
+    cv_begin(240, PLOT_H, T_BG);
+    for (i = 0; i < 32u; i++) {
+        uint32_t nt = arp_view.note[(wv - 32u + i) & 31u];
+        if (nt) {
+            lo = nt < lo ? nt : lo;
+            hi = nt > hi ? nt : hi;
+        }
+    }
+    if (hi < lo + 12u)                           /* (at least an octave tall) */
+        hi = lo + 12u;
+    cv_rect(8, bot, 224, 1, T_LINE);
+    for (i = 0; i < 32u; i++) {
+        uint32_t nt = arp_view.note[(wv - 32u + i) & 31u];
+        if (nt && wv >= 32u - i) {
+            int32_t y = bot - 4 - (int32_t)(nt - lo) * (hh - 8) / (int32_t)(hi - lo);
+            cv_rect(8 + (int32_t)i * w, y, w - 1, 4, i == 31u && sys.arp_on ? T_ACCENT :
+                    sys.arp_on ? ux_mix(T_BG, T_THEME, 40 + (int32_t)i * 2) : T_DIM);
+        }
+    }
+    cv_text(8, bot + 1, &AF_S, sys.arp_on ? (arp_ext() ? "MIDI CLOCK" : "INTERNAL") : "OFF: PRESS ARP", T_DIM);
+    cv_blit(0, PLOT_Y);
+}
+
 /* the MOD ENV page's picture: the FM depth over the envelope's LENGTH (the time axis: 0.5 ms .. 10 s, log), DEPTH the
  * floor, HEIGHT the peak above it at SKEW; on the right the newest voice's depth now */
 static void draw_menv(void)
@@ -820,7 +866,27 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 5u) {
+    if (sys.page == 6u) {
+        uint32_t bpm = arp_bpm_now();
+        if (arp_ext()) {
+            str_cpy(b, "EXT ", sizeof b);
+            fmt_int(v, (int32_t)bpm);
+            ui_cat(b, sizeof b, bpm ? v : "?");
+        } else {
+            fmt_int(v, sys.arp_bpm);
+            str_cpy(b, v, sizeof b);
+        }
+        ui_cell(T_C1, "1 BPM", b);
+        ui_cell(T_C2, "2 SUBDIVIDE", ARP_DIV_NAME[sys.arp_div % ARP_NDIV]);
+        fmt_int(v, (int32_t)(8u + (sys.arp_gate & 127u) * 92u / 127u));
+        str_cpy(b, v, sizeof b);
+        ui_cat(b, sizeof b, " %");
+        ui_cell(T_C3, "3 GATE", b);
+        fmt_int(v, (int32_t)(50u + (sys.arp_swing & 127u) * 33u / 127u));
+        str_cpy(b, v, sizeof b);
+        ui_cat(b, sizeof b, " %");
+        ui_cell(T_C4, "4 SWING", b);
+    } else if (sys.page == 5u) {
         env_time(b, sizeof b, sys.menv_len);
         ui_cell(T_C1, "1 LENGTH", b);
         {
@@ -962,6 +1028,11 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, "   ");
             fx_pos_text(b, sizeof b, 1);
             ui_cat(a, sizeof a, b);
+        } else if (sys.page == 6u) {             /* ARP: on or off, the pattern, HOLD */
+            str_cpy(a, sys.arp_on ? "ARP ON  " : "ARP OFF  ", sizeof a);
+            ui_cat(a, sizeof a, arp_type_name(sys.arp_type));
+            if (sys.arp_hold)
+                ui_cat(a, sizeof a, "  HOLD");
         } else if (sys.page == 5u) {             /* MOD ENV: on what */
             str_cpy(a, "MOD ENV   ", sizeof a);
             if (!sys.osc)
@@ -1024,6 +1095,8 @@ static void ui_draw(void)
         draw_mod();
     else if (sys.page == 5u)
         draw_menv();
+    else if (sys.page == 6u)
+        draw_arp();
     else
         draw_plot();
     ui_force = 0;
@@ -1070,7 +1143,9 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_HOME]);
     if (sys.page == 1u || sys.page == 5u)
         led_on(nl, panel.btn[B_ENV]);
-    if (sys.page >= 2u || sys.fx_mix || sys.sh_mix)     /* (FX lit: its pages, or the resonator or the shimmer on) */
+    if (sys.arp_on || sys.page == 6u)
+        led_on(nl, panel.btn[B_ARP]);
+    if ((sys.page >= 2u && sys.page <= 3u) || sys.fx_mix || sys.sh_mix)   /* (FX lit: its pages, or FX on) */
         led_on(nl, panel.btn[B_FX]);
     for (i = 0; i < FM1_NCOL; i++)
         fm1_led[i] = nl[i];
@@ -1130,6 +1205,15 @@ static void ui_input(void)
             sys.page = sys.page == 2u ? 3u : sys.page == 3u ? 0u : 2u;
             ui_force = 1;
             break;
+        case B_ARP:                                     /* the ARP page; there: the arpeggiator on / off */
+            if (sys.page == 6u) {
+                sys.arp_on = (uint8_t)!sys.arp_on;
+                ui_say(sys.arp_on ? "ARP ON" : "ARP OFF");
+            } else {
+                sys.page = 6;
+                ui_force = 1;
+            }
+            break;
         case B_GLO:
             sys.cpu2 = (uint8_t)!sys.cpu2;
             settings_save();
@@ -1143,7 +1227,18 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 5u) {
+    if (sys.page == 6u) {
+        if ((s = panel_enc(EN_K1)) != 0) {
+            sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
+            ui_hot = 0; ui_hot_ms = fm1_ms;
+        }
+        if ((s = panel_enc(EN_K2)) != 0) {
+            sys.arp_div = (uint8_t)clamp((int32_t)sys.arp_div + s, 0, ARP_NDIV - 1);
+            ui_hot = 1; ui_hot_ms = fm1_ms;
+        }
+        knob(&sys.arp_gate, EN_K3, 2);
+        knob(&sys.arp_swing, EN_K4, 3);
+    } else if (sys.page == 5u) {
         knob(&sys.menv_len, EN_K1, 0);
         knob(&sys.menv_skew, EN_K2, 1);
         knob(&sys.menv_height, EN_K3, 2);
@@ -1187,6 +1282,9 @@ static void ui_input(void)
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
         ui_say(t);
+    } else if (s && sys.page == 6u) {           /* ARP: HOLD (right on, left off) */
+        sys.arp_hold = (uint8_t)(s > 0);
+        ui_say(sys.arp_hold ? "HOLD ON" : "HOLD OFF");
     } else if (s && sys.page == 1u) {           /* ENV: BASIS, the voices' stereo spread */
         sys.basis = (uint8_t)clamp((int32_t)sys.basis + s, 0, 127);
         str_cpy(t, "BASIS ", sizeof t);
@@ -1216,6 +1314,11 @@ static void ui_input(void)
         sys.fx_model = (uint8_t)((sys.fx_model + RZ_COUNT * 8 + s) % RZ_COUNT);
         str_cpy(t, "MODEL ", sizeof t);
         ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
+        ui_say(t);
+    } else if (s && sys.page == 6u) {           /* ARP: the pattern */
+        sys.arp_type = (uint8_t)(((int32_t)sys.arp_type + (int32_t)ARP_NTYPE * 8 + s) % (int32_t)ARP_NTYPE);
+        str_cpy(t, "ARP ", sizeof t);
+        ui_cat(t, sizeof t, arp_type_name(sys.arp_type));
         ui_say(t);
     } else if (s && sys.page == 1u) {           /* ENV: ORBIT, the pictures moving the voices in the stereo field */
         sys.orbit = (uint8_t)clamp((int32_t)sys.orbit + s, 0, 127);

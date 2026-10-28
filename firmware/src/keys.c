@@ -7,6 +7,7 @@
  * MIDI in (USB and the TRS jack, usb.c / midi_uart.c rings): note on / off on any channel plays the synth;
  * CC 123 (all notes off) releases everything.
  * A note held by several sources (two keys at different octaves, a key and MIDI) ends when the last lets go.
+ * ARP on (arp.c): the notes held go to the arpeggiator instead; MIDI clock in drives it.
  *
  *   keys_block()     audio ISR, before the block renders
  *   keys_panic_req   main loop: set to release everything at the next block */
@@ -20,19 +21,51 @@ static uint32_t kb_prev;                         /* fm1_in.notes at the last blo
 static uint8_t kb_note[NKEYS];                   /* the note key k started (KB_SILENT: none) */
 static uint8_t note_held[128];                   /* sources holding each note */
 
+static uint8_t arp_was_on, arp_was_hold;
+
 static void note_start(uint32_t note, uint32_t vel)
 {
     if (note_held[note] < 255u)
         note_held[note]++;
-    synth_note_on(note, vel);
+    if (sys.arp_on)
+        arp_add(note, vel);
+    else
+        synth_note_on(note, vel);
 }
 
 static void note_end(uint32_t note)
 {
     if (!note_held[note])
         return;
-    if (--note_held[note] == 0u)
-        synth_note_off(note);
+    if (--note_held[note] == 0u) {
+        if (sys.arp_on)
+            arp_remove(note);
+        else
+            synth_note_off(note);
+    }
+}
+
+/* ARP turned on or off (or HOLD off) under held notes: they move over */
+static void arp_follow(void)
+{
+    uint32_t k;
+    if (sys.arp_on != arp_was_on) {
+        arp_was_on = sys.arp_on;
+        arp_reset();
+        synth_all_off();
+        for (k = 0; k < 128u; k++)               /* the notes held now: into the arpeggiator, or sounding again */
+            if (note_held[k]) {
+                if (sys.arp_on)
+                    arp_add(k, KEY_VEL);
+                else
+                    synth_note_on(k, KEY_VEL);
+            }
+    }
+    if (sys.arp_hold != arp_was_hold) {
+        arp_was_hold = sys.arp_hold;
+        if (!sys.arp_hold)
+            arp_hold_released();
+    }
 }
 
 static void keys_all_off(void)
@@ -46,6 +79,7 @@ static void keys_all_off(void)
             kb_note[k] = KB_SILENT;
         }
     synth_all_off();
+    arp_reset();
 }
 
 static void keyboard_block(void)
@@ -93,7 +127,9 @@ static void midi_in_block(void)
             note_end(d1);
         else if (st == 0xB0u && (d1 == 123u || d1 == 120u))
             keys_all_off();
-        /* add here: CC -> parameters, pitch bend, clock (status >= 0xF8: pkt >> 8 & 0xFF) ... */
+        else if (((pkt >> 8) & 0xFFu) >= 0xF8u)   /* realtime: the clock for the arpeggiator */
+            arp_midi_rt((pkt >> 8) & 0xFFu);
+        /* add here: CC -> parameters, pitch bend ... */
     }
 }
 
@@ -111,6 +147,8 @@ static void keys_block(void)
         keys_all_off();
         synth_kill();
     }
+    arp_follow();
     keyboard_block();
     midi_in_block();
+    arp_block(CTL);
 }

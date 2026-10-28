@@ -646,3 +646,5 @@ static void synth_render(int32_t *out, uint32_t n)
     }
     sys.voices = (uint8_t)busy;
 }
+
+#include "arp.c"                                 /* the arpeggiator (keys.c drives it) */
