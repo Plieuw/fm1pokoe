@@ -648,3 +648,4 @@ static void synth_render(int32_t *out, uint32_t n)
 }
 
 #include "arp.c"                                 /* the arpeggiator (keys.c drives it) */
+#include "feg.c"                                 /* FREE EG: a knob recorded, played onto a parameter */

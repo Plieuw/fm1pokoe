@@ -113,6 +113,7 @@ static struct {
     uint32_t gate;                               /* samples into the step: the notes off */
     uint32_t q8;                                 /* own clock: time in the step, Q8 samples */
     uint32_t ext_age, ticks, tick_len;           /* since the last MIDI clock; clocks in this step; their spacing */
+    uint32_t clk, starts;                        /* MIDI clocks since START, STARTs seen (feg.c follows them) */
     uint32_t tick_t;
     uint32_t rng;
     uint8_t running;                             /* a step is due at the next block (the first note at once) */
@@ -292,7 +293,10 @@ static void arp_midi_rt(uint32_t status)
         arp.ext_age = 0;
         arp.tick_t = 0;
         arp.ticks++;
+        arp.clk++;
     } else if (status == 0xFAu) {                /* START: the pattern from its first step, at the next clock */
+        arp.clk = 0;
+        arp.starts++;
         arp.pos = 0;
         arp.ticks = 24u;
         arp.running = 0;

@@ -43,7 +43,7 @@ static volatile struct {
     int32_t batt_raw;            /* battery ADC, smoothed (main loop) */
     uint8_t view, preset;        /* ui.c: the screen's view, the last preset loaded */
     uint8_t cpu2;                /* 2ND CORE: start the second core at power-on (main.c; GLO toggles it) */
-    uint8_t page;                /* ui.c: 0 the oscillator (HOME), 1 ENV, 2 FX: resonator, 3 FX: shimmer, 4 MOD (HOME 2x), 5 MOD ENV (ENV 2x), 6 ARP, 7 MIDI (GLO) */
+    uint8_t page;                /* ui.c: 0 the oscillator (HOME), 1 ENV, 2 FX: resonator, 3 FX: shimmer, 4 MOD (HOME 2x), 5 MOD ENV (ENV 2x), 6 ARP, 7 MIDI (GLO), 8 FREE EG (REC) */
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;   /* resonator.c: the FX resonator, 0..127 */
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* shimmer.c: the shimmer reverb */
     uint8_t osc;                 /* the oscillator: 0 the CHUA circuit, 1 .. 30 a noise program (noise.c: osc - 1) */
@@ -55,6 +55,7 @@ static volatile struct {
     uint8_t arp_on, arp_type, arp_bpm, arp_div, arp_gate, arp_swing, arp_hold;   /* arp.c: the arpeggiator (ARP) */
     uint8_t midi_trs, midi_usb, midi_rx, midi_tx;   /* keys.c, GLO page: TRS in on; USB 0 off 1 in 2 out 3 both; rx 0 omni
                                                   * 1..16; tx channel 0..15 */
+    uint8_t feg_val, feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts;   /* feg.c: FREE EG (REC) */
     uint16_t menv_view;          /* the newest voice's FM depth now (DEPTH + HEIGHT x envelope), 0..32767 (ui.c) */
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
          .ring = 50, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1,
@@ -64,4 +65,5 @@ static volatile struct {
          .mod_wave = 0, .mod_ratio = 3, .mod_depth = 0, .mod_fine = 64,
          .menv_len = 80, .menv_skew = 10, .menv_height = 0, .basis = 0, .orbit = 0,
          .arp_on = 0, .arp_type = 0, .arp_bpm = 120, .arp_div = 7, .arp_gate = 80, .arp_swing = 0, .arp_hold = 0,
-         .midi_trs = 1, .midi_usb = 3, .midi_rx = 0, .midi_tx = 0};
+         .midi_trs = 1, .midi_usb = 3, .midi_rx = 0, .midi_tx = 0,
+         .feg_val = 64, .feg_len = 9, .feg_depth = 127, .feg_target = 0, .feg_on = 0, .feg_has = 0, .feg_npts = 0};

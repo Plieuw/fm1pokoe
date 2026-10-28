@@ -163,4 +163,5 @@ static void keys_block(void)
     keyboard_block();
     midi_in_block();
     arp_block(CTL);
+    feg_block(CTL, voice_clock);                 /* (voice_clock: the note ons, the arpeggiator's too) */
 }

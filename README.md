@@ -45,6 +45,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | ALGORITHM | op de ENV-pagina ORBIT (de stemmen bewegen mee met hun plaatje) · op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
 | ARP | de ARP-pagina; nog een keer: de arpeggiator aan/uit (het lampje brandt zolang hij aan staat) |
+| REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
@@ -132,6 +133,22 @@ SYNCOPA A, SYNCOPA B (grote octaafsprongen), SYNCO ECHO, TEKK ECHO A en B, PULSE
 SWEEP van de DJX. De Data List geeft van 16–30 alleen de naam en één regel commentaar, de handleidingen geen noten: die
 stappen zijn mijn invulling van die beschrijvingen ("moving filter" bij TEKK ECHO als een velocity-zwaai). Het scherm
 toont de laatste 32 stappen als een rol.
+
+**FREE EG (REC).** Neemt een knopbeweging op en speelt die af op een parameter, zoals de Free EG van de AN1x. REC
+opent de pagina; daar zet KNOB 4 het doel (TARGET: CHAOS, SHAPE, RING, NOISE X/Y, MOD DEPTH, FX STRUCTURE/BRIGHTNESS/
+DAMPING/MIX, SHIMMER, BASIS, ORBIT, ARP GATE/SWING, ...), KNOB 2 de lengte en KNOB 3 de diepte. Druk REC en draai aan
+KNOB 1: de beweging wordt opgenomen (128 punten) en je hoort hem meteen op het doel. SELECT rechtsom speelt hem af
+(linksom uit: de parameter krijgt zijn oude waarde terug).
+
+| LENGTH | Wat |
+| --- | --- |
+| NOTE | elke noot (ook van de arpeggiator) start hem opnieuw; hij speelt één keer, zo lang als je opnam (REC nog een keer stopt, max ~6 s), en houdt dan de laatste waarde |
+| 1..8 STEPS | een lus van 1 tot 8 zestiende noten |
+| 1..4 BARS | een lus van 1 tot 4 maten (4/4) |
+
+STEPS en BARS lopen op de BPM van de ARP-pagina, of op MIDI clock als die binnenkomt (START begint de lus opnieuw);
+de opname begint aan het begin van een lus en stopt vanzelf na één lengte. DEPTH 127 speelt de opname precies af, lager
+schaalt hij rond de waarde die de parameter had; zolang hij speelt neemt hij de eigen knop van die parameter over.
 
 **Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina is nu BASIS), de
 oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).

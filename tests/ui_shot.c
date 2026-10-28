@@ -64,7 +64,7 @@ static uint32_t fm1_input_edges(uint32_t *released) { uint32_t p = edges; (void)
 static struct { uint8_t config, suspended; } usb = {1, 0};
 static uint8_t flash_ok = 1;
 enum { OBJ_SETTINGS };
-static uint8_t flash_store[256];
+static uint8_t flash_store[1024];
 static int saved;
 static int st_load(uint32_t obj, void *dst, uint32_t max) { (void)obj; if (!saved) return -1; memcpy(dst, flash_store, max); return (int)max; }
 static int st_save(uint32_t obj, const void *src, uint32_t len) { (void)obj; memcpy(flash_store, src, len); saved = 1; return 0; }
@@ -284,6 +284,18 @@ int main(int argc, char **argv)
     bad |= shot(dir, "k_arp_on");
     sys.arp_on = 0; sys.arp_hold = 0; sys.page = 0;
     ui_force = 1;
+
+    edges = btn_bit(B_REC);              /* the FREE EG page: a recorded curve playing onto FX DAMPING */
+    ui_input();
+    for (i = 0; i < FEG_N; i++)
+        feg.curve[i] = (uint8_t)(64 + plot_sin(i * 2u) / 600 + (int32_t)(i % 32u));
+    sys.feg_has = 1; sys.feg_on = 1; sys.feg_target = 13; sys.feg_len = 10; feg.pos = 40;
+    ui_event_ms = 0;
+    frames(2);
+    bad |= shot(dir, "m_feg");
+    sys.feg_has = 0; sys.feg_on = 0; feg.pos = 255;
+    edges = btn_bit(B_HOME);
+    ui_input();
 
     edges = btn_bit(B_GLO);              /* the MIDI page */
     ui_input();

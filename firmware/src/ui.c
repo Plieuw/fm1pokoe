@@ -29,6 +29,8 @@
  *   PRESETS the presets
  *   ARP      (the ARP button; again: on / off, its LED lit while on) the arpeggiator (arp.c): KNOB 1 BPM (EXT under
  *            MIDI clock), KNOB 2 SUBDIVIDE, KNOB 3 GATE, KNOB 4 SWING; ALGORITHM the pattern, SELECT HOLD
+ *   REC      the FREE EG page (feg.c): KNOB 1 the knob recorded, KNOB 2 LENGTH (NOTE, 1..8 STEPS, 1..4 BARS),
+ *            KNOB 3 DEPTH, KNOB 4 the TARGET; SELECT PLAY; REC again there: record (NOTE: REC once more to stop)
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -183,7 +185,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x4348553Eu      /* "CHU>": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x4348553Fu      /* "CHU?": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -195,6 +197,7 @@ typedef struct {
     uint8_t menv_len, menv_skew, menv_height, basis, orbit;
     uint8_t arp_on, arp_type, arp_bpm, arp_div, arp_gate, arp_swing, arp_hold;
     uint8_t midi_trs, midi_usb, midi_rx, midi_tx;
+    uint8_t feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts, feg_curve[FEG_N];
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -254,6 +257,14 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.midi_usb = (uint8_t)(s.midi_usb & 3u);
         sys.midi_rx = (uint8_t)(s.midi_rx > 16u ? 0u : s.midi_rx);
         sys.midi_tx = (uint8_t)(s.midi_tx & 15u);
+        sys.feg_len = (uint8_t)(s.feg_len % FEG_NLEN);
+        sys.feg_depth = (uint8_t)(s.feg_depth & 127u);
+        sys.feg_target = (uint8_t)(s.feg_target % FEG_NT);
+        sys.feg_on = (uint8_t)(s.feg_on != 0);
+        sys.feg_has = (uint8_t)(s.feg_has != 0);
+        sys.feg_npts = (uint8_t)(s.feg_npts & 127u);
+        for (uint32_t i = 0; i < FEG_N; i++)
+            feg.curve[i] = (uint8_t)(s.feg_curve[i] & 127u);
     }
 }
 
@@ -312,6 +323,13 @@ static int settings_save(void)     /* 0 = saved */
     s.midi_usb = sys.midi_usb;
     s.midi_rx = sys.midi_rx;
     s.midi_tx = sys.midi_tx;
+    s.feg_len = sys.feg_len;
+    s.feg_depth = sys.feg_depth;
+    s.feg_target = sys.feg_target;
+    s.feg_on = sys.feg_on;
+    s.feg_has = sys.feg_has;
+    s.feg_npts = sys.feg_npts;
+    memcpy(s.feg_curve, feg.curve, sizeof s.feg_curve);
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -757,6 +775,31 @@ static void draw_mod(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the FREE EG page's picture: the recording (128 points over the length), the play head, the DEPTH's base */
+static void draw_feg(void)
+{
+    const int32_t top = 8, bot = PLOT_H - 16, hh = bot - top;
+    int32_t i, px = 0, py = 0;
+    uint32_t pos = feg.pos, n = sys.feg_len % FEG_NLEN ? FEG_N : (feg.rec ? FEG_N : sys.feg_npts);
+    uint16_t c = feg.rec ? T_ACCENT : sys.feg_on ? T_THEME : T_DIM;
+    cv_begin(240, PLOT_H, T_BG);
+    cv_rect(8, bot, 224, 1, T_LINE);
+    cv_rect(8, top, 224, 1, T_LINE);
+    if (sys.feg_has || feg.rec)
+        for (i = 0; i < (int32_t)n && i < (int32_t)FEG_N; i++) {
+            int32_t x = 8 + i * 224 / (int32_t)FEG_N, y = bot - (int32_t)feg.curve[i] * hh / 127;
+            if (i && (!feg.rec || i <= (int32_t)pos))
+                cv_line(px, py, x, y, c);
+            px = x;
+            py = y;
+        }
+    if (pos < FEG_N)
+        cv_rect(8 + (int32_t)pos * 224 / (int32_t)FEG_N, top, 1, hh, T_ACCENT);
+    cv_text(8, bot + 3, &AF_S, FEG_T_NAME[sys.feg_target % FEG_NT], T_DIM);
+    cv_text_r(232, bot + 3, &AF_S, FEG_LEN_NAME[sys.feg_len % FEG_NLEN], T_DIM, T_BG);
+    cv_blit(0, PLOT_Y);
+}
+
 /* the MIDI page's picture: where notes come in and go out, and the clock */
 static void draw_midi(void)
 {
@@ -908,7 +951,14 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 7u) {
+    if (sys.page == 8u) {
+        fmt_int(v, sys.feg_val);
+        ui_cell(T_C1, "1 VALUE", v);
+        ui_cell(T_C2, "2 LENGTH", FEG_LEN_NAME[sys.feg_len % FEG_NLEN]);
+        fmt_int(v, sys.feg_depth);
+        ui_cell(T_C3, "3 DEPTH", v);
+        ui_cell(T_C4, "4 TARGET", FEG_T_NAME[sys.feg_target % FEG_NT]);
+    } else if (sys.page == 7u) {
         static const char *const USBN[4] = {"OFF", "IN", "OUT", "IN + OUT"};
         ui_cell(T_C1, "1 TRS MIDI IN", sys.midi_trs ? "ON" : "OFF");
         ui_cell(T_C2, "2 USB MIDI", USBN[sys.midi_usb & 3u]);
@@ -1081,6 +1131,9 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, "   ");
             fx_pos_text(b, sizeof b, 1);
             ui_cat(a, sizeof a, b);
+        } else if (sys.page == 8u) {             /* FREE EG: recording, playing, or what to do */
+            str_cpy(a, feg.rec ? "FREE EG   RECORDING: TURN KNOB 1" : !sys.feg_has ? "FREE EG   REC: RECORD" :
+                    sys.feg_on ? "FREE EG   PLAYING" : "FREE EG   SELECT: PLAY", sizeof a);
         } else if (sys.page == 7u) {             /* MIDI: the second core (SELECT) */
             str_cpy(a, sys.cpu2 ? "MIDI   2ND CORE ON" : "MIDI   2ND CORE OFF", sizeof a);
         } else if (sys.page == 6u) {             /* ARP: on or off, the pattern, HOLD */
@@ -1154,6 +1207,8 @@ static void ui_draw(void)
         draw_arp();
     else if (sys.page == 7u)
         draw_midi();
+    else if (sys.page == 8u)
+        draw_feg();
     else
         draw_plot();
     ui_force = 0;
@@ -1204,6 +1259,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_ARP]);
     if (sys.page == 7u)
         led_on(nl, panel.btn[B_GLO]);
+    if (sys.page == 8u || (feg.rec && (fm1_ms & 256u)) || (sys.feg_on && sys.feg_has))   /* (blinking: recording) */
+        led_on(nl, panel.btn[B_REC]);
     if ((sys.page >= 2u && sys.page <= 3u) || sys.fx_mix || sys.sh_mix)   /* (FX lit: its pages, or FX on) */
         led_on(nl, panel.btn[B_FX]);
     for (i = 0; i < FM1_NCOL; i++)
@@ -1264,6 +1321,15 @@ static void ui_input(void)
             sys.page = sys.page == 2u ? 3u : sys.page == 3u ? 0u : 2u;
             ui_force = 1;
             break;
+        case B_REC:                                     /* the FREE EG page; there: record (and stop) */
+            if (sys.page == 8u) {
+                feg_req = feg.rec ? 2u : 1u;            /* (done by the audio ISR, at its next block) */
+                ui_say(feg.rec ? "RECORDED" : "RECORDING");
+            } else {
+                sys.page = 8;
+                ui_force = 1;
+            }
+            break;
         case B_ARP:                                     /* the ARP page; there: the arpeggiator on / off */
             if (sys.page == 6u) {
                 sys.arp_on = (uint8_t)!sys.arp_on;
@@ -1285,7 +1351,18 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 7u) {                       /* MIDI: an input changed: what it held let go (no note hangs) */
+    if (sys.page == 8u) {
+        knob(&sys.feg_val, EN_K1, 0);
+        if ((s = panel_enc(EN_K2)) != 0) {
+            sys.feg_len = (uint8_t)clamp((int32_t)sys.feg_len + s, 0, FEG_NLEN - 1);
+            ui_hot = 1; ui_hot_ms = fm1_ms;
+        }
+        knob(&sys.feg_depth, EN_K3, 2);
+        if ((s = panel_enc(EN_K4)) != 0) {
+            sys.feg_target = (uint8_t)clamp((int32_t)sys.feg_target + s, 0, FEG_NT - 1);
+            ui_hot = 3; ui_hot_ms = fm1_ms;
+        }
+    } else if (sys.page == 7u) {                /* MIDI: an input changed: what it held let go (no note hangs) */
         if ((s = panel_enc(EN_K1)) != 0) {
             sys.midi_trs = (uint8_t)(s > 0);
             keys_panic_req = 1;
@@ -1360,6 +1437,9 @@ static void ui_input(void)
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
         ui_say(t);
+    } else if (s && sys.page == 8u) {           /* FREE EG: PLAY (right on, left off) */
+        sys.feg_on = (uint8_t)(s > 0);
+        ui_say(sys.feg_on ? (sys.feg_has ? "PLAY ON" : "NOTHING RECORDED") : "PLAY OFF");
     } else if (s && sys.page == 7u) {           /* MIDI: 2ND CORE (right on, left off; saved at once) */
         if ((uint8_t)(s > 0) != sys.cpu2) {
             sys.cpu2 = (uint8_t)(s > 0);

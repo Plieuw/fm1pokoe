@@ -607,6 +607,84 @@ int main(int argc, char **argv)
         check("BASIS: 0 mono bit for bit; 127 cycles L, R, half L, half R (resonator too); ORBIT moves with the scroll", okk && mono);
     }
 
+    /* FREE EG: 1 BAR at 120 BPM (2 s) records a ramp of the knob and plays it onto CHAOS, looping; DEPTH scales it
+     * around the value it had; PLAY off gives it back; NOTE records until stopped and starts again at each note;
+     * under MIDI clock the cycle follows the clocks */
+    {
+        uint32_t okk = 1, b, L = 2u * FS, t;
+        int32_t c0, c1, c2;
+        synth_kill(); keys_all_off(); run_ms(20);
+        sys.arp_on = 0; sys.arp_bpm = 120; sys.chaos = 85;
+        sys.feg_len = 9; sys.feg_target = 0; sys.feg_depth = 127; sys.feg_on = 0; sys.feg_val = 0;
+        feg_req = 1;
+        for (t = 0; t < L + 20u * CTL; t += CTL) {           /* the knob turned up over the bar */
+            sys.feg_val = (uint8_t)(t >= L ? 127u : t * 127u / L);
+            block();
+        }
+        okk &= !feg.rec && sys.feg_has;                      /* (stopped by itself after one bar) */
+        sys.chaos = 85;
+        sys.feg_on = 1;
+        run_ms(10);
+        okk &= feg.base == 85u;
+        for (b = 0; b < 3u; b++) {                           /* the ramp, three times */
+            uint32_t q;
+            while (feg.pos != 0u) block();
+            c0 = sys.chaos;
+            for (q = 0; q < L / 2u / CTL; q++) block();
+            c1 = sys.chaos;
+            for (q = 0; q < L * 9u / 20u / CTL; q++) block();
+            c2 = sys.chaos;
+            okk &= c0 < 12 && c1 > 50 && c1 < 78 && c2 > 105;
+        }
+        printf("   (FREE EG 1 BAR: CHAOS %d .. %d .. %d)\n", c0, c1, c2);
+        sys.feg_depth = 0;                                   /* DEPTH 0: as it was */
+        run_ms(100);
+        okk &= sys.chaos == 85;
+        sys.feg_depth = 127;
+        sys.feg_on = 0;                                      /* off: given back */
+        run_ms(20);
+        okk &= sys.chaos == 85;
+        /* NOTE: 0 for ~0.5 s, then 127; stopped; each note from the start */
+        sys.feg_len = 0; sys.feg_val = 0;
+        feg_req = 1;
+        run_ms(500);
+        sys.feg_val = 127;
+        run_ms(500);
+        feg_req = 2;
+        run_ms(10);
+        okk &= sys.feg_has && sys.feg_npts > 18u && sys.feg_npts < 24u;   /* (~1 s: 21 points of 46 ms) */
+        sys.feg_on = 1;
+        synth_note_on(60, 100);
+        run_ms(100);
+        okk &= sys.chaos < 10;
+        run_ms(700);
+        okk &= sys.chaos > 115;
+        run_ms(1500);
+        okk &= sys.chaos > 115;
+        synth_note_on(62, 100);                              /* a note: from the start again */
+        run_ms(100);
+        okk &= sys.chaos < 10;
+        sys.feg_on = 0;
+        synth_kill();
+        run_ms(20);
+        /* MIDI clock: 1 BAR = 96 clocks; recorded under it, it stops after 96 */
+        sys.feg_len = 9; sys.feg_val = 30;
+        midi_in(0xFA, 0, 0);
+        midi_in(0xF8, 0, 0);
+        run_ms(20);
+        feg_req = 1;
+        for (b = 0; b < 100u; b++) {
+            sys.feg_val = (uint8_t)(b < 48u ? 20u : 100u);
+            midi_in(0xF8, 0, 0);
+            run_ms(20);
+        }
+        okk &= !feg.rec && feg.curve[10] == 20u && feg.curve[100] == 100u;
+        sys.chaos = 85;
+        check("FREE EG: a bar recorded and looped, DEPTH, off, NOTE from each note, under MIDI clock", okk);
+        sys.feg_has = 0; sys.chaos = 85;
+        run_ms(700);                                         /* (the clock gone) */
+    }
+
     /* the MIDI page (GLO): TRS in off ignores the jack, USB in off ignores USB; RX channel filters (OMNI: all);
      * the keys go out on the TX channel, and not at all with USB out off (their note offs always) */
     {
