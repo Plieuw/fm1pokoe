@@ -160,6 +160,22 @@ int main(int argc, char **argv)
     sys.page = 0;
     ui_force = 1;
 
+    sys.page = 2;                        /* the FX page: off, then each model on a held note */
+    preset_load(0);
+    frames(3);
+    bad |= shot(dir, "f_fx_off");
+    for (i = 0; i < RZ_COUNT; i++) {
+        preset_load(10u + (i == 0u ? 0u : i == 1u ? 1u : 2u));   /* RINGS BELL, SITAR DRONE, CHAOS PIANO */
+        synth_note_on(48, 100);
+        frames(14);
+        snprintf(name, sizeof name, "f_fx_%u", i);
+        bad |= shot(dir, name);
+        synth_kill();
+    }
+    sys.page = 0;
+    sys.fx_mix = 0;
+    ui_force = 1;
+
     sys.octave = 2;                      /* the widest values: a knob just turned, a message */
     sys.release = 127;
     sys.cpu_q8 = 255;

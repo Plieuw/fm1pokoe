@@ -9,7 +9,8 @@ Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments, and the 
 
 ## What is GPL-3.0-only
 
-- the firmware: `firmware/` (app, HAL, update loader)
+- the firmware: `firmware/` (app, HAL, update loader; not `firmware/src/phys_dsp.c` and `phys_symp.c`, MIT: below;
+  the firmware built with them is GPL-3.0-only as a whole)
 - the build script and tools: `build.sh`, `tools/`
 - the web installer: `web/`
 - the host tests: `tests/`
@@ -22,6 +23,7 @@ also give your recipients its complete corresponding source under the same licen
 | What | Licence | Where |
 | --- | --- | --- |
 | Inter Tight font by The Inter Project Authors: the UI text, rasterised into the firmware at build time (`tools/gen_aa_font.py`) | SIL OFL 1.1 | `assets/fonts/InterTight[wght].ttf`, `LICENSES/OFL-InterTight.txt` |
+| Rings by Emilie Gillet (<https://github.com/pichenettes/eurorack>) and DaisySP by Electrosmith, Corp and Emilie Gillet (<https://github.com/electro-smith/DaisySP>): the FX resonators (modal resonator, string, sympathetic strings), ported to fixed point by Felucca | MIT | `firmware/src/phys_dsp.c`, `firmware/src/phys_symp.c`, `LICENSES/MIT-Rings.txt`, `LICENSES/MIT-DaisySP.txt` |
 | The second core's support (start, mailbox, guards): from X0X by charlesvestal (<https://github.com/charlesvestal/fm1-x0x>), with findings of Melodee (keremimo) and Jangada (zednaked) | GPL-3.0 | `firmware/hal/fm1_cpu1.{h,S}` |
 | JieLi AC79 SDK by JieLi Technology: three of its files go into every `.fwsc` package (below); none are in this tree | Apache-2.0 | `LICENSES/Apache-2.0.txt` |
 

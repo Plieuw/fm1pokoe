@@ -39,9 +39,10 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
 | ENV | wisselt naar de ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
-| SELECT | RING (op beide pagina's) |
+| FX | wisselt naar de FX-pagina: de resonatoren van Mutable Instruments Rings (zie hieronder) |
+| SELECT | RING (circuit- en ENV-pagina), POSITION (FX-pagina) |
 | ALGORITHM | weergave: 3D (draaiend), X-Y, X-Z, Y-Z, TIME |
-| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS |
+| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | tweede core aan/uit (vanaf de volgende start) |
@@ -56,6 +57,19 @@ filter is een resonant state-variable low pass (zero-delay feedback, stabiel bij
 hoog rinkelt het: een "ping" als de gate opengaat, en een staart die doorklinkt terwijl hij dichtgaat. Probeer RING
 PLUCK of BONGO GATE (sustain 0: elke noot is een aanslag).
 
+**De resonatoren (FX).** De resonatormodellen van Mutable Instruments Rings, gevoed door de Chua-klank zoals de
+IN-ingang van Rings zijn resonator voedt, en gestemd op de laatst gespeelde noot. De DSP is de fixed-point port van
+Rings en DaisySP (Emilie Gillet, Electrosmith; MIT) die Felucca al had (`phys_dsp.c`, `phys_symp.c`).
+
+| Model (ALGORITHM) | Wat | KNOB 1 STRUCTURE | SELECT |
+| --- | --- | --- | --- |
+| MODAL | 12 gestemde modes: klokken, staven, platen | rek van de boventonen (34 harmonisch, 70 klok, 116 staaf) | aanslagpositie |
+| SYMP STRING | een snaar met drie meeresonerende snaren | het akkoord: OCT 5TH 4TH MAJ MIN SUS 7TH OCTAVES | hoeveel ze meenemen |
+| STRING | een Karplus-Strong-snaar | onder ~32 een gebogen kam (sitar), daarboven dispersie (piano) | — |
+
+KNOB 2 BRIGHTNESS, KNOB 3 DAMPING (zoals Rings: rechtsom langer), KNOB 4 MIX (0 = uit, dan rekent er niets). Het
+scherm toont de resonanties op een frequentie-as (de meeresonerende snaren blauw) en de uitgang eronder.
+
 Het scherm toont de toestand (x, y, z) van de nieuwste stem; speelt er niets, dan een "spookcircuit" dat op de huidige
 instellingen meedraait. Dat spookcircuit levert ook de beginstand van nieuwe stemmen (al op de attractor, met een kleine
 afwijking per stem zodat akkoorden niet in de pas lopen).
@@ -67,6 +81,7 @@ Alles wordt als één bestand gecompileerd: `firmware/src/felucca.c` bepaalt de 
 | Bestand | Wat |
 | --- | --- |
 | `firmware/src/synth.c` | het Chua-circuit: diode, RK2-solver in Q20 fixed point, stemmen, uitgang, de trace voor het scherm |
+| `firmware/src/resonator.c` | de FX-resonatoren rond de Rings/DaisySP-port (`phys_dsp.c`, `phys_symp.c`, MIT) |
 | `firmware/src/lpg_tables.h` | gegenereerd door `tools/gen_lpg_tables.py`: ADSR-tijden, cutoff, resonantie |
 | `firmware/src/chua_tables.h` | gegenereerd door `tools/gen_chua_tables.c`: α, omlooptijd en RMS per (SHAPE, CHAOS) |
 | `firmware/src/ui.c` | de attractor tekenen, knoppen, presets, LEDs, instellingen opslaan |

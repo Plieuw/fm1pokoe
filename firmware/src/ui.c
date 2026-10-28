@@ -1,13 +1,15 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* CHUA UI (main loop only): the attractor drawn live, the knobs, presets, LEDs, the settings in flash.
  *
- * Two pages; ENV switches between them (its LED lit on the ENV page):
+ * Three pages; ENV and FX open theirs and go back to the circuit (the button's LED lit on its page):
  *   CIRCUIT  KNOB 1 CHAOS   the regime: cycle, period 2, spiral, double scroll, outer cycle
  *            KNOB 2 SHAPE   beta: slow round spirals .. tight fast ones
  *            KNOB 3 OUTPUT  which voltage you hear: X, X+Y, Y, Y+Z, Z
  *            KNOB 4 RING    the low pass gate's resonance
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
- *   SELECT   RING (on either page)
+ *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonator (resonator.c: Rings' models);
+ *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
+ *   SELECT   RING (on the CIRCUIT and ENV pages)
  *   PRESETS the presets                      ALGORITHM  the view: 3D (turning), X-Y, X-Z, Y-Z, TIME
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO          2ND CORE on / off (saved at once; from the next power-on: the core starts only at boot)
@@ -29,7 +31,12 @@ static const char *const VIEW_NAME[V_COUNT] = {"3D", "X-Y", "X-Z", "Y-Z", "TIME"
 
 /* ------------------------------------------------------------- presets --- */
 /* ADSR times: 0 = 0.5 ms .. 127 = 10 s (exponential: 40 ~11 ms, 64 ~74 ms, 80 ~250 ms, 100 ~1.2 s); RING: 0 none .. 127 Q 6 */
-typedef struct { const char *name; uint8_t chaos, shape, output, attack, decay, sustain, release, ring; } preset_t;
+/* FX (resonator.c): model, STRUCTURE, BRIGHTNESS, DAMPING, POSITION, MIX; MIX 0 (left out): no resonator */
+typedef struct {
+    const char *name;
+    uint8_t chaos, shape, output, attack, decay, sustain, release, ring;
+    uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
+} preset_t;
 static const preset_t PRESETS[] = {
     {"DOUBLE SCROLL", 85, 76, 0, 6, 80, 110, 70, 50},     /* the classic double scroll, x (the scroll jumps) */
     {"RING PLUCK", 85, 90, 64, 0, 62, 0, 66, 110},        /* the gate pinged: a short ring on the spiral */
@@ -41,6 +48,10 @@ static const preset_t PRESETS[] = {
     {"OUTER LOOP", 124, 40, 64, 0, 56, 60, 60, 40},       /* the saturated circuit's big cycle: loud, buzzy */
     {"SLOW BLOOM", 70, 110, 127, 92, 96, 110, 100, 70},  /* z, fast spirals, slow envelope, ringing gate: a pad */
     {"GRIT BASS", 96, 16, 0, 0, 54, 70, 50, 40},          /* x at low beta: slow, deep switching */
+    {"RINGS BELL", 54, 90, 64, 0, 60, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 100},   /* the spiral struck into a bell */
+    {"SITAR DRONE", 85, 64, 32, 20, 80, 110, 90, 30, RZ_SYMP, 16, 80, 105, 70, 90},  /* sympathetic strings, 5TH */
+    {"CHAOS PIANO", 30, 76, 64, 0, 64, 40, 74, 50, RZ_STRING, 100, 70, 96, 20, 85},  /* a stiff string, dispersion */
+    {"BURIED BAR", 110, 40, 0, 4, 76, 90, 80, 60, RZ_MODAL, 116, 40, 80, 24, 70},     /* a tuned bar under the crisis */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -56,20 +67,31 @@ static void preset_load(uint32_t i)
     sys.sustain = p->sustain;
     sys.release = p->release;
     sys.ring = p->ring;
+    if (p->fx_mix) {                             /* (a preset without FX leaves the resonator's knobs, MIX off) */
+        sys.fx_model = p->fx_model;
+        sys.fx_struct = p->fx_struct;
+        sys.fx_bright = p->fx_bright;
+        sys.fx_damp = p->fx_damp;
+        sys.fx_pos = p->fx_pos;
+    }
+    sys.fx_mix = p->fx_mix;
 }
 static int preset_edited(void)
 {
     const preset_t *p = &PRESETS[sys.preset % NPRESETS];
     return sys.chaos != p->chaos || sys.shape != p->shape || sys.output != p->output || sys.attack != p->attack ||
-           sys.decay != p->decay || sys.sustain != p->sustain || sys.release != p->release || sys.ring != p->ring;
+           sys.decay != p->decay || sys.sustain != p->sustain || sys.release != p->release || sys.ring != p->ring ||
+           sys.fx_mix != p->fx_mix || (p->fx_mix && (sys.fx_model != p->fx_model || sys.fx_struct != p->fx_struct ||
+           sys.fx_bright != p->fx_bright || sys.fx_damp != p->fx_damp || sys.fx_pos != p->fx_pos));
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485533u      /* "CHU3": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485534u      /* "CHU4": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
     uint8_t chaos, shape, output, attack, release, view, preset, cpu2, decay, sustain, ring;
+    uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -93,6 +115,12 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.view = (uint8_t)(s.view % V_COUNT);
         sys.preset = (uint8_t)(s.preset % NPRESETS);
         sys.cpu2 = (uint8_t)(s.cpu2 != 0);
+        sys.fx_model = (uint8_t)(s.fx_model % RZ_COUNT);
+        sys.fx_struct = (uint8_t)(s.fx_struct & 127u);
+        sys.fx_bright = (uint8_t)(s.fx_bright & 127u);
+        sys.fx_damp = (uint8_t)(s.fx_damp & 127u);
+        sys.fx_pos = (uint8_t)(s.fx_pos & 127u);
+        sys.fx_mix = (uint8_t)(s.fx_mix & 127u);
     }
 }
 
@@ -115,6 +143,12 @@ static int settings_save(void)     /* 0 = saved */
     s.view = sys.view;
     s.preset = sys.preset;
     s.cpu2 = sys.cpu2;
+    s.fx_model = sys.fx_model;
+    s.fx_struct = sys.fx_struct;
+    s.fx_bright = sys.fx_bright;
+    s.fx_damp = sys.fx_damp;
+    s.fx_pos = sys.fx_pos;
+    s.fx_mix = sys.fx_mix;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -378,6 +412,71 @@ static void draw_env(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the FX page's picture: the resonator's resonances on a log-frequency axis (40 Hz .. 12 kHz; the sympathetic
+ * strings marked), and under them its output */
+static void draw_fx(void)
+{
+    const int32_t top = 6, bars = 62, mid = 92, amp = 26;
+    uint32_t i, n = rz_view.n > 16u ? 16u : rz_view.n, w = rz_view.w;
+    uint16_t dim = ux_mix(T_BG, T_THEME, 30);
+    cv_begin(240, PLOT_H, T_BG);
+    cv_rect(8, top + bars, 224, 1, T_LINE);
+    {   /* the axis: 100 Hz, 1 kHz, 10 kHz */
+        static const uint16_t HZ[3] = {100, 1000, 10000};
+        static const char *const HL[3] = {"100", "1k", "10k"};
+        for (i = 0; i < 3u; i++) {
+            /* x = 8 + 224 log(f / 40) / log(300): log2 via the bit length, fine enough for ticks */
+            uint32_t f = HZ[i], l2 = 0, t = f * 256u / 40u;
+            while (t >= 512u) { t >>= 1; l2 += 256u; }
+            l2 += (t - 256u);                                   /* log2(f / 40) Q8, linear between octaves */
+            {
+                int32_t x = 8 + (int32_t)(l2 * 224u / 2106u);   /* log2(300) = 8.23 octaves, Q8 2106 */
+                cv_rect(x, top, 1, bars, T_LINE);
+                if (i < 2u)
+                    cv_text(x + 2, top, &AF_S, HL[i], T_DIM);
+                else
+                    cv_text_r(x - 2, top, &AF_S, HL[i], T_DIM, T_BG);   /* (the last one left of its line) */
+            }
+        }
+    }
+    if (sys.fx_mix)
+        for (i = 0; i < n; i++) {
+            uint32_t f = rz_view.f[i], hz, l2 = 0, t;
+            int32_t x, h;
+            if (!f)
+                continue;
+            hz = (uint32_t)(((uint64_t)f * 44100u) >> 32);
+            if (hz < 40u || hz > 12000u)
+                continue;
+            t = hz * 256u / 40u;
+            while (t >= 512u) { t >>= 1; l2 += 256u; }
+            l2 += t - 256u;
+            x = 8 + (int32_t)(l2 * 224u / 2106u);
+            h = rz_view.a[i] < 0 ? bars : 4 + rz_view.a[i] * (bars - 4) / 32767;
+            cv_rect(x - 1, top + bars - h, 3, h, rz_view.a[i] < 0 ? T_ACCENT : T_THEME);
+        }
+    {   /* the output, the last 224 points, scaled to its peak (which falls back slowly) */
+        static int32_t scale = 2000;
+        int32_t px = 0, py = mid, pk = 0;
+        for (i = 0; i < 224u; i++) {
+            int32_t v = rz_view.wave[(w - 224u + i) & (RZ_WAVE - 1u)];
+            pk = v > pk ? v : -v > pk ? -v : pk;
+        }
+        scale = pk > scale ? pk : scale - (scale - (pk > 500 ? pk : 500)) / 8;
+        for (i = 0; i < 224u; i++) {
+            int32_t v = sys.fx_mix ? rz_view.wave[(w - 224u + i) & (RZ_WAVE - 1u)] : 0;
+            int32_t y = mid - clamp(v * amp / scale, -amp, amp);
+            if (i)
+                cv_line(8 + px, py, 8 + (int32_t)i, y, sys.fx_mix ? T_THEME : dim);
+            px = (int32_t)i;
+            py = y;
+        }
+    }
+    if (!sys.fx_mix)
+        cv_text(96, top + bars / 2 - AF_S.h / 2, &AF_S, "MIX OFF", T_MID);
+    cv_blit(0, PLOT_Y);
+}
+
 static void ui_draw(void)
 {
     char a[40], b[24], v[12];
@@ -416,6 +515,26 @@ static void ui_draw(void)
         }
         fmt_int(v, sys.ring);
         ui_cell(T_C4, "4 RING", v);
+    } else if (sys.page == 2u) {
+        uint32_t md = sys.fx_model % RZ_COUNT;
+        if (md == RZ_SYMP)
+            str_cpy(b, RZ_CHORD_NAME[(sys.fx_struct & 127u) >> 4], sizeof b);
+        else {
+            fmt_int(v, sys.fx_struct);
+            str_cpy(b, v, sizeof b);
+        }
+        ui_cell(T_C1, md == RZ_SYMP ? "1 CHORD" : "1 STRUCTURE", b);
+        fmt_int(v, sys.fx_bright);
+        ui_cell(T_C2, "2 BRIGHTNESS", v);
+        fmt_int(v, sys.fx_damp);
+        ui_cell(T_C3, "3 DAMPING", v);
+        if (sys.fx_mix) {
+            fmt_int(v, (int32_t)(sys.fx_mix * 100u / 127u));
+            str_cpy(b, v, sizeof b);
+            ui_cat(b, sizeof b, " %");
+        } else
+            str_cpy(b, "OFF", sizeof b);
+        ui_cell(T_C4, "4 MIX", b);
     } else {
         env_time(b, sizeof b, sys.attack);
         ui_cell(T_C1, "1 ATTACK", b);
@@ -432,12 +551,19 @@ static void ui_draw(void)
     if (ui_event_ms && fm1_ms - ui_event_ms < 2000u)
         ui_status(ui_event);
     else {
-        str_cpy(a, sys.page ? "ENV   RING " : "RING ", sizeof a);
-        fmt_int(v, sys.ring);
-        ui_cat(a, sizeof a, v);
-        ui_cat(a, sizeof a, "   ");
-        if (!sys.page)
-            ui_cat(a, sizeof a, VIEW_NAME[sys.view % V_COUNT]);
+        if (sys.page == 2u) {
+            str_cpy(a, RZ_NAME[sys.fx_model % RZ_COUNT], sizeof a);
+            ui_cat(a, sizeof a, sys.fx_model % RZ_COUNT == RZ_SYMP ? "   AMT " : "   POS ");
+            fmt_int(v, sys.fx_pos);
+            ui_cat(a, sizeof a, v);
+        } else {
+            str_cpy(a, sys.page ? "ENV   RING " : "RING ", sizeof a);
+            fmt_int(v, sys.ring);
+            ui_cat(a, sizeof a, v);
+            ui_cat(a, sizeof a, "   ");
+            if (!sys.page)
+                ui_cat(a, sizeof a, VIEW_NAME[sys.view % V_COUNT]);
+        }
         ui_cat(a, sizeof a, "   OCT ");
         if (sys.octave > 0)
             ui_cat(a, sizeof a, "+");
@@ -449,8 +575,10 @@ static void ui_draw(void)
         ui_cat(a, sizeof a, C1_ON() ? "% x2" : "%");
         ui_status(a);
     }
-    if (sys.page)
+    if (sys.page == 1u)
         draw_env();
+    else if (sys.page == 2u)
+        draw_fx();
     else
         draw_plot();
     ui_force = 0;
@@ -493,8 +621,10 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_OCTDN]);
     if (sys.octave > 0)
         led_on(nl, panel.btn[B_OCTUP]);
-    if (sys.page)
+    if (sys.page == 1u)
         led_on(nl, panel.btn[B_ENV]);
+    if (sys.page == 2u || sys.fx_mix)                   /* (FX lit: its page, or the resonator on) */
+        led_on(nl, panel.btn[B_FX]);
     for (i = 0; i < FM1_NCOL; i++)
         fm1_led[i] = nl[i];
 }
@@ -542,7 +672,11 @@ static void ui_input(void)
             ui_say(settings_save() == 0 ? "SAVED" : flash_ok ? "SAVE FAILED" : "NO FLASH");
             break;
         case B_ENV:                                     /* the ENV page and back */
-            sys.page = (uint8_t)!sys.page;
+            sys.page = sys.page == 1u ? 0u : 1u;
+            ui_force = 1;
+            break;
+        case B_FX:                                      /* the FX page and back */
+            sys.page = sys.page == 2u ? 0u : 2u;
             ui_force = 1;
             break;
         case B_GLO:
@@ -563,6 +697,11 @@ static void ui_input(void)
         knob(&sys.shape, EN_K2, 1);
         knob(&sys.output, EN_K3, 2);
         knob(&sys.ring, EN_K4, 3);
+    } else if (sys.page == 2u) {
+        knob(&sys.fx_struct, EN_K1, 0);
+        knob(&sys.fx_bright, EN_K2, 1);
+        knob(&sys.fx_damp, EN_K3, 2);
+        knob(&sys.fx_mix, EN_K4, 3);
     } else {
         knob(&sys.attack, EN_K1, 0);
         knob(&sys.decay, EN_K2, 1);
@@ -570,13 +709,19 @@ static void ui_input(void)
         knob(&sys.release, EN_K4, 3);
     }
     if ((s = panel_enc(EN_SELECT)) != 0) {
-        sys.ring = (uint8_t)clamp(sys.ring + s, 0, 127);
-        str_cpy(t, "RING ", sizeof t);
-        fmt_int(v, sys.ring);
+        volatile uint8_t *p = sys.page == 2u ? &sys.fx_pos : &sys.ring;
+        *p = (uint8_t)clamp(*p + s, 0, 127);
+        str_cpy(t, sys.page == 2u ? (sys.fx_model % RZ_COUNT == RZ_SYMP ? "AMOUNT " : "POSITION ") : "RING ", sizeof t);
+        fmt_int(v, *p);
         ui_cat(t, sizeof t, v);
         ui_say(t);
     }
-    if ((s = panel_enc(EN_ALGO)) != 0 && !sys.page) {
+    if ((s = panel_enc(EN_ALGO)) != 0 && sys.page == 2u) {
+        sys.fx_model = (uint8_t)((sys.fx_model + RZ_COUNT * 8 + s) % RZ_COUNT);
+        str_cpy(t, "MODEL ", sizeof t);
+        ui_cat(t, sizeof t, RZ_NAME[sys.fx_model]);
+        ui_say(t);
+    } else if (s && !sys.page) {
         sys.view = (uint8_t)((sys.view + V_COUNT * 8 + s) % V_COUNT);
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);

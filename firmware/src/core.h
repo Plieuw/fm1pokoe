@@ -28,7 +28,7 @@ static inline int32_t clamp(int32_t v, int32_t lo, int32_t hi) { return v < lo ?
 
 /* What the main loop and the audio interrupt share. Single writer per field:
  *   main loop writes:  octave, chaos, shape, output, attack, decay, sustain, release, ring, master_q12, view, preset,
- *                      cpu2, page
+ *                      cpu2, page, fx_*
  *   audio ISR writes:  last_note, last_vel, cpu_q8, voices, env_view, env_stage */
 static volatile struct {
     int8_t octave;               /* OCT- / OCT+: -3..+3 */
@@ -43,6 +43,8 @@ static volatile struct {
     int32_t batt_raw;            /* battery ADC, smoothed (main loop) */
     uint8_t view, preset;        /* ui.c: the screen's view, the last preset loaded */
     uint8_t cpu2;                /* 2ND CORE: start the second core at power-on (main.c; GLO toggles it) */
-    uint8_t page;                /* ui.c: 0 the circuit's knobs, 1 the ENV page */
+    uint8_t page;                /* ui.c: 0 the circuit's knobs, 1 the ENV page, 2 the FX page */
+    uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;   /* resonator.c: the FX resonator, 0..127 */
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
-         .ring = 50, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1};
+         .ring = 50, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1,
+         .fx_model = 0, .fx_struct = 70, .fx_bright = 90, .fx_damp = 100, .fx_pos = 24, .fx_mix = 0};

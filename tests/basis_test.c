@@ -428,6 +428,57 @@ int main(int argc, char **argv)
         check("low pass gate: every RING x regime x note range bounded, every voice ends", okk && big < (1 << 29) && peak <= 32767);
     }
 
+    /* the FX resonators (Rings' models): every model x STRUCTURE x DAMPING x note range bounded, no NaN-like jumps;
+     * MIX 0 changes nothing; MODAL tuned: a lone mode at the note (STRUCTURE 0.25..0.3: harmonic) rings at its pitch */
+    {
+        static const uint8_t NOTES[] = {24, 48, 72, 96};
+        uint32_t md, st, dmp, ni, b2, okk = 1;
+        int32_t pk2 = 0;
+        sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 0; sys.decay = 60; sys.sustain = 90;
+        sys.release = 60; sys.ring = 50; sys.fx_bright = 100; sys.fx_pos = 40; sys.fx_mix = 127;
+        for (md = 0; md < RZ_COUNT; md++)
+            for (st = 0; st < 128u; st += 42u)
+                for (dmp = 0; dmp < 128u; dmp += 63u) {
+                    sys.fx_model = (uint8_t)md; sys.fx_struct = (uint8_t)st; sys.fx_damp = (uint8_t)dmp;
+                    for (ni = 0; ni < sizeof NOTES; ni++) {
+                        synth_note_on(NOTES[ni], 127);
+                        for (b2 = 0; b2 < 120u; b2++) {
+                            synth_render(buf, CTL);
+                            for (w = 0; w < CTL; w++) {
+                                int32_t a2 = buf[2 * w] < 0 ? -buf[2 * w] : buf[2 * w];
+                                pk2 = a2 > pk2 ? a2 : pk2;
+                            }
+                        }
+                        synth_kill();
+                    }
+                }
+        printf("   (resonators: peak %d)\n", pk2);
+        okk &= pk2 <= 32767;
+        {   /* MIX 0: bit for bit the same as never having had a resonator */
+            static int32_t ref2[2 * CTL * 300];
+            int pass, same = 1;
+            for (pass = 0; pass < 2; pass++) {
+                synth_kill(); memset(voice, 0, sizeof voice);
+                ghost.x = C1 / 10; ghost.y = ghost.z = 0; rng_state = 0x1234567u; voice_clock = 0;
+                sys.fx_mix = 0;
+                if (pass)
+                    sys.fx_model = RZ_STRING;
+                synth_note_on(55, 100);
+                for (b2 = 0; b2 < 300u; b2++) {
+                    synth_render(buf, CTL);
+                    for (w = 0; w < 2u * CTL; w++) {
+                        if (!pass) ref2[b2 * 2u * CTL + w] = buf[w];
+                        else same &= ref2[b2 * 2u * CTL + w] == buf[w];
+                    }
+                }
+            }
+            okk &= same;
+        }
+        synth_kill();
+        sys.fx_mix = 0;
+        check("FX resonators: every model x STRUCTURE x DAMPING x note bounded; MIX 0 bit for bit dry", okk);
+    }
+
     /* MASTER at 0: silence */
     sys.master_q12 = 0;
     peak = 0;
@@ -440,14 +491,26 @@ int main(int argc, char **argv)
     /* a render to listen to: per preset of ui.c, an arpeggio then a held chord */
     if (argc > 1 && (wav = fopen(argv[1], "wb")) != 0) {
         static const uint8_t ARP[] = {48, 55, 60, 63, 67, 72, 67, 63};
-        static const struct { uint8_t chaos, shape, output, attack, decay, sustain, release, ring; } P[] = {   /* ui.c PRESETS */
-            {85, 76, 0, 6, 80, 110, 70, 50}, {85, 90, 64, 0, 62, 0, 66, 110}, {6, 64, 64, 10, 70, 120, 64, 30}, {38, 64, 32, 4, 60, 90, 66, 60}, {54, 56, 64, 2, 64, 80, 72, 70}, {30, 100, 32, 0, 50, 0, 52, 100}, {110, 64, 96, 2, 76, 100, 74, 60}, {124, 40, 64, 0, 56, 60, 60, 40}, {70, 110, 127, 92, 96, 110, 100, 70}, {96, 16, 0, 0, 54, 70, 50, 40},
+        static const struct {
+            uint8_t chaos, shape, output, attack, decay, sustain, release, ring;
+            uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;
+        } P[] = {   /* ui.c PRESETS */
+            {85, 76, 0, 6, 80, 110, 70, 50}, {85, 90, 64, 0, 62, 0, 66, 110}, {6, 64, 64, 10, 70, 120, 64, 30},
+            {38, 64, 32, 4, 60, 90, 66, 60}, {54, 56, 64, 2, 64, 80, 72, 70}, {30, 100, 32, 0, 50, 0, 52, 100},
+            {110, 64, 96, 2, 76, 100, 74, 60}, {124, 40, 64, 0, 56, 60, 60, 40}, {70, 110, 127, 92, 96, 110, 100, 70},
+            {96, 16, 0, 0, 54, 70, 50, 40},
+            {54, 90, 64, 0, 60, 0, 70, 40, RZ_MODAL, 70, 100, 110, 12, 100},
+            {85, 64, 32, 20, 80, 110, 90, 30, RZ_SYMP, 16, 80, 105, 70, 90},
+            {30, 76, 64, 0, 64, 40, 74, 50, RZ_STRING, 100, 70, 96, 20, 85},
+            {110, 40, 0, 4, 76, 90, 80, 60, RZ_MODAL, 116, 40, 80, 24, 70},
         };
         wav_hdr(wav, 0);
         for (w = 0; w < sizeof P / sizeof P[0]; w++) {
             sys.chaos = P[w].chaos; sys.shape = P[w].shape; sys.output = P[w].output;
             sys.attack = P[w].attack; sys.decay = P[w].decay; sys.sustain = P[w].sustain;
             sys.release = P[w].release; sys.ring = P[w].ring;
+            sys.fx_model = P[w].fx_model; sys.fx_struct = P[w].fx_struct; sys.fx_bright = P[w].fx_bright;
+            sys.fx_damp = P[w].fx_damp; sys.fx_pos = P[w].fx_pos; sys.fx_mix = P[w].fx_mix;
             for (k = 0; k < sizeof ARP; k++) {
                 fm1_in.notes = 1u << key_of(ARP[k]);
                 run_ms(170);
