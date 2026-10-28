@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* CHUA UI (main loop only): the attractor drawn live, the knobs, presets, LEDs, the settings in flash.
  *
- * Three pages; ENV and FX open theirs and go back to the circuit (the button's LED lit on its page):
+ * Three pages: HOME the circuit (the oscillator), ENV and FX theirs (pressed again: back HOME); the LED of the page's
+ * button is lit:
  *   CIRCUIT  KNOB 1 CHAOS   the regime: cycle, period 2, spiral, double scroll, outer cycle
  *            KNOB 2 SHAPE   beta: slow round spirals .. tight fast ones
  *            KNOB 3 OUTPUT  which voltage you hear: X, X+Y, Y, Y+Z, Z
@@ -621,6 +622,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_OCTDN]);
     if (sys.octave > 0)
         led_on(nl, panel.btn[B_OCTUP]);
+    if (sys.page == 0u)
+        led_on(nl, panel.btn[B_HOME]);
     if (sys.page == 1u)
         led_on(nl, panel.btn[B_ENV]);
     if (sys.page == 2u || sys.fx_mix)                   /* (FX lit: its page, or the resonator on) */
@@ -670,6 +673,12 @@ static void ui_input(void)
             break;
         case B_SAVE:
             ui_say(settings_save() == 0 ? "SAVED" : flash_ok ? "SAVE FAILED" : "NO FLASH");
+            break;
+        case B_HOME:                                    /* the circuit's page: the oscillator */
+            if (sys.page) {
+                sys.page = 0;
+                ui_force = 1;
+            }
             break;
         case B_ENV:                                     /* the ENV page and back */
             sys.page = sys.page == 1u ? 0u : 1u;

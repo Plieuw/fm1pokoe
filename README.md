@@ -38,6 +38,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 2 — SHAPE | β 10..34: lage waarden trage, ronde spiralen; hoge waarden snelle, strakke |
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
+| HOME | de oscillator: de circuitpagina (CHAOS, SHAPE, OUTPUT, RING en de attractor) |
 | ENV | wisselt naar de ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | wisselt naar de FX-pagina: de resonatoren van Mutable Instruments Rings (zie hieronder) |
 | SELECT | RING (circuit- en ENV-pagina), POSITION (FX-pagina) |
