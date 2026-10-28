@@ -4,7 +4,8 @@
  * Keys: the 27 note keys (fm1_in.notes, debounced by the TIMER5 scan in hal/fm1_input.h) play the synth at the
  * octave OCT- / OCT+ set, and go out as MIDI (USB, channel 1). A key remembers the note it started, so changing
  * the octave while a key is down never leaves a note hanging.
- * MIDI in (USB and the TRS jack, usb.c / midi_uart.c rings): note on / off on any channel plays the synth;
+ * MIDI in (USB and the TRS jack, usb.c / midi_uart.c rings, each on or off, the GLO page): note on / off on the RX
+ * channel (or any: OMNI) plays the synth; the keys go out (USB, if on) on the TX channel;
  * CC 123 (all notes off) releases everything.
  * A note held by several sources (two keys at different octaves, a key and MIDI) ends when the last lets go.
  * ARP on (arp.c): the notes held go to the arpeggiator instead; MIDI clock in drives it.
@@ -13,12 +14,18 @@
  *   keys_panic_req   main loop: set to release everything at the next block */
 #define KB_SILENT 0xFFu
 #define KEY_VEL 100u                             /* the keys have no velocity: a fixed one */
-#define MIDI_OUT_CH 0u                           /* channel 1 */
 
 static volatile uint8_t kb_boot_hold;            /* set from power-on to the end of the splash (main.c): keys silent */
 static volatile uint8_t keys_panic_req;
 static uint32_t kb_prev;                         /* fm1_in.notes at the last block */
 static uint8_t kb_note[NKEYS];                   /* the note key k started (KB_SILENT: none) */
+static uint8_t kb_ch[NKEYS];                     /* the MIDI channel its note on went out on (its off: the same) */
+static void kb_out(uint32_t pkt)                 /* a note on to USB MIDI out, if it is on (the GLO page; the offs
+                                                  * go always: none left hanging when it is turned off) */
+{
+    if (sys.midi_usb & 2u)
+        midi_out_event(pkt);
+}
 static uint8_t note_held[128];                   /* sources holding each note */
 
 static uint8_t arp_was_on, arp_was_hold;
@@ -75,7 +82,7 @@ static void keys_all_off(void)
         note_held[k] = 0;
     for (k = 0; k < NKEYS; k++)
         if (kb_note[k] != KB_SILENT) {
-            midi_out_event(0x08u | (0x80u | MIDI_OUT_CH) << 8 | (uint32_t)kb_note[k] << 16);
+            midi_out_event(0x08u | (0x80u | kb_ch[k]) << 8 | (uint32_t)kb_note[k] << 16);
             kb_note[k] = KB_SILENT;
         }
     synth_all_off();
@@ -99,10 +106,11 @@ static void keyboard_block(void)
             }
             kb_note[k] = (uint8_t)n;
             note_start((uint32_t)n, KEY_VEL);
-            midi_out_event(0x09u | (0x90u | MIDI_OUT_CH) << 8 | (uint32_t)n << 16 | KEY_VEL << 24);
+            kb_ch[k] = (uint8_t)(sys.midi_tx & 15u);
+            kb_out(0x09u | (0x90u | kb_ch[k]) << 8 | (uint32_t)n << 16 | KEY_VEL << 24);
         } else if (kb_note[k] != KB_SILENT) {    /* up: the note it started */
             note_end(kb_note[k]);
-            midi_out_event(0x08u | (0x80u | MIDI_OUT_CH) << 8 | (uint32_t)kb_note[k] << 16);
+            midi_out_event(0x08u | (0x80u | kb_ch[k]) << 8 | (uint32_t)kb_note[k] << 16);
             kb_note[k] = KB_SILENT;
         }
     }
@@ -118,9 +126,13 @@ static void midi_in_block(void)
         return;
     }
     while (mi_r != mi_w) {
-        uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u;
-        uint32_t d1 = (pkt >> 16) & 0x7Fu, d2 = (pkt >> 24) & 0x7Fu;
+        uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, src = midi_in_source[mi_r % MQ];
+        uint32_t d1 = (pkt >> 16) & 0x7Fu, d2 = (pkt >> 24) & 0x7Fu, rx = sys.midi_rx;
         mi_r++;
+        if ((src == 2u && !sys.midi_trs) || (src == 1u && !(sys.midi_usb & 1u)))
+            continue;                            /* (the GLO page: that input off) */
+        if (st < 0xF0u && rx && ((pkt >> 8) & 0x0Fu) != (rx - 1u) % 16u)
+            continue;                            /* (another channel than RX) */
         if (st == 0x90u && d2)
             note_start(d1, d2);
         else if (st == 0x80u || st == 0x90u)     /* (note on with velocity 0 is a note off) */

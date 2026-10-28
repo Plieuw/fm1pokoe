@@ -24,6 +24,7 @@ static struct { volatile uint32_t notes, buttons; } fm1_in;
 /* the USB-MIDI rings of usb.c */
 #define MQ 64u
 static uint32_t midi_in_q[MQ];
+static uint8_t midi_in_source[MQ];             /* 1 USB, 2 TRS (0: the tests' own, always taken) */
 static volatile uint32_t mi_w, mi_r;
 static volatile uint8_t midi_in_overflow;
 static uint32_t out_log[256], out_n;
@@ -32,6 +33,7 @@ static void midi_in(uint32_t st, uint32_t d1, uint32_t d2)
 {
     midi_in_q[mi_w % MQ] = (st >> 4) | st << 8 | d1 << 16 | d2 << 24;
     mi_w++;
+    midi_in_source[mi_w % MQ] = 0;               /* (the next one: the tests' own unless set) */
 }
 
 /* the second core: off (0), run at once (1), a real second thread (2: under ThreadSanitizer, a race between the two
@@ -603,6 +605,56 @@ int main(int argc, char **argv)
         synth_kill();
         sys.basis = 0; sys.fx_mix = 0; sys.orbit = 0; sys.chaos = 85;
         check("BASIS: 0 mono bit for bit; 127 cycles L, R, half L, half R (resonator too); ORBIT moves with the scroll", okk && mono);
+    }
+
+    /* the MIDI page (GLO): TRS in off ignores the jack, USB in off ignores USB; RX channel filters (OMNI: all);
+     * the keys go out on the TX channel, and not at all with USB out off (their note offs always) */
+    {
+        uint32_t okk = 1, q;
+        synth_kill(); keys_all_off(); run_ms(20);
+        sys.arp_on = 0; sys.osc = 0; sys.fx_mix = 0; sys.sh_mix = 0;
+        sys.midi_trs = 0;
+        midi_in_source[mi_w % MQ] = 2; midi_in(0x90, 60, 100);       /* TRS, off */
+        run_ms(10);
+        okk &= sounding() == 0;
+        sys.midi_trs = 1;
+        midi_in_source[mi_w % MQ] = 2; midi_in(0x90, 60, 100);       /* TRS, on */
+        run_ms(10);
+        okk &= sounding() == 1;
+        midi_in_source[mi_w % MQ] = 2; midi_in(0x80, 60, 0);
+        run_ms(500);
+        sys.midi_usb = 2;                                            /* USB in off */
+        midi_in_source[mi_w % MQ] = 1; midi_in(0x90, 62, 100);
+        run_ms(10);
+        okk &= sounding() == 0;
+        sys.midi_usb = 3; sys.midi_rx = 5;                           /* channel 5 only */
+        midi_in_source[mi_w % MQ] = 1; midi_in(0x90, 62, 100);       /* channel 1: not */
+        run_ms(10);
+        okk &= sounding() == 0;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0x94, 62, 100);       /* channel 5 */
+        run_ms(10);
+        okk &= sounding() == 1;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0x84, 62, 0);
+        sys.midi_rx = 0;
+        run_ms(500);
+        out_n = 0; sys.midi_tx = 9;                                  /* the keys out on channel 10 */
+        fm1_in.notes = 1u << key_of(60);
+        run_ms(10);
+        okk &= sent(0, 0x99, 60, KEY_VEL);
+        sys.midi_tx = 0;                                             /* (changed while held: the off on 10) */
+        fm1_in.notes = 0;
+        run_ms(10);
+        okk &= sent(1, 0x89, 60, 0);
+        out_n = 0; sys.midi_usb = 1;                                 /* USB out off: no note on goes out */
+        fm1_in.notes = 1u << key_of(60);
+        run_ms(10);
+        q = out_n;
+        fm1_in.notes = 0;
+        run_ms(10);
+        okk &= q == 0;
+        sys.midi_usb = 3;
+        run_ms(500);
+        check("MIDI page: TRS / USB in on and off, RX channel, TX channel, USB out off", okk);
     }
 
     /* the arpeggiator: on its own clock (120 BPM, 1/16: 8 steps a second) UP plays the held chord low to high over

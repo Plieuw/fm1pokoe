@@ -30,7 +30,9 @@
  *   ARP      (the ARP button; again: on / off, its LED lit while on) the arpeggiator (arp.c): KNOB 1 BPM (EXT under
  *            MIDI clock), KNOB 2 SUBDIVIDE, KNOB 3 GATE, KNOB 4 SWING; ALGORITHM the pattern, SELECT HOLD
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
- *   GLO          2ND CORE on / off (saved at once; from the next power-on: the core starts only at boot)
+ *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
+ *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
+ *            power-on: the core starts only at boot)
  *   MASTER pot   volume
  *
  * The picture: synth.c keeps a ring of the circuit's state (chua_trace: the newest voice, or the ghost circuit when
@@ -181,7 +183,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x4348553Du      /* "CHU=": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x4348553Eu      /* "CHU>": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -192,6 +194,7 @@ typedef struct {
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
     uint8_t menv_len, menv_skew, menv_height, basis, orbit;
     uint8_t arp_on, arp_type, arp_bpm, arp_div, arp_gate, arp_swing, arp_hold;
+    uint8_t midi_trs, midi_usb, midi_rx, midi_tx;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -247,6 +250,10 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.arp_gate = (uint8_t)(s.arp_gate & 127u);
         sys.arp_swing = (uint8_t)(s.arp_swing & 127u);
         sys.arp_hold = (uint8_t)(s.arp_hold != 0);
+        sys.midi_trs = (uint8_t)(s.midi_trs != 0);
+        sys.midi_usb = (uint8_t)(s.midi_usb & 3u);
+        sys.midi_rx = (uint8_t)(s.midi_rx > 16u ? 0u : s.midi_rx);
+        sys.midi_tx = (uint8_t)(s.midi_tx & 15u);
     }
 }
 
@@ -301,6 +308,10 @@ static int settings_save(void)     /* 0 = saved */
     s.arp_gate = sys.arp_gate;
     s.arp_swing = sys.arp_swing;
     s.arp_hold = sys.arp_hold;
+    s.midi_trs = sys.midi_trs;
+    s.midi_usb = sys.midi_usb;
+    s.midi_rx = sys.midi_rx;
+    s.midi_tx = sys.midi_tx;
     return st_save(OBJ_SETTINGS, &s, sizeof s);
 }
 
@@ -746,6 +757,37 @@ static void draw_mod(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the MIDI page's picture: where notes come in and go out, and the clock */
+static void draw_midi(void)
+{
+    char a[40], v[12];
+    int32_t y = 6;
+    cv_begin(240, PLOT_H, T_BG);
+    cv_text(8, y, &AF_S, "IN", T_DIM);
+    str_cpy(a, sys.midi_trs ? "TRS JACK" : "TRS JACK (OFF)", sizeof a);
+    cv_text(48, y, &AF_S, a, sys.midi_trs ? T_TEXT : T_DIM);
+    cv_text(140, y, &AF_S, sys.midi_usb & 1u ? "USB" : "USB (OFF)", sys.midi_usb & 1u ? T_TEXT : T_DIM);
+    y += 19;
+    str_cpy(a, "CHANNEL ", sizeof a);
+    if (sys.midi_rx) {
+        fmt_int(v, sys.midi_rx);
+        ui_cat(a, sizeof a, v);
+    } else
+        ui_cat(a, sizeof a, "ANY (OMNI)");
+    cv_text(48, y, &AF_S, a, T_MID);
+    y += 24;
+    cv_text(8, y, &AF_S, "OUT", T_DIM);
+    cv_text(48, y, &AF_S, sys.midi_usb & 2u ? "USB: THE KEYS" : "USB (OFF)", sys.midi_usb & 2u ? T_TEXT : T_DIM);
+    y += 19;
+    str_cpy(a, "CHANNEL ", sizeof a);
+    fmt_int(v, (int32_t)(sys.midi_tx & 15u) + 1);
+    ui_cat(a, sizeof a, v);
+    cv_text(48, y, &AF_S, a, T_MID);
+    y += 24;
+    cv_text(8, y, &AF_S, arp_ext() ? "CLOCK  MIDI IN" : "CLOCK  INTERNAL", T_DIM);
+    cv_blit(0, PLOT_Y);
+}
+
 /* the ARP page's picture: the last 32 steps as a roll (their notes' heights, rests empty), the newest bright; ON / OFF
  * and the tempo's beat flashing */
 static void draw_arp(void)
@@ -866,7 +908,18 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 6u) {
+    if (sys.page == 7u) {
+        static const char *const USBN[4] = {"OFF", "IN", "OUT", "IN + OUT"};
+        ui_cell(T_C1, "1 TRS MIDI IN", sys.midi_trs ? "ON" : "OFF");
+        ui_cell(T_C2, "2 USB MIDI", USBN[sys.midi_usb & 3u]);
+        if (sys.midi_rx) {
+            fmt_int(v, sys.midi_rx);
+            ui_cell(T_C3, "3 RX CHANNEL", v);
+        } else
+            ui_cell(T_C3, "3 RX CHANNEL", "OMNI");
+        fmt_int(v, (int32_t)(sys.midi_tx & 15u) + 1);
+        ui_cell(T_C4, "4 TX CHANNEL", v);
+    } else if (sys.page == 6u) {
         uint32_t bpm = arp_bpm_now();
         if (arp_ext()) {
             str_cpy(b, "EXT ", sizeof b);
@@ -1028,6 +1081,8 @@ static void ui_draw(void)
             ui_cat(a, sizeof a, "   ");
             fx_pos_text(b, sizeof b, 1);
             ui_cat(a, sizeof a, b);
+        } else if (sys.page == 7u) {             /* MIDI: the second core (SELECT) */
+            str_cpy(a, sys.cpu2 ? "MIDI   2ND CORE ON" : "MIDI   2ND CORE OFF", sizeof a);
         } else if (sys.page == 6u) {             /* ARP: on or off, the pattern, HOLD */
             str_cpy(a, sys.arp_on ? "ARP ON  " : "ARP OFF  ", sizeof a);
             ui_cat(a, sizeof a, arp_type_name(sys.arp_type));
@@ -1097,6 +1152,8 @@ static void ui_draw(void)
         draw_menv();
     else if (sys.page == 6u)
         draw_arp();
+    else if (sys.page == 7u)
+        draw_midi();
     else
         draw_plot();
     ui_force = 0;
@@ -1145,6 +1202,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_ENV]);
     if (sys.arp_on || sys.page == 6u)
         led_on(nl, panel.btn[B_ARP]);
+    if (sys.page == 7u)
+        led_on(nl, panel.btn[B_GLO]);
     if ((sys.page >= 2u && sys.page <= 3u) || sys.fx_mix || sys.sh_mix)   /* (FX lit: its pages, or FX on) */
         led_on(nl, panel.btn[B_FX]);
     for (i = 0; i < FM1_NCOL; i++)
@@ -1214,10 +1273,9 @@ static void ui_input(void)
                 ui_force = 1;
             }
             break;
-        case B_GLO:
-            sys.cpu2 = (uint8_t)!sys.cpu2;
-            settings_save();
-            ui_say(sys.cpu2 ? "2ND CORE ON: RESTART" : "2ND CORE OFF: RESTART");
+        case B_GLO:                                     /* the MIDI page and back */
+            sys.page = sys.page == 7u ? 0u : 7u;
+            ui_force = 1;
             break;
         default:
             str_cpy(t, "BUTTON ", sizeof t);
@@ -1227,7 +1285,27 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 6u) {
+    if (sys.page == 7u) {                       /* MIDI: an input changed: what it held let go (no note hangs) */
+        if ((s = panel_enc(EN_K1)) != 0) {
+            sys.midi_trs = (uint8_t)(s > 0);
+            keys_panic_req = 1;
+            ui_hot = 0; ui_hot_ms = fm1_ms;
+        }
+        if ((s = panel_enc(EN_K2)) != 0) {
+            sys.midi_usb = (uint8_t)clamp((int32_t)sys.midi_usb + s, 0, 3);
+            keys_panic_req = 1;
+            ui_hot = 1; ui_hot_ms = fm1_ms;
+        }
+        if ((s = panel_enc(EN_K3)) != 0) {
+            sys.midi_rx = (uint8_t)clamp((int32_t)sys.midi_rx + s, 0, 16);
+            keys_panic_req = 1;
+            ui_hot = 2; ui_hot_ms = fm1_ms;
+        }
+        if ((s = panel_enc(EN_K4)) != 0) {
+            sys.midi_tx = (uint8_t)clamp((int32_t)sys.midi_tx + s, 0, 15);
+            ui_hot = 3; ui_hot_ms = fm1_ms;
+        }
+    } else if (sys.page == 6u) {
         if ((s = panel_enc(EN_K1)) != 0) {
             sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
             ui_hot = 0; ui_hot_ms = fm1_ms;
@@ -1282,6 +1360,12 @@ static void ui_input(void)
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
         ui_say(t);
+    } else if (s && sys.page == 7u) {           /* MIDI: 2ND CORE (right on, left off; saved at once) */
+        if ((uint8_t)(s > 0) != sys.cpu2) {
+            sys.cpu2 = (uint8_t)(s > 0);
+            settings_save();
+        }
+        ui_say(sys.cpu2 ? "2ND CORE ON: RESTART" : "2ND CORE OFF: RESTART");
     } else if (s && sys.page == 6u) {           /* ARP: HOLD (right on, left off) */
         sys.arp_hold = (uint8_t)(s > 0);
         ui_say(sys.arp_hold ? "HOLD ON" : "HOLD OFF");

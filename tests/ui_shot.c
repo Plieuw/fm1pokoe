@@ -74,6 +74,7 @@ static uint32_t fl_jedec(void) { return 0x856014u; }
 #define FL_FAR(f) fl_jedec
 #include "../firmware/src/panel.c"
 #include "../firmware/src/synth.c"
+static volatile uint8_t keys_panic_req;   /* (keys.c: not in this test) */
 #include "../firmware/src/ui.c"
 
 static int32_t abuf_[2 * CTL];
@@ -283,6 +284,15 @@ int main(int argc, char **argv)
     bad |= shot(dir, "k_arp_on");
     sys.arp_on = 0; sys.arp_hold = 0; sys.page = 0;
     ui_force = 1;
+
+    edges = btn_bit(B_GLO);              /* the MIDI page */
+    ui_input();
+    sys.midi_rx = 3; sys.midi_tx = 9;
+    frames(2);
+    bad |= shot(dir, "l_midi");
+    sys.midi_rx = 0; sys.midi_tx = 0;
+    edges = btn_bit(B_GLO);
+    ui_input();
 
     sys.octave = 2;                      /* the widest values: a knob just turned, a message */
     sys.release = 127;

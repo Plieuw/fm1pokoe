@@ -47,9 +47,9 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | ARP | de ARP-pagina; nog een keer: de arpeggiator aan/uit (het lampje brandt zolang hij aan staat) |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
-| GLO | tweede core aan/uit (vanaf de volgende start) |
+| GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
 | MASTER | volume |
-| MIDI in (USB en TRS) | note on/off op elk kanaal, CC 123 = all notes off |
+| MIDI in (USB en TRS) | note on/off op het RX-kanaal (of elk: OMNI), CC 123 = all notes off; clock voor de arpeggiator |
 | USB | class-compliant MIDI + USB-audio-ingang (opnemen in je DAW) |
 | OCT- + OCT+ 5 s ingedrukt | UBOOT (update-modus) |
 
@@ -227,7 +227,7 @@ audio-interrupt is fixed point (geen 64-bit delingen: die heeft de toolchain nie
 
 **CPU en de tweede core.** CHUA speelt 4 stemmen, net zoveel als er FX-resonatoren/waveguides zijn (één per noot):
 met de waveguides erbij was 8 te zwaar. Een vijfde noot neemt de oudste stem over. De AC79 heeft een tweede core; CHUA
-verdeelt de stemmen en de resonatoren (om en om) over beide. De tweede core start alleen bij het opstarten, dus **GLO** zet hem aan of
+verdeelt de stemmen en de resonatoren (om en om) over beide. De tweede core start alleen bij het opstarten, dus **SELECT op de GLO-pagina** zet hem aan of
 uit voor de volgende start (meteen opgeslagen; standaard aan). Onderaan het scherm staat dan `CPU …% x2`. Op sommige
 FM-1's leest de tweede core verkeerd (zo gevonden door X0X en Jangada): dan merkt de firmware dat, gaat verder op één
 core en zet de instelling uit (`2ND CORE STOPPED: OFF`). De uitvoer is bit voor bit gelijk, met één of twee cores
