@@ -774,8 +774,19 @@ int main(int argc, char **argv)
                 }
             }
         }
-        synth_note_on(62, 110);                                  /* a fifth note, all four held: the oldest */
-        okk &= voice[4].rz == voice[0].rz && rz[voice[4].rz].note == 62;
+        {   /* a fifth note, all four held: it steals a voice (NVOICE), and takes the oldest resonator (48's) */
+            uint32_t k3, r48 = RZ_POLY, found = 0;
+            for (k3 = 0; k3 < NVOICE; k3++)
+                if (voice[k3].note == 48u && voice[k3].stage != ST_OFF)
+                    r48 = voice[k3].rz;
+            synth_note_on(62, 110);
+            for (k3 = 0; k3 < NVOICE; k3++)
+                if (voice[k3].note == 62u && voice[k3].stage == ST_ATTACK) {
+                    okk &= voice[k3].rz == r48;
+                    found = 1;
+                }
+            okk &= found && r48 < RZ_POLY && rz[r48].note == 62u;
+        }
         sys.fx_damp = 0;                                         /* (the shortest decay: they go quiet) */
         synth_kill();
         run_ms(4000);
@@ -795,8 +806,9 @@ int main(int argc, char **argv)
         uint32_t okk = 1, q, w2;
         struct { uint32_t md; uint8_t st, pos; double lo, hi; } T[] = {
             {RZ_FLUTE, 0, 30, 0.96, 1.04}, {RZ_FLUTE, 100, 30, 1.9, 2.1}, {RZ_FLUTE, 127, 30, 2.85, 4.15},
-            {RZ_SYRINX, 0, 0, 3.6, 4.8}, {RZ_SYRINX, 127, 0, 5.0, 20},
+            {RZ_SYRINX, 0, 0, 3.5, 9}, {RZ_SYRINX, 127, 0, 5.0, 20},
         };
+        double fsy[2] = {0, 0};
         sys.osc = 11; sys.np_x = sys.np_y = 64; sys.np_level = 64;   /* (CLUSTER SAW: a steady breath) */
         sys.attack = 0; sys.sustain = 127; sys.release = 20; sys.fx_bright = 70; sys.fx_damp = 90; sys.sh_mix = 0;
         sys.basis = 0;
@@ -824,8 +836,11 @@ int main(int argc, char **argv)
                 if (e > best) { best = e; f = k2; }
             }
             printf("   (%s STRUCTURE %u: strongest %.0f Hz, %.2f x the note)\n", RZ_NAME[T[q].md], T[q].st, f, f / 220.0);
+            if (T[q].md == RZ_SYRINX)                      /* (the whistle or the harmonic the beak lifts: up there) */
+                fsy[T[q].st ? 1 : 0] = f;
             okk &= f / 220.0 >= T[q].lo && f / 220.0 <= T[q].hi;
         }
+        okk &= fsy[1] > 1.3 * fsy[0];                     /* (the chirp: up) */
         {   /* the throat: U darker than I (the energy above 1.5 kHz), each animal sounds */
             double hi2[2];
             uint32_t v2;

@@ -33,7 +33,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 
 | Bediening | Functie |
 | --- | --- |
-| 27 toetsen | spelen (8 stemmen, elk een eigen circuit), sturen USB-MIDI uit (kanaal 1) |
+| 27 toetsen | spelen (4 stemmen, elk een eigen circuit en een eigen resonator/waveguide), sturen USB-MIDI uit (kanaal 1) |
 | KNOB 1 — CHAOS | α: CYCLE 0 · PERIOD 2 32 · SPIRAL 48 · DBL SCROLL 60 · OUTER 112 |
 | KNOB 2 — SHAPE | β 10..34: lage waarden trage, ronde spiralen; hoge waarden snelle, strakke |
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
@@ -202,12 +202,13 @@ Regels van het huis (uit Felucca, en `tools/build.py` controleert ze): registert
 audio-interrupt is fixed point (geen 64-bit delingen: die heeft de toolchain niet), en de audio-interrupt moet binnen
 ~2,9 ms klaar zijn.
 
-**CPU en de tweede core.** Met 8 stemmen op één core staat de belasting op ~80 %. De AC79 heeft een tweede core; CHUA
-verdeelt de stemmen (om en om) over beide. De tweede core start alleen bij het opstarten, dus **GLO** zet hem aan of
+**CPU en de tweede core.** CHUA speelt 4 stemmen, net zoveel als er FX-resonatoren/waveguides zijn (één per noot):
+met de waveguides erbij was 8 te zwaar. Een vijfde noot neemt de oudste stem over. De AC79 heeft een tweede core; CHUA
+verdeelt de stemmen en de resonatoren (om en om) over beide. De tweede core start alleen bij het opstarten, dus **GLO** zet hem aan of
 uit voor de volgende start (meteen opgeslagen; standaard aan). Onderaan het scherm staat dan `CPU …% x2`. Op sommige
 FM-1's leest de tweede core verkeerd (zo gevonden door X0X en Jangada): dan merkt de firmware dat, gaat verder op één
 core en zet de instelling uit (`2ND CORE STOPPED: OFF`). De uitvoer is bit voor bit gelijk, met één of twee cores
-(getest, ook als echte thread onder ThreadSanitizer). Is het nog te zwaar, zet dan `NVOICE` in `core.h` op 6.
+(getest, ook als echte thread onder ThreadSanitizer). `NVOICE` in `core.h` zet het aantal stemmen.
 
 **Tabellen opnieuw maken** (na een andere diode of ander bereik), ~1 minuut:
 

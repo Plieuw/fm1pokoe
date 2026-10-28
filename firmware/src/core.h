@@ -8,7 +8,7 @@
 #define FS 44100                 /* nominal sample rate (the I2S clock runs at ~44,117.6 Hz) */
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms; one audio interrupt renders one half */
 #define CTL 32                   /* frames per block: keys and MIDI are handled once a block (~0.7 ms) */
-#define NVOICE 8                 /* synth voices (synth.c) */
+#define NVOICE 4                 /* synth voices (synth.c): 4, as the FX resonators / waveguides (one a note): the CPU */
 
 /* --------------------------------------------------------- keyboard --- */
 #define NKEYS 27u                /* the note keys: bit n of fm1_in.notes, 0 = F3 .. 26 = G5 */
