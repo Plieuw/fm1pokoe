@@ -41,11 +41,12 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING); nog een keer: de MOD-pagina (de FM-oscillator), nog een keer: terug |
 | ENV | 1× de ENV-pagina, 2× de MOD ENV (de AD-envelope van de FM-oscillator), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings en de waveguides (THROAT, FLUTE, SYRINX), 2× de shimmer reverb, 3× terug naar HOME |
-| SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · BASIS op de ENV-pagina (stereo-spreiding) · POSITION (resonator) · TONE (shimmer) |
-| ALGORITHM | op de ENV-pagina ORBIT (de stemmen bewegen mee met hun plaatje) · op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
+| SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · POSITION (resonator) · TONE (shimmer) |
+| ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
 | ARP | de ARP-pagina; nog een keer: de arpeggiator aan/uit (het lampje brandt zolang hij aan staat) |
 | REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
+| SCL | de PAN-pagina (nog een keer: terug naar HOME): KNOB 1 BASIS (stereo-spreiding per noot), KNOB 2 ORBIT (de stemmen bewegen mee met hun plaatje); de stemmen staan getekend waar ze in het stereobeeld klinken |
 | SEQ | de KARMA-pagina (de frasegenerator); nog een keer: KARMA aan/uit (het lampje brandt zolang hij aan staat) |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
@@ -98,20 +99,21 @@ begrensd op het maximum. DEPTH 0 en HEIGHT hoog geeft alleen FM in de envelope (
 vaste FM zoals voorheen. Het scherm toont de vorm boven de DEPTH-lijn en rechts de FM-diepte van de nieuwste stem nu.
 Nog een keer ENV: terug naar HOME.
 
-**BASIS (SELECT op de ENV-pagina).** De stereo-spreiding van de stemmen. Elke noot die je speelt krijgt de volgende
+**BASIS (SCL, KNOB 1).** De stereo-spreiding van de stemmen. Elke noot die je speelt krijgt de volgende
 plek in een vaste cyclus: links, rechts, half links, half rechts, driekwart links, driekwart rechts, kwart links, kwart
 rechts, en weer van voren af aan. BASIS schaalt die plekken: 0 is mono (precies zoals voorheen), 127 de volle breedte.
 Ook noten die al klinken schuiven mee als je draait. De resonator van een noot klinkt op dezelfde plek als die noot; de
 shimmer krijgt het midden en maakt er zijn eigen stereo van. De pan-wet is een balans: het midden blijft op vol niveau,
 de andere kant gaat zachter (bij volle breedte uit).
 
-**ORBIT (ALGORITHM op de ENV-pagina).** De tweede pan-parameter naast BASIS: elke stem beweegt ook mee met zijn eigen
+**ORBIT (SCL, KNOB 2).** De tweede pan-parameter naast BASIS: elke stem beweegt ook mee met zijn eigen
 plaatje. Bij het Chua-circuit is dat de x van de attractor: in de double scroll springt de stem mee van de ene lus
 (links) naar de andere (rechts), in één lus (SPIRAL) blijft hij aan één kant hangen, bij een cyclus staat hij stil.
 Het rondcirkelen binnen een lus (op de toonhoogte van de noot) wordt eruit gefilterd (~7 Hz). Een noise-programma (zijn
 plaatje is ruis) zwerft elke ~0,2 s naar een nieuwe willekeurige plek. ORBIT bepaalt hoe ver; het komt bovenop de
 plek van BASIS (samen hooguit helemaal links of rechts), dus ORBIT werkt ook met BASIS op 0. De resonator van een noot
-beweegt mee met zijn stem. Op de ENV-pagina staat onderin "BASIS 90  ORBIT 40".
+beweegt mee met zijn stem. De PAN-pagina tekent het stereobeeld van links naar rechts: de plekken van BASIS (de
+volgende noot krijgt de hoge streep) en de stemmen die klinken, met hun noot, waar ze nu staan.
 
 **De arpeggiator (ARP).** ARP opent de ARP-pagina; nog een keer ARP zet hem aan of uit (het lampje brandt zolang
 hij aan staat). Aan: de noten die je vasthoudt (toetsen en MIDI in) klinken niet zelf, de arpeggiator speelt ze.
@@ -168,7 +170,7 @@ Een GE is, zoals bij KARMA, een paar kleine generatoren die samenwerken:
 | CLUSTER + STRUM | hoeveel noten per aanslag (een akkoordstoot), uitgespreid als een gitaar: omlaag, dan omhoog |
 | MELODIC REPEAT | elke noot echoot een paar keer, getransponeerd en zachter (cascades, echo's in toonhoogte), afwisselend links en rechts |
 | VELOCITY / GATE | een accentpatroon en een lengte per GE |
-| PAN | per noot: afwisselend, willekeurig, een zwaai over de frase, of naar toonhoogte (laag links); BASIS (ENV-pagina) zet hoe breed |
+| PAN | per noot: afwisselend, willekeurig, een zwaai over de frase, of naar toonhoogte (laag links); BASIS (SCL) zet hoe breed |
 | ENV | een vorm over de frase (op, neer, op-en-neer) op een parameter van de klank: RING, FX BRIGHTNESS, CHAOS, OUTPUT, SHIMMER MIX ...; als hij stopt krijgt de parameter zijn waarde terug |
 
 | Bediening (SEQ-pagina) | Functie |
@@ -213,7 +215,7 @@ als een rol; onderin de klok en de lengte ("20 x 1/16").
 - *MIDI uit.* Wat KARMA en de ARP maken gaat over USB-MIDI naar buiten op het TX-kanaal (als USB OUT aan staat op de
   GLO-pagina), zoals KARMA zijn gegenereerde noten uitstuurt; de toetsen zelf dan niet.
 
-**Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4; SELECT op de ENV-pagina is nu BASIS), de
+**Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4), BASIS en ORBIT alleen op de PAN-pagina (SCL), de
 oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).
 
 **De low pass gate.** Op de ENV-pagina is de gate een rond rood lampje (het LED van een vactrol): het brandt fel als de gate open staat en dimt mee met de envelope; ernaast de cutoff. De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt

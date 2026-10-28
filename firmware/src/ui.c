@@ -16,15 +16,16 @@
  *   MOD ENV  (ENV again) the FM oscillator's AD envelope, started by each note: KNOB 1 LENGTH, KNOB 2 SKEW (where the
  *            peak falls), KNOB 3 HEIGHT (how much FM it adds to DEPTH); drawn: its shape over DEPTH, the depth now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
- *            SELECT BASIS: the stereo spread, each note the next place of a cycle (left, right, half left, ...);
- *            ALGORITHM ORBIT: how far each voice's picture moves it (the circuit's scroll left / right, a drift)
+ *   SCL      the PAN page (again: back HOME): KNOB 1 BASIS: the stereo spread, each note the next place of a cycle
+ *            (left, right, half left, ...); KNOB 2 ORBIT: how far each voice's picture moves it (the circuit's
+ *            scroll left / right, a drift); the voices drawn where they are
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices;
  *            and the waveguides of waveguide.c: THROAT (KNOB 1 the ANIMAL, SELECT the VOWEL), FLUTE (JET, BREATH),
  *            SYRINX (CHIRP, TWO VOICE));
  *            ALGORITHM the model (MODAL, SYMP STRING, STRING), SELECT the POSITION; its resonances and output drawn
  *   FX (2nd) KNOB 1..4      SIZE, DECAY, SHIMMER, MIX of the shimmer reverb (shimmer.c); ALGORITHM the INTERVAL,
  *            SELECT the TONE; the tail's level over the last seconds drawn (the riser building)
- *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME); ENV: BASIS
+ *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME)
  * Each parameter lives in one place: RING on HOME (KNOB 4), the oscillator on HOME (ALGORITHM).
  *   PRESETS the presets
  *   ARP      (the ARP button; again: on / off, its LED lit while on) the arpeggiator (arp.c): KNOB 1 BPM (EXT under
@@ -862,6 +863,35 @@ static void draw_karma(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the PAN page's picture: the stereo field from left to right, BASIS's cycle of places (the next one ringed), the
+ * voices sounding where they are now (ORBIT moving them), each with its note */
+static void draw_pan(void)
+{
+    const int32_t x0 = 16, w = 208, yc = 58;
+    int32_t basis = (int32_t)(sys.basis & 127u), k;
+    char nm[8], v[8];
+    cv_begin(240, PLOT_H, T_BG);
+    cv_rect(x0, yc, w, 1, T_LINE);
+    cv_rect(x0 + w / 2, yc - 30, 1, 61, T_LINE);
+    cv_text(x0 - 8, yc + 34, &AF_S, "L", T_DIM);
+    cv_text_r(x0 + w + 8, yc + 34, &AF_S, "R", T_DIM, T_BG);
+    for (k = 0; k < 8; k++) {                    /* BASIS: the cycle's places (the next note's: tall) */
+        int32_t x = x0 + w / 2 + (int32_t)PAN_CYCLE[k] * basis / 127 * (w / 2) / 32767;
+        int nx = (uint32_t)k == (pan_next & 7u);
+        cv_rect(x, yc - (nx ? 12 : 6), nx ? 2 : 1, nx ? 25 : 13, nx ? T_MID : ux_mix(T_BG, T_THEME, 50));
+    }
+    for (k = 0; k < (int32_t)NVOICE; k++)        /* the voices sounding, where they are */
+        if (voice[k].stage != ST_OFF && voice[k].stage != ST_TAIL) {
+            int32_t x = x0 + w / 2 + vpan[k] * (w / 2) / 32767, y = yc - 26 + k * 17;
+            cv_rect(x - 4, y - 4 + 13, 9, 9, T_ACCENT);
+            str_cpy(nm, NOTE_NAME[voice[k].note % 12u], sizeof nm);
+            fmt_int(v, (int32_t)voice[k].note / 12 - 1);
+            ui_cat(nm, sizeof nm, v);
+            cv_text(x + 8 > 200 ? x - 40 : x + 8, y + 8, &AF_S, nm, T_MID);
+        }
+    cv_blit(0, PLOT_Y);
+}
+
 /* the MIDI page's picture: where notes come in and go out, and the clock */
 static void draw_midi(void)
 {
@@ -1013,7 +1043,20 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
-    if (sys.page == 9u) {
+    if (sys.page == 10u) {
+        if (sys.basis)
+            fmt_int(v, sys.basis);
+        else
+            str_cpy(v, "MONO", sizeof v);
+        ui_cell(T_C1, "1 BASIS", v);
+        if (sys.orbit)
+            fmt_int(v, sys.orbit);
+        else
+            str_cpy(v, "OFF", sizeof v);
+        ui_cell(T_C2, "2 ORBIT", v);
+        ui_cell(T_C3, "3", "");
+        ui_cell(T_C4, "4", "");
+    } else if (sys.page == 9u) {
         static const uint8_t CELL[4] = {T_C1, T_C2, T_C3, T_C4};
         const ge_t *G = k_ge();
         for (uint32_t i = 0; i < 4u; i++) {
@@ -1297,6 +1340,8 @@ static void ui_draw(void)
         draw_feg();
     else if (sys.page == 9u)
         draw_karma();
+    else if (sys.page == 10u)
+        draw_pan();
     else
         draw_plot();
     ui_force = 0;
@@ -1347,6 +1392,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_ARP]);
     if (sys.page == 7u)
         led_on(nl, panel.btn[B_GLO]);
+    if (sys.page == 10u)
+        led_on(nl, panel.btn[B_SCL]);
     if (sys.k_on || sys.page == 9u)
         led_on(nl, panel.btn[B_SEQ]);
     if (sys.page == 8u || (feg.rec && (fm1_ms & 256u)) || (sys.feg_on && sys.feg_has))   /* (blinking: recording) */
@@ -1438,6 +1485,10 @@ static void ui_input(void)
                 ui_force = 1;
             }
             break;
+        case B_SCL:                                     /* the PAN page (BASIS, ORBIT) and back */
+            sys.page = sys.page == 10u ? 0u : 10u;
+            ui_force = 1;
+            break;
         case B_GLO:                                     /* the MIDI page and back */
             sys.page = sys.page == 7u ? 0u : 7u;
             ui_force = 1;
@@ -1450,7 +1501,10 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 9u) {
+    if (sys.page == 10u) {
+        knob(&sys.basis, EN_K1, 0);
+        knob(&sys.orbit, EN_K2, 1);
+    } else if (sys.page == 9u) {
         knob(&sys.k_m[0], EN_K1, 0);
         knob(&sys.k_m[1], EN_K2, 1);
         knob(&sys.k_m[2], EN_K3, 2);
@@ -1556,15 +1610,6 @@ static void ui_input(void)
     } else if (s && sys.page == 6u) {           /* ARP: HOLD (right on, left off) */
         sys.arp_hold = (uint8_t)(s > 0);
         ui_say(sys.arp_hold ? "HOLD ON" : "HOLD OFF");
-    } else if (s && sys.page == 1u) {           /* ENV: BASIS, the voices' stereo spread */
-        sys.basis = (uint8_t)clamp((int32_t)sys.basis + s, 0, 127);
-        str_cpy(t, "BASIS ", sizeof t);
-        if (sys.basis)
-            fmt_int(v, sys.basis);
-        else
-            str_cpy(v, "MONO", sizeof v);
-        ui_cat(t, sizeof t, v);
-        ui_say(t);
     } else if (s && (sys.page == 2u || sys.page == 3u)) {   /* (MOD, MOD ENV: nothing; RING is on HOME) */
         volatile uint8_t *p = sys.page == 3u ? &sys.sh_tone : &sys.fx_pos;
         *p = (uint8_t)clamp(*p + s, 0, 127);
@@ -1595,15 +1640,6 @@ static void ui_input(void)
         sys.arp_type = (uint8_t)(((int32_t)sys.arp_type + (int32_t)ARP_NTYPE * 8 + s) % (int32_t)ARP_NTYPE);
         str_cpy(t, "ARP ", sizeof t);
         ui_cat(t, sizeof t, arp_type_name(sys.arp_type));
-        ui_say(t);
-    } else if (s && sys.page == 1u) {           /* ENV: ORBIT, the pictures moving the voices in the stereo field */
-        sys.orbit = (uint8_t)clamp((int32_t)sys.orbit + s, 0, 127);
-        str_cpy(t, "ORBIT ", sizeof t);
-        if (sys.orbit)
-            fmt_int(v, sys.orbit);
-        else
-            str_cpy(v, "OFF", sizeof v);
-        ui_cat(t, sizeof t, v);
         ui_say(t);
     } else if (s && !sys.page) {                 /* HOME: the oscillator, CHUA and the 30 noise programs */
         sys.osc = (uint8_t)(((int32_t)sys.osc + (int32_t)(NP_COUNT + 1u) * 8 + s) % (int32_t)(NP_COUNT + 1u));

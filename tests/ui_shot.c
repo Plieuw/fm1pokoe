@@ -163,13 +163,23 @@ int main(int argc, char **argv)
     synth_kill();
     frames(2);
     bad |= shot(dir, "e_env_dark");
-    enc_steps[panel.enc[EN_SELECT]] = 90;  /* BASIS turned (SELECT on the ENV page) */
+    sys.page = 0;
+    edges = btn_bit(B_SCL);              /* the PAN page (SCL): BASIS turned, ORBIT, three notes where they are */
     ui_input();
     frames(2);
-    bad |= shot(dir, "e_env_basis");
+    bad |= shot(dir, "e_pan_mono");
+    enc_steps[panel.enc[EN_K1]] = 90;
+    enc_steps[panel.enc[EN_K2]] = 30;
+    ui_input();
+    synth_note_on(48, 100); synth_note_on(55, 100); synth_note_on(64, 100);
+    frames(8);
+    bad |= shot(dir, "e_pan_basis");
     ui_event_ms = 0;
     frames(2);
-    bad |= shot(dir, "e_env_basis_status");
+    bad |= shot(dir, "e_pan_status");
+    edges = btn_bit(B_SCL);
+    ui_input();
+    sys.orbit = 0;
     sys.basis = 0;
     synth_kill();
     sys.page = 0;
