@@ -128,6 +128,7 @@ static void wg_throat_run(wg_throat_t *T, const int32_t *in, int32_t *y, uint32_
 }
 
 /* ---------------------------------------------------- the jet (FLUTE, SYRINX) --- */
+/* (the lines are clipped at +-5, not 4: -4.0 in Q20 is 0xFFC00000, which tools/build.py takes for a ROM address) */
 static inline int32_t wg_jet(int32_t x)          /* STK's JetTable: x (x^2 - 1), the output clipped to +-1 (Q20) */
 {
     int32_t c = px_clamp(x, -2 * PX_ONE, 2 * PX_ONE);
@@ -177,9 +178,9 @@ static void wg_flute_run(wg_flute_t *F, const int32_t *in, int32_t *y, uint32_t 
         F->dcy = o;
         t = px_m(o, loss, 15);
         pd = pr + noise + (in[i] >> 3) - (t >> 1);   /* the breath (the voices on it), less the jet's reflection */
-        F->jet[F->w & (WG_JETL - 1u)] = px_clamp(pd, -4 * PX_ONE, 4 * PX_ONE);
+        F->jet[F->w & (WG_JETL - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
         j = wg_jet(wg_read(F->jet, WG_JETL - 1u, F->w + 1u, jd));
-        F->bore[F->w & (WG_BORE - 1u)] = px_clamp(j + (t >> 1), -4 * PX_ONE, 4 * PX_ONE);
+        F->bore[F->w & (WG_BORE - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
         F->w++;
         o = b - F->ox + px_m(F->oy, 32604, 15); /* out: the bore, its DC blocked (the breath is DC in it) */
         F->ox = b;
@@ -230,9 +231,9 @@ static void wg_syrinx_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_
             S->dcy[s] = t;
             t = px_m(t, loss, 15);
             pd = pr + noise + (in[i] >> 4) - (t >> 1);
-            S->jet[s][S->w & (WG_SJ - 1u)] = px_clamp(pd, -4 * PX_ONE, 4 * PX_ONE);
+            S->jet[s][S->w & (WG_SJ - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
             j = wg_jet(wg_read(S->jet[s], WG_SJ - 1u, S->w + 1u, jd[s]));
-            S->bore[s][S->w & (WG_SB - 1u)] = px_clamp(j + (t >> 1), -4 * PX_ONE, 4 * PX_ONE);
+            S->bore[s][S->w & (WG_SB - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
             o += b;
         }
         S->w++;
