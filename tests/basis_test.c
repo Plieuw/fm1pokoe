@@ -395,7 +395,8 @@ int main(int argc, char **argv)
             len[r] = last;
         }
         printf("   (impulse at ~1.8 kHz rings for %u frames with RING 0, %u with RING 127)\n", len[0], len[1]);
-        check("RING 127 rings: an impulse lasts > 30x longer than with RING 0", len[1] > 30u * (len[0] + 1u) && len[1] > 400u);
+        check("RING 127 rings (Q 6): an impulse lasts 4..20x longer than with RING 0, under 15 ms",
+              len[1] > 4u * (len[0] + 1u) && len[1] < 20u * (len[0] + 1u) && len[1] < FS * 15u / 1000u);
     }
 
     /* the gate in every corner: every RING, plucks and holds, every regime, low to high notes: bounded, quiet after */
@@ -440,10 +441,7 @@ int main(int argc, char **argv)
     if (argc > 1 && (wav = fopen(argv[1], "wb")) != 0) {
         static const uint8_t ARP[] = {48, 55, 60, 63, 67, 72, 67, 63};
         static const struct { uint8_t chaos, shape, output, attack, decay, sustain, release, ring; } P[] = {   /* ui.c PRESETS */
-            {85, 76, 0, 6, 80, 110, 70, 90}, {85, 90, 64, 0, 62, 0, 66, 124}, {6, 64, 64, 10, 70, 120, 64, 60},
-            {38, 64, 32, 4, 60, 90, 66, 100}, {54, 56, 64, 2, 64, 80, 72, 110}, {30, 100, 32, 0, 50, 0, 52, 112},
-            {110, 64, 96, 2, 76, 100, 74, 104}, {124, 40, 64, 0, 56, 60, 60, 80}, {70, 110, 127, 92, 96, 110, 100, 116},
-            {96, 16, 0, 0, 54, 70, 50, 70},
+            {85, 76, 0, 6, 80, 110, 70, 50}, {85, 90, 64, 0, 62, 0, 66, 110}, {6, 64, 64, 10, 70, 120, 64, 30}, {38, 64, 32, 4, 60, 90, 66, 60}, {54, 56, 64, 2, 64, 80, 72, 70}, {30, 100, 32, 0, 50, 0, 52, 100}, {110, 64, 96, 2, 76, 100, 74, 60}, {124, 40, 64, 0, 56, 60, 60, 40}, {70, 110, 127, 92, 96, 110, 100, 70}, {96, 16, 0, 0, 54, 70, 50, 40},
         };
         wav_hdr(wav, 0);
         for (w = 0; w < sizeof P / sizeof P[0]; w++) {

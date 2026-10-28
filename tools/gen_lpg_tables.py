@@ -6,14 +6,14 @@
   ENV_FRAMES[v]   v = 0..127: the knob's time in frames, 0.5 ms .. 10 s, exponential
   ENV_COEF[v]     the one-pole coefficient that falls to 1/e in that time (Q24): decay and release
   LPG_G[i]        i = 0..255 the gate's control: tan(pi fc / FS), fc 25 Hz .. 15 kHz exponential (Q24)
-  LPG_K[v]        v = 0..127 RING: the filter's damping k = 1/Q, 2 (no ring) .. 0.025 (Q 40) (Q24)
+  LPG_K[v]        v = 0..127 RING: the filter's damping k = 1/Q, 2 (no ring) .. 1/6 (Q 6) (Q24)
   LPG_COMP[v]     the level the resonance adds, taken back out (Q12): measured on the circuit's output"""
 import math
 
 FS = 44100
 T0, T1 = 0.0005, 10.0
 F0, F1 = 25.0, 15000.0
-K0, K1 = 2.0, 0.025
+K0, K1 = 2.0, 1 / 6.0                             # Q 0.5 (none) .. 6: a vactrol gate's mild ring
 
 
 def frames(v):
@@ -21,7 +21,7 @@ def frames(v):
 
 
 def k_of(v):
-    return K0 * (K1 / K0) ** ((v / 127) ** 0.7)    # most of the knob's travel where the ring is audible
+    return K0 * (K1 / K0) ** (v / 127)             # Q exponential along the knob
 
 
 def comp(v):

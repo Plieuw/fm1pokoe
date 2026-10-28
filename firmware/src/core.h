@@ -34,7 +34,7 @@ static volatile struct {
     int8_t octave;               /* OCT- / OCT+: -3..+3 */
     uint8_t chaos, shape, output;   /* synth.c: the circuit's knobs, 0..127 */
     uint8_t attack, decay, sustain, release;   /* synth.c: the ADSR, 0..127 */
-    uint8_t ring;                /* synth.c: the low pass gate's resonance, 0..127 */
+    uint8_t ring;                /* synth.c: the low pass gate's resonance, 0..127 (Q 0.5 .. 6) */
     uint16_t master_q12;         /* MASTER pot: 0..4096 */
     uint8_t last_note, last_vel; /* the last note started (keys or MIDI); 0xFF = none yet */
     uint8_t voices;              /* voices sounding */
@@ -45,4 +45,4 @@ static volatile struct {
     uint8_t cpu2;                /* 2ND CORE: start the second core at power-on (main.c; GLO toggles it) */
     uint8_t page;                /* ui.c: 0 the circuit's knobs, 1 the ENV page */
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
-         .ring = 100, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1};
+         .ring = 50, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1};

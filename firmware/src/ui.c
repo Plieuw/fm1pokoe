@@ -28,19 +28,19 @@ enum { V_3D, V_XY, V_XZ, V_YZ, V_TIME, V_COUNT };
 static const char *const VIEW_NAME[V_COUNT] = {"3D", "X-Y", "X-Z", "Y-Z", "TIME"};
 
 /* ------------------------------------------------------------- presets --- */
-/* ADSR times: 0 = 0.5 ms .. 127 = 10 s (exponential: 40 ~11 ms, 64 ~74 ms, 80 ~250 ms, 100 ~1.2 s); RING: 0 none .. 127 Q 40 */
+/* ADSR times: 0 = 0.5 ms .. 127 = 10 s (exponential: 40 ~11 ms, 64 ~74 ms, 80 ~250 ms, 100 ~1.2 s); RING: 0 none .. 127 Q 6 */
 typedef struct { const char *name; uint8_t chaos, shape, output, attack, decay, sustain, release, ring; } preset_t;
 static const preset_t PRESETS[] = {
-    {"DOUBLE SCROLL", 85, 76, 0, 6, 80, 110, 70, 90},     /* the classic double scroll, x (the scroll jumps) */
-    {"RING PLUCK", 85, 90, 64, 0, 62, 0, 66, 124},        /* the gate pinged: the filter rings on the spiral */
-    {"PURE CYCLE", 6, 64, 64, 10, 70, 120, 64, 60},       /* just past the Hopf point: a clean periodic orbit, y */
-    {"PERIOD TWO", 38, 64, 32, 4, 60, 90, 66, 100},       /* the first period doubling: a sub-octave appears */
-    {"SPIRAL", 54, 56, 64, 2, 64, 80, 72, 110},           /* Roessler-like chaos on one scroll: pitched, rough */
-    {"BONGO GATE", 30, 100, 32, 0, 50, 0, 52, 112},       /* a short gate on a clean cycle: a wooden ring */
-    {"CRISIS EDGE", 110, 64, 96, 2, 76, 100, 74, 104},    /* the double scroll about to break out */
-    {"OUTER LOOP", 124, 40, 64, 0, 56, 60, 60, 80},       /* the saturated circuit's big cycle: loud, buzzy */
-    {"SLOW BLOOM", 70, 110, 127, 92, 96, 110, 100, 116},  /* z, fast spirals, slow envelope, ringing gate: a pad */
-    {"GRIT BASS", 96, 16, 0, 0, 54, 70, 50, 70},          /* x at low beta: slow, deep switching */
+    {"DOUBLE SCROLL", 85, 76, 0, 6, 80, 110, 70, 50},     /* the classic double scroll, x (the scroll jumps) */
+    {"RING PLUCK", 85, 90, 64, 0, 62, 0, 66, 110},        /* the gate pinged: a short ring on the spiral */
+    {"PURE CYCLE", 6, 64, 64, 10, 70, 120, 64, 30},       /* just past the Hopf point: a clean periodic orbit, y */
+    {"PERIOD TWO", 38, 64, 32, 4, 60, 90, 66, 60},       /* the first period doubling: a sub-octave appears */
+    {"SPIRAL", 54, 56, 64, 2, 64, 80, 72, 70},           /* Roessler-like chaos on one scroll: pitched, rough */
+    {"BONGO GATE", 30, 100, 32, 0, 50, 0, 52, 100},       /* a short gate on a clean cycle: a wooden ring */
+    {"CRISIS EDGE", 110, 64, 96, 2, 76, 100, 74, 60},    /* the double scroll about to break out */
+    {"OUTER LOOP", 124, 40, 64, 0, 56, 60, 60, 40},       /* the saturated circuit's big cycle: loud, buzzy */
+    {"SLOW BLOOM", 70, 110, 127, 92, 96, 110, 100, 70},  /* z, fast spirals, slow envelope, ringing gate: a pad */
+    {"GRIT BASS", 96, 16, 0, 0, 54, 70, 50, 40},          /* x at low beta: slow, deep switching */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
