@@ -393,6 +393,10 @@ static void ui_head(const char *name, const char *note)
     lcd_sync();
 }
 
+/* the FM oscillator's colour on its pages (MOD, MOD ENV): the DX7's green, for overview */
+#define T_FM ((uint16_t)(7u << 11 | 49u << 5 | 17u))    /* (60, 196, 140) */
+static uint16_t ui_val_c;                        /* the cells' values in a page's own colour (0: T_TEXT) */
+
 /* a knob's cell: its label small, its value under it */
 static void ui_cell(uint32_t i, const char *label, const char *value)
 {
@@ -406,7 +410,7 @@ static void ui_cell(uint32_t i, const char *label, const char *value)
         return;
     cv_begin(112, AF_S.h + AF_M.h, T_BG);
     cv_text(0, 0, &AF_S, label, T_MID);
-    cv_text(0, AF_S.h, &AF_M, value, hot[0] == '1' ? T_ACCENT : T_TEXT);
+    cv_text(0, AF_S.h, &AF_M, value, hot[0] == '1' ? T_ACCENT : ui_val_c ? ui_val_c : T_TEXT);
     cv_blit(X[c], Y[c]);
     lcd_sync();
 }
@@ -544,8 +548,8 @@ static void env_time(char *b, uint32_t n, uint32_t v)
     }
 }
 
-/* the ENV page's picture: the gate's lamp. A round red light, as the LED inside a vactrol, lit by the newest voice's
- * gate control: full when the gate is open, dimming as the envelope falls (with the vactrol's own lag), a dark red
+/* the ENV page's picture: the gate's lamp. A round light in the theme's orange (no highlight), as the LED inside a vactrol, lit by the newest voice's
+ * gate control: full when the gate is open, dimming as the envelope falls (with the vactrol's own lag), a dark
  * glass when nothing sounds; its glow spreads with the level. Beside it the cutoff the gate sets now. */
 #define LAMP_X 120
 #define LAMP_Y 58
@@ -561,8 +565,9 @@ static void draw_env(void)
     int32_t lv = sys.env_stage != 0u ? sys.env_view : 0;       /* 0..255 */
     int32_t br = (T_BG >> 11 & 31) * 255 / 31, bg_ = (T_BG >> 5 & 63) * 255 / 63, bb = (T_BG & 31) * 255 / 31;
     int32_t x, y, rr = LAMP_R * LAMP_R, gg = LAMP_G * LAMP_G;
-    /* the lit glass's colour at this level: dark red (60, 6, 4) .. bright red (255, 40, 24), the centre hot */
-    int32_t cr = 60 + 195 * lv / 255, cg = 6 + 34 * lv / 255, cb = 4 + 20 * lv / 255;
+    /* the lit glass's colour at this level: the theme's orange, from a quarter (dark) to full */
+    int32_t tr = (T_THEME >> 11 & 31) * 255 / 31, tg = (T_THEME >> 5 & 63) * 255 / 63, tb = (T_THEME & 31) * 255 / 31;
+    int32_t cr = tr * (64 + 192 * lv / 255) / 256, cg = tg * (64 + 192 * lv / 255) / 256, cb = tb * (64 + 192 * lv / 255) / 256;
     cv_begin(240, PLOT_H, T_BG);
     for (y = LAMP_Y - LAMP_G; y <= LAMP_Y + LAMP_G; y++)
         for (x = LAMP_X - LAMP_G; x <= LAMP_X + LAMP_G; x++) {
@@ -570,27 +575,21 @@ static void draw_env(void)
             if (d2 > gg)
                 continue;
             if (d2 <= rr) {
-                /* the glass: brighter in the middle (1 - 0.4 (d / R)^2), a soft rim, and a highlight up left */
-                int32_t sh = 256 - 102 * d2 / rr, hx = dx + 11, hy = dy + 12, h2 = hx * hx + hy * hy, spec;
+                /* the glass: brighter in the middle (1 - 0.4 (d / R)^2), and a soft rim */
+                int32_t sh = 256 - 102 * d2 / rr;
                 r = cr * sh / 256; g = cg * sh / 256; b = cb * sh / 256;
-                if (lv > 160) {                                  /* very bright: the core whitens a little */
-                    int32_t w = (lv - 160) * (256 - 256 * d2 / rr) / 95;
-                    r += (255 - r) * w / 512; g += (220 - g) * w / 512; b += (200 - b) * w / 512;
-                }
-                spec = h2 < 64 ? (64 - h2) * (40 + lv / 2) / 64 : 0;   /* the glass's reflection, lit or not */
-                r += spec; g += spec * 3 / 4; b += spec * 3 / 4;
                 if (d2 > rr - 2 * LAMP_R) {                      /* the edge: antialiased against the glow */
                     int32_t k = (rr - d2) * 256 / (2 * LAMP_R), a = lv * 7 / 10;   /* (the glow at the rim) */
-                    int32_t or_ = br + (255 - br) * a / 256, og = bg_ + (30 - bg_) * a / 256, ob = bb + (18 - bb) * a / 256;
+                    int32_t or_ = br + (tr - br) * a / 256, og = bg_ + (tg - bg_) * a / 256, ob = bb + (tb - bb) * a / 256;
                     r = or_ + (r - or_) * k / 256; g = og + (g - og) * k / 256; b = ob + (b - ob) * k / 256;
                 }
             } else {
                 /* the glow: (1 - t)^2 of the level, t from the rim (0) to its reach (1) */
                 int32_t t = (d2 - rr) * 256 / (gg - rr), f = (256 - t) * (256 - t) / 256, a = f * lv / 255;
                 a = a * 7 / 10;                                  /* (a glow, not a second lamp) */
-                r = br + (255 - br) * a / 256;
-                g = bg_ + (30 - bg_) * a / 256;
-                b = bb + (18 - bb) * a / 256;
+                r = br + (tr - br) * a / 256;
+                g = bg_ + (tg - bg_) * a / 256;
+                b = bb + (tb - bb) * a / 256;
             }
             cv_pset(x, y, rgb565(r, g, b));
         }
@@ -762,7 +761,7 @@ static void draw_mod(void)
     for (i = 0; i <= w; i++) {                   /* the wave */
         int32_t y = mid - np_wave((uint32_t)i * (0xFFFFFFFFu / (uint32_t)w), wv) * h / 32768;
         if (i)
-            cv_line(8 + px, py, 8 + i, y, T_THEME);
+            cv_line(8 + px, py, 8 + i, y, T_FM);
         px = i;
         py = y;
     }
@@ -774,7 +773,7 @@ static void draw_mod(void)
         for (i = 0; i <= w; i++) {
             int32_t y = mid - np_sin(ph) * h / 32768;
             if (i)
-                cv_line(128 + px, py, 128 + i, y, on ? T_ACCENT : T_DIM);
+                cv_line(128 + px, py, 128 + i, y, on ? T_FM : T_DIM);
             px = i;
             py = y;
             for (k = 0; k < 4; k++) {
@@ -968,17 +967,17 @@ static void draw_menv(void)
     int32_t yf = bot - dd * hh / 24193, yp = bot - (dd + dh > 24193 ? 24193 : dd + dh) * hh / 24193;
     int32_t lv = (int32_t)sys.menv_view * hh / 32767;
     uint32_t on = sys.osc && (sys.mod_depth || sys.menv_height);
-    uint16_t c = on ? T_THEME : T_DIM;
+    uint16_t c = on ? T_FM : T_DIM;
     cv_begin(240, PLOT_H, T_BG);
     cv_rect(x0, bot, 196, 1, T_LINE);
     if (dd)
-        cv_rect(x0, yf, 196, 1, ux_mix(T_BG, T_THEME, 40));   /* DEPTH: the floor */
+        cv_rect(x0, yf, 196, 1, ux_mix(T_BG, T_FM, 40));   /* DEPTH: the floor */
     cv_line_t(x0, yf, xp, yp, c, 2);
     cv_line_t(xp, yp, xl, yf, c, 2);
     cv_line_t(xl, yf, x0 + 196, yf, c, 2);
     cv_frame(212, top, 20, hh + 1, T_LINE);      /* the depth now */
     if (lv > 0)
-        cv_rect(214, bot - lv + 1, 16, lv - 1 > 0 ? lv - 1 : 1, on ? T_ACCENT : T_DIM);
+        cv_rect(214, bot - lv + 1, 16, lv - 1 > 0 ? lv - 1 : 1, on ? T_FM : T_DIM);
     cv_text(x0, bot + 3, &AF_S, "NOTE", T_DIM);
     cv_text_r(xl < 60 ? 60 : xl, bot + 3, &AF_S, "END", T_DIM, T_BG);
     cv_text(206, bot + 3, &AF_S, "FM", T_DIM);
@@ -1047,6 +1046,7 @@ static void ui_draw(void)
         str_cpy(b, usb.config && !usb.suspended ? "USB" : "", sizeof b);
     ui_head(a, b);
 
+    ui_val_c = sys.page == 4u || sys.page == 5u ? T_FM : 0;   /* (the FM pages: their values green) */
     if (sys.page == 10u) {
         if (sys.basis)
             fmt_int(v, sys.basis);
