@@ -471,6 +471,45 @@ int main(int argc, char **argv)
         check("every oscillator and FX model over the whole MIDI range, fast retriggers: in bounds", okk);
     }
 
+    /* every sound parameter at random, every block, over the whole MIDI range (presets and ALGORITHM turned fast):
+     * in bounds (the sanitizers), bounded */
+    {
+        uint32_t okk = 1, b, j, r = 0x13579BDFu;
+        static volatile uint8_t *const P[] = {&sys.chaos, &sys.shape, &sys.output, &sys.ring, &sys.np_x, &sys.np_y,
+            &sys.np_level, &sys.mod_wave, &sys.mod_depth, &sys.mod_fine, &sys.menv_len, &sys.menv_skew,
+            &sys.menv_height, &sys.fx_struct, &sys.fx_bright, &sys.fx_damp, &sys.fx_pos, &sys.fx_mix, &sys.sh_size,
+            &sys.sh_decay, &sys.sh_shimmer, &sys.sh_mix, &sys.sh_tone, &sys.basis, &sys.orbit, &sys.attack,
+            &sys.decay, &sys.sustain, &sys.release};
+        synth_kill();
+        for (b = 0; b < 20000u; b++) {
+            uint32_t q;
+            for (q = 0; q < 3u; q++) {
+                r = r * 1664525u + 1013904223u;
+                *P[(r >> 8) % (sizeof P / sizeof P[0])] = (uint8_t)((r >> 20) & 127u);
+            }
+            r = r * 1664525u + 1013904223u;
+            if ((r >> 28) == 0u) sys.osc = (uint8_t)((r >> 8) % (NP_COUNT + 1u));
+            if ((r >> 28) == 1u) sys.fx_model = (uint8_t)((r >> 8) % RZ_COUNT);
+            if ((r >> 28) == 2u) sys.mod_ratio = (uint8_t)((r >> 8) % NP_NRATIO);
+            if ((r >> 28) == 3u) sys.sh_interval = (uint8_t)((r >> 8) % SI_COUNT);
+            if ((r >> 28) == 4u) synth_note_on((r >> 8) & 127u, 1u + ((r >> 16) & 126u));
+            if ((r >> 28) == 5u) synth_note_off((r >> 8) & 127u);
+            if ((r >> 28) == 6u) { sys.osc = (uint8_t)((r >> 8) % (NP_COUNT + 1u)); sys.fx_model = (uint8_t)((r >> 16) % RZ_COUNT); }
+            block();
+            for (j = 0; j < 2u * CTL; j++)
+                if (buf[j] > 8388607 || buf[j] < -8388608)
+                    okk = 0;
+        }
+        synth_kill();
+        sys.chaos = 85; sys.shape = 76; sys.output = 0; sys.ring = 50; sys.attack = 6; sys.decay = 80; sys.sustain = 110;
+        sys.release = 70; sys.fx_model = 0; sys.fx_struct = 70; sys.fx_bright = 90; sys.fx_damp = 100; sys.fx_pos = 24;
+        sys.sh_size = 100; sys.sh_decay = 90; sys.sh_shimmer = 70; sys.sh_interval = 0; sys.sh_tone = 80;
+        sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64; sys.menv_len = 80; sys.menv_skew = 10;
+        sys.fx_mix = 0; sys.sh_mix = 0; sys.basis = 0; sys.orbit = 0; sys.mod_depth = 0; sys.menv_height = 0;
+        sys.np_x = sys.np_y = sys.np_level = 64; sys.osc = 0;
+        check("every sound parameter at random every block, presets, 0..127 notes: in bounds", okk);
+    }
+
     /* the FM oscillator (MOD): at DEPTH 0 its other knobs change nothing, bit for bit; at full DEPTH, every wave and
      * the lowest and highest ratio, every program changes, sounds and stays bounded without DC */
     {
