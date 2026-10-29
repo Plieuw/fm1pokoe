@@ -400,6 +400,13 @@ static void ui_head(const char *name, const char *note)
 /* the FM oscillator's colour on its pages (MOD, MOD ENV): the DX7's green, for overview */
 #define T_FM ((uint16_t)(7u << 11 | 49u << 5 | 17u))    /* (60, 196, 140) */
 static uint16_t ui_val_c;                        /* the cells' values in a page's own colour (0: T_TEXT) */
+static int np_is_fm(const char *s)              /* a noise program's knob that is FM: its name has FM or MOD in it */
+{
+    for (; *s; s++)
+        if ((s[0] == 'F' && s[1] == 'M') || (s[0] == 'M' && s[1] == 'O' && s[2] == 'D'))
+            return 1;
+    return 0;
+}
 #define FEG_FM(t) ((t) % FEG_NT >= 7u && (t) % FEG_NT <= 10u)   /* FREE EG's FM targets: MOD WAVE .. MOD ENV HEIGHT */
 
 /* a knob's cell: its label small, its value under it */
@@ -1180,11 +1187,14 @@ static void ui_draw(void)
         str_cpy(a, "1 ", sizeof a);
         ui_cat(a, sizeof a, NP_X[alg]);
         fmt_int(v, sys.np_x);
+        ui_val_c = np_is_fm(NP_X[alg]) ? T_FM : 0;      /* (an FM knob of the program: green) */
         ui_cell(T_C1, a, v);
         str_cpy(a, "2 ", sizeof a);
         ui_cat(a, sizeof a, NP_Y[alg]);
         fmt_int(v, sys.np_y);
+        ui_val_c = np_is_fm(NP_Y[alg]) ? T_FM : 0;
         ui_cell(T_C2, a, v);
+        ui_val_c = 0;
         fmt_int(v, sys.np_level);
         ui_cell(T_C3, "3 LEVEL", v);
         fmt_int(v, sys.ring);
