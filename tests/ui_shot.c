@@ -323,8 +323,12 @@ int main(int argc, char **argv)
     ui_input();
     frames(2);
     bad |= shot(dir, "n_karma_off");
-    edges = btn_bit(B_SEQ);
+    edges = btn_bit(B_PLAY);             /* (PLAY starts it) */
     ui_input();
+    if (!sys.k_on) {
+        printf("ui shots: PLAY on the KARMA page did not start KARMA\n");
+        bad = 1;
+    }
     sys.k_ge = 5; sys.k_latch = 1; sys.k_m[0] = 90; kar.view_step = 6;
     for (i = 0; i < 32u; i++) {
         static const uint8_t N[8] = {48, 55, 60, 64, 67, 60, 72, 64};

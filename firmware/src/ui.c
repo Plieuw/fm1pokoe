@@ -29,11 +29,13 @@
  *   SELECT   HOME: the view (3D turning, X-Y, X-Z, Y-Z, TIME)
  * Each parameter lives in one place: RING on HOME (KNOB 4), the oscillator on HOME (ALGORITHM).
  *   PRESETS the presets
- *   ARP      (the ARP button; again: on / off, its LED lit while on) the arpeggiator (arp.c): KNOB 1 BPM (EXT under
+ *   PLAY     starts / stops the ARP or KARMA (on their pages that one; elsewhere the last of them opened; lit while
+ *            one runs)
+ *   ARP      (the ARP button; again: back HOME; its LED lit while on) the arpeggiator (arp.c): KNOB 1 BPM (EXT under
  *            MIDI clock), KNOB 2 SUBDIVIDE, KNOB 3 GATE, KNOB 4 SWING; ALGORITHM the pattern, SELECT HOLD
  *   REC      the FREE EG page (feg.c): KNOB 1 the knob recorded, KNOB 2 LENGTH (NOTE, 1..8 STEPS, 1..4 BARS),
  *            KNOB 3 DEPTH, KNOB 4 the TARGET; SELECT PLAY; REC again there: record (NOTE: REC once more to stop)
- *   SEQ      the KARMA page (karma.c; again: on / off, its LED lit while on): ALGORITHM the GE (the phrase
+ *   SEQ      the KARMA page (karma.c; again: back HOME; PLAY starts it, its LED lit while on): ALGORITHM the GE (the phrase
  *            generator), KNOB 1..4 its four realtime controls (named per GE: DENSITY, RANGE, REPEAT ...), SELECT LATCH,
  *            PRESETS the tempo (the ARP page's BPM: one for all)
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
@@ -977,7 +979,7 @@ static void draw_arp(void)
                     sys.arp_on ? ux_mix(T_BG, T_THEME, 40 + (int32_t)i * 2) : T_DIM);
         }
     }
-    cv_text(8, bot + 1, &AF_S, sys.arp_on ? (arp_ext() ? "MIDI CLOCK" : "INTERNAL") : "OFF: PRESS ARP", T_DIM);
+    cv_text(8, bot + 1, &AF_S, sys.arp_on ? (arp_ext() ? "MIDI CLOCK" : "INTERNAL") : "OFF: PRESS PLAY", T_DIM);
     cv_blit(0, PLOT_Y);
 }
 
@@ -1507,6 +1509,10 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_SCL]);
     if (sys.k_on || sys.page == 9u)
         led_on(nl, panel.btn[B_SEQ]);
+    if (sys.arp_on || sys.k_on) {                       /* PLAY: lit (and its green) while the ARP or KARMA runs */
+        led_on(nl, panel.btn[B_PLAY]);
+        nl[LED_PLAY_GREEN_COL] |= (uint8_t)(1u << LED_PLAY_GREEN_ROW);
+    }
     if (sys.page == 8u || (feg.rec && (fm1_ms & 256u)) || (sys.feg_on && sys.feg_has))   /* (blinking: recording) */
         led_on(nl, panel.btn[B_REC]);
     if ((sys.page >= 2u && sys.page <= 3u) || sys.fx_mix || sys.sh_mix)   /* (FX lit: its pages, or FX on) */
@@ -1560,6 +1566,7 @@ static void knob(volatile uint8_t *p, uint32_t role, uint32_t cell)
     }
 }
 
+static uint8_t play_last;                        /* PLAY outside the ARP / KARMA pages: 0 the ARP, 1 KARMA (the last opened) */
 static void ui_input(void)
 {
     uint32_t pressed = fm1_input_edges(0), b;
@@ -1599,22 +1606,27 @@ static void ui_input(void)
                 ui_force = 1;
             }
             break;
-        case B_ARP:                                     /* the ARP page; there: the arpeggiator on / off */
-            if (sys.page == 6u) {
+        case B_ARP:                                     /* the ARP page (again: back HOME); PLAY starts it */
+            sys.page = sys.page == 6u ? 0u : 6u;
+            play_last = 0;
+            ui_force = 1;
+            break;
+        case B_SEQ:                                     /* the KARMA page (again: back HOME); PLAY starts it */
+            sys.page = sys.page == 9u ? 0u : 9u;
+            play_last = 1;
+            ui_force = 1;
+            break;
+        case B_PLAY:                                    /* start / stop: the ARP or KARMA (the page's, else the last
+                                                         * one opened); what runs stops (the other one off) */
+            if (sys.page == 6u || (sys.page != 9u && !play_last && !sys.k_on)) {
                 sys.arp_on = (uint8_t)!sys.arp_on;
                 ui_say(sys.arp_on ? (sys.k_on ? "ARP ON, KARMA OFF" : "ARP ON") : "ARP OFF");
-            } else {
-                sys.page = 6;
-                ui_force = 1;
-            }
-            break;
-        case B_SEQ:                                     /* the KARMA page; there: KARMA on / off (the ARP off) */
-            if (sys.page == 9u) {
+            } else if (sys.page == 9u || (play_last && !sys.arp_on)) {
                 sys.k_on = (uint8_t)!sys.k_on;
                 ui_say(sys.k_on ? (sys.arp_on ? "KARMA ON, ARP OFF" : "KARMA ON") : "KARMA OFF");
-            } else {
-                sys.page = 9;
-                ui_force = 1;
+            } else {                                    /* (elsewhere, the other one running: it stops) */
+                sys.arp_on = sys.k_on = 0;
+                ui_say("STOP");
             }
             break;
         case B_SCL:                                     /* the PAN page (BASIS, ORBIT) and back */

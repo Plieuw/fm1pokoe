@@ -44,10 +44,11 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · POSITION (resonator) · TONE (shimmer) |
 | ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
-| ARP | de ARP-pagina; nog een keer: de arpeggiator aan/uit (het lampje brandt zolang hij aan staat) |
+| ARP | de ARP-pagina; nog een keer: terug naar HOME (het lampje brandt zolang de arpeggiator speelt) |
 | REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
 | SCL | de PAN-pagina (nog een keer: terug naar HOME): KNOB 1 BASIS (stereo-spreiding per noot), KNOB 2 ORBIT (de stemmen bewegen mee met hun plaatje); de stemmen staan getekend waar ze in het stereobeeld klinken |
-| SEQ | de KARMA-pagina (de frasegenerator); nog een keer: KARMA aan/uit (het lampje brandt zolang hij aan staat) |
+| SEQ | de KARMA-pagina (de frasegenerator); nog een keer: terug naar HOME (het lampje brandt zolang KARMA speelt) |
+| PLAY | start en stopt de ARP of KARMA: op de ARP-pagina de ARP, op de SEQ-pagina KARMA, op andere pagina's de laatste van de twee die je opende. Brandt (ook groen) zolang er een speelt |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
@@ -117,7 +118,7 @@ plek van BASIS (samen hooguit helemaal links of rechts), dus ORBIT werkt ook met
 beweegt mee met zijn stem. De PAN-pagina tekent het stereobeeld van links naar rechts: de plekken van BASIS (de
 volgende noot krijgt de hoge streep) en de stemmen die klinken, met hun noot, waar ze nu staan.
 
-**De arpeggiator (ARP).** ARP opent de ARP-pagina; nog een keer ARP zet hem aan of uit (het lampje brandt zolang
+**De arpeggiator (ARP).** ARP opent de ARP-pagina; PLAY zet hem aan of uit (het lampje brandt zolang
 hij aan staat). Aan: de noten die je vasthoudt (toetsen en MIDI in) klinken niet zelf, de arpeggiator speelt ze.
 Zolang er MIDI clock binnenkomt (USB of TRS, 24 per kwartnoot) loopt hij daarop mee (START begint het patroon
 opnieuw); komt er 0,5 s geen clock, dan loopt hij op zijn eigen BPM. Naar de arpeggiators van de Yamaha AN1x en DJX.
@@ -177,7 +178,7 @@ Een GE is, zoals bij KARMA, een paar kleine generatoren die samenwerken:
 
 | Bediening (SEQ-pagina) | Functie |
 | --- | --- |
-| SEQ | nog een keer: KARMA aan/uit |
+| PLAY | KARMA aan/uit |
 | ALGORITHM | de GE (24, zie hieronder) |
 | KNOB 1..4 | de vier *Realtime Controls* van die GE; de cellen tonen wat ze doen. 64 is de GE zoals hij geschreven is |
 | SELECT | LATCH: rechtsom aan (de frase loopt door als je loslaat, een nieuw akkoord vervangt het oude), linksom uit |
