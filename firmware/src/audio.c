@@ -55,7 +55,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         if (fm1_audio_free_half() == half) {            /* (still ours: 24-bit, into the DMA's half) */
             for (b = 0; b < HALF_WORDS; b++)
                 o[b] = arender[b] * (1 << OUT_SHIFT);
-            __asm__ volatile("csync" ::: "memory");
+            fm1_audio_fence();
         }
         fm1_audio_ack_half();
         us = (fm1_ticks() - t0 - t5_nested_ticks) / FM1_TICKS_PER_US;
