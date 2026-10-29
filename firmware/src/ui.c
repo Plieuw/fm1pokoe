@@ -936,6 +936,19 @@ static void draw_midi(void)
     cv_text(48, y, &AF_S, a, T_MID);
     y += 24;
     cv_text(8, y, &AF_S, arp_ext() ? "CLOCK  MIDI IN" : "CLOCK  INTERNAL", T_DIM);
+#if FELUCCA_CPU2
+    {   /* the second core: how much of its stack it ever used, its longest job (a diagnostic) */
+        str_cpy(a, "2ND CORE  STACK ", sizeof a);
+        fmt_int(v, (int32_t)fm1_cpu1_stack_used());
+        ui_cat(a, sizeof a, v);
+        ui_cat(a, sizeof a, " B  WAIT ");
+        fmt_int(v, (int32_t)(fm1_c1_wait_max / 24u));
+        ui_cat(a, sizeof a, v);
+        ui_cat(a, sizeof a, " us");
+        if (sys.cpu2)
+            cv_text(8, y + 17, &AF_S, a, T_DIM);
+    }
+#endif
     cv_blit(0, PLOT_Y);
 }
 

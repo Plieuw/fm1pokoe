@@ -23,7 +23,7 @@ fm1_c1_entry:
 	.balign 8
 	.globl _c1_ustack
 _c1_ustack:			/* after rti the core runs on this one: the render's (filled with a mark at start) */
-	.space 4096		/* FM1_C1_STACK_WORDS (fm1_cpu1.h) */
+	.space 8192		/* FM1_C1_STACK_WORDS (fm1_cpu1.h) */
 _c1_ustack_top:
 _c1_sstack:			/* exceptions only (no interrupts on this core) */
 	.space 256

@@ -37,7 +37,8 @@
 
 extern void fm1_c1_entry(void);
 extern uint32_t _c1_ustack[], _c1_sstack_top[];
-#define FM1_C1_STACK_WORDS (4096u / 4u)          /* fm1_cpu1.S; Jangada measured ~1.6 KB at a part's deepest (PHYS SYMP) */
+#define FM1_C1_STACK_WORDS (8192u / 4u)          /* fm1_cpu1.S; Jangada measured ~1.6 KB at a part's deepest (PHYS SYMP);
+                                                  * 8 KB since the waveguides and KARMA (the MIDI page shows what it used) */
 #define FM1_C1_MARK 0x43314D4Bu                  /* "C1MK": how deep core 1's stack has gone */
 typedef struct {
     volatile uint32_t job, arg;                 /* core 0: job + 1 hands fn(arg) over */
