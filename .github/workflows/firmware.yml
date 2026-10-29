@@ -128,6 +128,12 @@ jobs:
         if: github.event.inputs.crash_addrs != ''
         run: python3 tools/insn_scan.py --gh
 
+      - name: Around the second core's stacks
+        if: github.event.inputs.crash_addrs != ''
+        run: |
+          python3 tools/sym_near.py --gh _c1_ustack 10
+          python3 tools/sym_near.py --gh _c1_sstack_top 10
+
       - name: Disassembly (a crash report's addresses to code)
         uses: actions/upload-artifact@v4
         with:
