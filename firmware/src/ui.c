@@ -1420,11 +1420,27 @@ static void ui_leds_init(void)                         /* the idle glow under ev
 }
 
 /* ------------------------------------------------------------- input --- */
+/* a knob turned on (the same way within 40 ms) speeds up to x4: 0 .. 127 in a flick, one detent still one step
+ * (after M-VAVE's fm1_open, app/screen.c read_encoders; selectors keep their detents) */
+static uint32_t enc_t[NE];
+static int8_t enc_dir[NE];
+static uint8_t enc_speed[NE];
+static int32_t knob_accel(uint32_t role, int32_t s)
+{
+    int8_t d = (int8_t)(s > 0 ? 1 : -1);
+    enc_speed[role] = (uint8_t)(d == enc_dir[role] && fm1_ms - enc_t[role] <= 40u ?
+                                (enc_speed[role] < 4u ? enc_speed[role] + 1u : 4u) : 1u);
+    enc_dir[role] = d;
+    enc_t[role] = fm1_ms;
+    return s * enc_speed[role];
+}
+
 static void knob(volatile uint8_t *p, uint32_t role, uint32_t cell)
 {
     int32_t s = panel_enc(role);
     if (!s)
         return;
+    s = knob_accel(role, s);
     *p = (uint8_t)clamp(*p + s, 0, 127);
     if (cell < 4u) {
         ui_hot = (uint8_t)cell;
@@ -1546,7 +1562,7 @@ static void ui_input(void)
         }
     } else if (sys.page == 6u) {
         if ((s = panel_enc(EN_K1)) != 0) {
-            sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
+            sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + knob_accel(EN_K1, s), 40, 250);
             ui_hot = 0; ui_hot_ms = fm1_ms;
         }
         if ((s = panel_enc(EN_K2)) != 0) {
@@ -1656,7 +1672,7 @@ static void ui_input(void)
         ui_say(t);
     }
     if ((s = panel_enc(EN_PRESET)) != 0 && sys.page == 9u) {   /* KARMA: PRESETS is the tempo (the ARP page's BPM) */
-        sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
+        sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + knob_accel(EN_PRESET, s), 40, 250);
         str_cpy(t, arp_ext() ? "MIDI CLOCK: BPM " : "BPM ", sizeof t);
         fmt_int(v, sys.arp_bpm);
         ui_cat(t, sizeof t, v);

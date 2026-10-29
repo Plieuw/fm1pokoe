@@ -7,7 +7,7 @@
  *   fm1_lcd_baud(b)            SPI1 clock = lsb / (b + 1)
  *   fm1_lcd_send_cmd(c)        D/C low, CS low, one byte (then fm1_lcd_wait)
  *   fm1_lcd_send_data(p, n)    D/C high, CS low, DMA n bytes from RAM p
- *   fm1_lcd_wait()             SPI done (or timeout, counted), pending cleared
+ *   fm1_lcd_wait()             SPI done, pending cleared (or a timeout: counted, SPI1 reset)
  *   fm1_lcd_deselect()         CS high
  *   fm1_lcd_backlight(on)      PA2 low (on) / high (off); the TIMER5 scan writes port A too: IRQs off around it
  */
@@ -55,14 +55,27 @@ FM1_INLINE void fm1_lcd_backlight(uint32_t on)
 
 FM1_INLINE void fm1_lcd_baud(uint32_t b) { FM1_LCD_SPI_BAUD = b; }
 
+/* a transfer that never finished: SPI1 stopped, its count cleared, started again (after M-VAVE's fm1_open,
+ * app/board/fm1_lcd_hw.h: a stuck DMA is not left running under the next one) */
+static void fm1_lcd_recover(void)
+{
+    FM1_LCD_SPI_CON = 0;
+    __asm__ volatile("csync" ::: "memory");
+    FM1_LCD_SPI_CNT = 0;
+    FM1_LCD_PC_OUT |= FM1_LCD_CS;
+    FM1_LCD_SPI_CON = 0x4021u;
+    fm1_lcd_timeouts++;
+}
+
 static void fm1_lcd_wait(void)
 {
     uint32_t n;
     for (n = 0; n < 4000000u && !(FM1_LCD_SPI_CON & 0x8000u); n++)
         ;
     if (n == 4000000u)
-        fm1_lcd_timeouts++;
-    FM1_LCD_SPI_CON |= 0x4000u;
+        fm1_lcd_recover();
+    else
+        FM1_LCD_SPI_CON |= 0x4000u;
 }
 
 FM1_INLINE void fm1_lcd_deselect(void) { FM1_LCD_PC_OUT |= FM1_LCD_CS; }
@@ -80,6 +93,7 @@ FM1_INLINE void fm1_lcd_send_data(const void *p, uint32_t n)
     FM1_LCD_PC_OUT |= FM1_LCD_DC;
     FM1_LCD_PC_OUT &= ~FM1_LCD_CS;
     FM1_LCD_SPI_CON |= 0x4000u;
+    __asm__ volatile("csync" ::: "memory");      /* (the pixels written before the DMA reads them: fm1_open) */
     FM1_LCD_SPI_ADR = (uint32_t)(uintptr_t)p;
     FM1_LCD_SPI_CNT = n;
 }
