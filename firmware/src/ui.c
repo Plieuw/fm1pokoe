@@ -1415,7 +1415,7 @@ static void draw_splash(void)
     lcd_fill(0, 0, 240, 240, T_BG);
     pix_text("HAWK", 30, 7, 8);
     pix_text("CHUA", 96, 4, 5);
-    draw_text_box(0, 138, 240, &AF_S, "MODELLING SYNTHESIZER", T_MID, 1);
+    draw_text_box(0, 138, 240, &AF_S, "MODELING SYNTHESIZER", T_MID, 1);
     pix_text("PLIEUWSKI", 166, 3, 3);
     draw_text_box(0, 216, 240, &AF_S, UI_VERSION, T_DIM, 1);
 }
