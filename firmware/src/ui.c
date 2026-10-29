@@ -396,6 +396,7 @@ static void ui_head(const char *name, const char *note)
 /* the FM oscillator's colour on its pages (MOD, MOD ENV): the DX7's green, for overview */
 #define T_FM ((uint16_t)(7u << 11 | 49u << 5 | 17u))    /* (60, 196, 140) */
 static uint16_t ui_val_c;                        /* the cells' values in a page's own colour (0: T_TEXT) */
+#define FEG_FM(t) ((t) % FEG_NT >= 7u && (t) % FEG_NT <= 10u)   /* FREE EG's FM targets: MOD WAVE .. MOD ENV HEIGHT */
 
 /* a knob's cell: its label small, its value under it */
 static void ui_cell(uint32_t i, const char *label, const char *value)
@@ -795,7 +796,7 @@ static void draw_feg(void)
     const int32_t top = 8, bot = PLOT_H - 16, hh = bot - top;
     int32_t i, px = 0, py = 0;
     uint32_t pos = feg.pos, n = sys.feg_len % FEG_NLEN ? FEG_N : (feg.rec ? FEG_N : sys.feg_npts);
-    uint16_t c = feg.rec ? T_ACCENT : sys.feg_on ? T_THEME : T_DIM;
+    uint16_t c = feg.rec ? T_ACCENT : sys.feg_on ? (FEG_FM(sys.feg_target) ? T_FM : T_THEME) : T_DIM;
     cv_begin(240, PLOT_H, T_BG);
     cv_rect(8, bot, 224, 1, T_LINE);
     cv_rect(8, top, 224, 1, T_LINE);
@@ -809,7 +810,7 @@ static void draw_feg(void)
         }
     if (pos < FEG_N)
         cv_rect(8 + (int32_t)pos * 224 / (int32_t)FEG_N, top, 1, hh, T_ACCENT);
-    cv_text(8, bot + 3, &AF_S, FEG_T_NAME[sys.feg_target % FEG_NT], T_DIM);
+    cv_text(8, bot + 3, &AF_S, FEG_T_NAME[sys.feg_target % FEG_NT], FEG_FM(sys.feg_target) ? T_FM : T_DIM);
     cv_text_r(232, bot + 3, &AF_S, FEG_LEN_NAME[sys.feg_len % FEG_NLEN], T_DIM, T_BG);
     cv_blit(0, PLOT_Y);
 }
@@ -1085,7 +1086,9 @@ static void ui_draw(void)
         ui_cell(T_C2, "2 LENGTH", FEG_LEN_NAME[sys.feg_len % FEG_NLEN]);
         fmt_int(v, sys.feg_depth);
         ui_cell(T_C3, "3 DEPTH", v);
+        ui_val_c = FEG_FM(sys.feg_target) ? T_FM : 0;   /* (an FM target: green) */
         ui_cell(T_C4, "4 TARGET", FEG_T_NAME[sys.feg_target % FEG_NT]);
+        ui_val_c = 0;
     } else if (sys.page == 7u) {
         static const char *const USBN[4] = {"OFF", "IN", "OUT", "IN + OUT"};
         ui_cell(T_C1, "1 TRS MIDI IN", sys.midi_trs ? "ON" : "OFF");
