@@ -123,7 +123,10 @@ jobs:
         run: |
           python3 tools/crash_where.py --gh ${{ github.event.inputs.crash_addrs }}
           python3 tools/stack_depth.py --gh
-          python3 tools/insn_scan.py --gh
+
+      - name: Special registers
+        if: github.event.inputs.crash_addrs != ''
+        run: python3 tools/insn_scan.py --gh
 
       - name: Disassembly (a crash report's addresses to code)
         uses: actions/upload-artifact@v4

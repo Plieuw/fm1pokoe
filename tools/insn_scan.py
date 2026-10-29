@@ -31,8 +31,11 @@ def main(args):
     out = ["words: " + ", ".join(f"{t} {n}" for t, n in sorted(toks.items(), key=lambda kv: -kv[1]) if not re.match(r"r\d+$", t))]
     for f, l in sorted(where.items()):
         out.append(f"{f}: {len(l)}: " + " | ".join(sorted(set(l))[:6]))
-    for o in out[:45]:
-        print(f"::notice title=insn::{o[:3500]}" if gh else o)
+    if gh:                                     # (GitHub keeps 10 annotations a step: joined)
+        for k in range(0, min(len(out), 90), 10):
+            print("::notice title=insn::" + "%0A".join(o[:600].replace("%", "%25") for o in out[k:k + 10]))
+    else:
+        print("\n".join(out))
 
 
 if __name__ == "__main__":
