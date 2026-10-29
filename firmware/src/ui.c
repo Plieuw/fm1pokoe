@@ -399,7 +399,7 @@ static void ui_head(const char *name, const char *note)
 
 /* the FM oscillator's colour on its pages (MOD, MOD ENV): the DX7's green, for overview */
 #define T_FM ((uint16_t)(7u << 11 | 49u << 5 | 17u))    /* (60, 196, 140) */
-#define T_FM_IN ((uint16_t)(4u << 11 | 35u << 5 | 12u))  /* (36, 140, 100): a program's own FM, darker (not MOD's) */
+#define T_FM_IN T_THEME                           /* a program's own FM (not the MOD oscillator's): the theme's orange */
 static uint16_t ui_val_c;                        /* the cells' values in a page's own colour (0: T_TEXT) */
 static int np_is_fm(const char *s)              /* a noise program's knob that is FM: its name has FM or MOD in it */
 {
@@ -1188,7 +1188,7 @@ static void ui_draw(void)
         str_cpy(a, "1 ", sizeof a);
         ui_cat(a, sizeof a, NP_X[alg]);
         fmt_int(v, sys.np_x);
-        ui_val_c = np_is_fm(NP_X[alg]) ? T_FM_IN : 0;   /* (the program's own FM: a darker green) */
+        ui_val_c = np_is_fm(NP_X[alg]) ? T_FM_IN : 0;   /* (the program's own FM: orange) */
         ui_cell(T_C1, a, v);
         str_cpy(a, "2 ", sizeof a);
         ui_cat(a, sizeof a, NP_Y[alg]);
