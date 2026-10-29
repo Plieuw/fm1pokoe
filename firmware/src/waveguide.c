@@ -17,6 +17,10 @@
  *            pitch rising with the breath (CHIRP: STRUCTURE), the second a little apart (TWO VOICE: POSITION: beats
  *            .. a fifth), through the beak's resonance (BRIGHTNESS: 1.5 .. 6 kHz); DAMPING the whistles' loss
  *
+ * The waveguides run at half the rate (22 kHz: half the CPU; their lines half as long, their one-poles the same in
+ * hertz, wg_half): their input the average of two samples, their output interpolated back; the beak's band-pass
+ * (SYRINX, HAWK) and the output's DC blocker run at the full rate.
+ *
  * The breath: each model follows its input's loudness (an envelope, ~2 ms up, ~80 ms down); the flute and the
  * syrinx blow only while it plays, the throat's mouth moves with it. */
 
@@ -57,7 +61,11 @@ typedef struct {
     int32_t lip, rad, glo;                       /* the lips' low-pass, the mouth's softening, the glottis' */
     int32_t env;                                 /* the input's loudness, Q20 */
     int32_t iav, oav, ag;                        /* the level: in, out (Q14 averages), the gain (Q12) */
+    int32_t yp;                                  /* the last half-rate output (the interpolation) */
 } wg_throat_t;
+
+/* a one-pole's coefficient (Q15) at the full rate -> the same in hertz at half the rate: 1 - (1 - a)^2 */
+static inline int32_t wg_half(int32_t a) { return 2 * a - ((a * a) >> 15); }
 
 /* the loudness of n samples of in (Q20) into *env: ~2 ms up, ~80 ms down (per sample) */
 static int32_t wg_follow(int32_t *env, const int32_t *in, uint32_t n)
@@ -100,10 +108,11 @@ static void wg_throat_run(wg_throat_t *T, const int32_t *in, int32_t *y, uint32_
     rg = rg > 32440 ? 32440 : rg;
     rl = -(26000 + damp / 10);                   /* the lips (open end: inverted), 0.79 .. 0.99 */
     rl = rl < -32440 ? -32440 : rl;
-    lp = 2500 + bright / 5;                      /* the lips' low-pass, Q15: what reflects (the lows), ~0.4 .. 4 kHz */
-    ro = 6800 + bright / 3;                      /* the mouth's softening, Q15 */
-    for (i = 0; i < n; i++) {
-        int32_t fo[WG_NSEC], bo[WG_NSEC], lo;
+    lp = wg_half(2500 + bright / 5);             /* the lips' low-pass, Q15: what reflects (the lows), ~0.4 .. 4 kHz */
+    ro = wg_half(6800 + bright / 3);             /* the mouth's softening, Q15 */
+    k = (k + 1u) / 2u;                           /* (half the rate: half the samples a section) */
+    for (i = 0; i < n; i += 2u) {
+        int32_t fo[WG_NSEC], bo[WG_NSEC], lo, x = i + 1u < n ? (in[i] + in[i + 1u]) >> 1 : in[i];
         uint32_t p = T->p;
         for (j = 0; j < ns; j++) {
             fo[j] = T->f[j][p];
@@ -114,15 +123,18 @@ static void wg_throat_run(wg_throat_t *T, const int32_t *in, int32_t *y, uint32_
             T->f[j + 1u][p] = fo[j] + w;         /* (lossless junctions between lossy ends: bounded, unclamped) */
             T->b[j][p] = bo[j + 1u] + w;
         }
-        T->glo += px_m(14000, bo[0] - T->glo, 15);   /* the glottis: soft (the highs lost there, ~3 kHz) */
-        T->f[0][p] = px_clamp((in[i] >> 1) + px_m(rg, T->glo, 15), -16 * PX_ONE, 16 * PX_ONE);
+        T->glo += px_m(22041, bo[0] - T->glo, 15);   /* the glottis: soft (the highs lost there, ~3 kHz; wg_half(14000)) */
+        T->f[0][p] = px_clamp((x >> 1) + px_m(rg, T->glo, 15), -16 * PX_ONE, 16 * PX_ONE);
         lo = fo[ns - 1u];                        /* the lips: the lows reflect (inverted), the highs radiate */
         T->lip += px_m(lp, lo - T->lip, 15);
         T->b[ns - 1u][p] = px_m(rl, T->lip, 15);
         /* out at the mouth: the wave arriving there (the radiation's loss of the lows left out: it would leave a
          * voice below its first formant nearly silent), its top softened (BRIGHTNESS: ~1.5 .. 12 kHz) */
         T->rad += px_m(ro, lo - T->rad, 15);
-        y[i] = T->rad;
+        y[i] = (T->yp + T->rad) >> 1;            /* (back to the full rate: between the last and this one) */
+        if (i + 1u < n)
+            y[i + 1u] = T->rad;
+        T->yp = T->rad;
         T->p = p + 1u >= k ? 0u : p + 1u;
     }
     {   /* the level: the tube's resonances lift some vowels and animals far above others; a slow automatic gain
@@ -169,13 +181,15 @@ typedef struct {
     uint32_t w, rng;
     int32_t lp, dcx, dcy, env;
     int32_t ox, oy;                              /* the output's DC blocker (the breath's pressure is DC in the bore) */
+    int32_t yp;                                  /* the last half-rate output */
 } wg_flute_t;
 
 /* f0 the note (cycles Q32); jet 0..127 its length (long .. overblowing); breath the noise; bright, damp Q16 */
 static void wg_flute_run(wg_flute_t *F, const int32_t *in, int32_t *y, uint32_t n, uint32_t f0, int32_t jet,
                          int32_t breath, int32_t bright, int32_t damp)
 {
-    uint32_t i, per = f0 < 65536u ? 0xFFFFFFFFu : px_period(f0 > 0x40000000u ? 0x40000000u : f0), bd, jd;   /* Q16 */
+    uint32_t i, per = f0 < 65536u ? 0xFFFFFFFFu : px_period(f0 > 0x40000000u ? 0x40000000u : f0) >> 1, bd, jd;   /* Q16,
+                                                  * half-rate samples */
     int32_t env = wg_follow(&F->env, in, n), pr, g, loss, nz;
     while (per > (WG_BORE * 2u / 3u - 8u) << 16)  /* fold up an octave */
         per >>= 1;
@@ -185,27 +199,31 @@ static void wg_flute_run(wg_flute_t *F, const int32_t *in, int32_t *y, uint32_t 
     jd = jd > (WG_JETL - 4u) << 16 ? (WG_JETL - 4u) << 16 : jd < (2u << 16) ? 2u << 16 : jd;
     pr = env * 16 > PX_ONE * 13 / 10 ? PX_ONE * 13 / 10 : env * 16;   /* the breath: the loudness (STK blows at ~1.1 ..
                                                   * 1.3: it speaks from ~1/16 of full scale up) */
-    g = 4900 + bright / 5;                       /* the bore's one-pole (STK: pole 0.65): 0.85 .. 0.45, Q15 */
+    g = wg_half(4900 + bright / 5);              /* the bore's one-pole (STK: pole 0.65): 0.85 .. 0.45, Q15 */
     loss = 30500 + (int32_t)(((int64_t)damp * 2260) >> 16);   /* 0.93 .. 1.0 */
     nz = breath / 2;                             /* the noise: 0 .. 0.5 of the pressure (STK: 0.15), Q16 */
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < n; i += 2u) {
         int32_t b = wg_read(F->bore, WG_BORE - 1u, F->w, bd), t, pd, j, o;
         int32_t noise = px_m(px_m((int32_t)(px_rand(&F->rng) >> 11) - (1 << 20), pr, 20), nz, 16);
+        int32_t x = i + 1u < n ? (in[i] + in[i + 1u]) >> 1 : in[i];
         F->lp += px_m(g, b - F->lp, 15);         /* the open end's reflection: low-passed, its DC blocked */
         t = F->lp;
-        o = t - F->dcx + px_m(F->dcy, 32604, 15);
+        o = t - F->dcx + px_m(F->dcy, 32440, 15);   /* (32604 at the full rate) */
         F->dcx = t;
         F->dcy = o;
         t = px_m(o, loss, 15);
-        pd = pr + noise + (in[i] >> 3) - (t >> 1);   /* the breath (the voices on it), less the jet's reflection */
+        pd = pr + noise + (x >> 3) - (t >> 1);   /* the breath (the voices on it), less the jet's reflection */
         F->jet[F->w & (WG_JETL - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
         j = wg_jet(wg_tap(F->jet, WG_JETL - 1u, F->w + 1u, jd));   /* (the jet: a whole-sample delay) */
         F->bore[F->w & (WG_BORE - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
         F->w++;
-        o = b - F->ox + px_m(F->oy, 32604, 15); /* out: the bore, its DC blocked (the breath is DC in it) */
+        o = b - F->ox + px_m(F->oy, 32440, 15); /* out: the bore, its DC blocked (the breath is DC in it) */
         F->ox = b;
         F->oy = o;
-        y[i] = o;
+        y[i] = (F->yp + o) >> 1;                 /* (back to the full rate) */
+        if (i + 1u < n)
+            y[i + 1u] = o;
+        F->yp = o;
     }
 }
 
@@ -220,21 +238,52 @@ typedef struct {
     int32_t ox, oy;                              /* the output's DC blocker */
     uint32_t t, quiet;                           /* HAWK: samples since the scream began; the input silent */
     int32_t am, amt;                             /* HAWK: the rasp's level now, its next target */
+    int32_t yp;                                  /* the whistles' last half-rate output */
+    uint32_t rc;                                 /* HAWK: samples to the rasp's next target */
 } wg_syrinx_t;
+
+/* the two whistles at half the rate (SYRINX, HAWK): n samples of input -> their sum at the full rate (interpolated) */
+static void wg_whistles(wg_syrinx_t *S, const int32_t *in, int32_t *o, uint32_t n, const uint32_t *bd, const uint32_t *jd,
+                        int32_t pr, int32_t loss, int32_t nshift)
+{
+    uint32_t i, s;
+    for (i = 0; i < n; i += 2u) {
+        int32_t sum = 0, x = i + 1u < n ? (in[i] + in[i + 1u]) >> 1 : in[i];
+        int32_t noise = px_m((int32_t)(px_rand(&S->rng) >> nshift) - (int32_t)(1u << (31 - nshift)), pr, 22);
+        for (s = 0; s < 2u; s++) {
+            int32_t b = wg_read(S->bore[s], WG_SB - 1u, S->w, bd[s]), t, pd, j;
+            S->lp[s] += px_m(27793, b - S->lp[s], 15);   /* (wg_half(20000)) */
+            t = S->lp[s] - S->dcx[s] + px_m(S->dcy[s], 32440, 15);
+            S->dcx[s] = S->lp[s];
+            S->dcy[s] = t;
+            t = px_m(t, loss, 15);
+            pd = pr + noise + (x >> 4) - (t >> 1);
+            S->jet[s][S->w & (WG_SJ - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
+            j = wg_jet(wg_tap(S->jet[s], WG_SJ - 1u, S->w + 1u, jd[s]));
+            S->bore[s][S->w & (WG_SB - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
+            sum += b;
+        }
+        S->w++;
+        o[i] = (S->yp + sum) >> 1;
+        if (i + 1u < n)
+            o[i + 1u] = sum;
+        S->yp = sum;
+    }
+}
 
 static void wg_syrinx_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_t n, uint32_t f0, int32_t chirp,
                           int32_t two, int32_t bright, int32_t damp)
 {
     uint32_t i, s, bd[2], jd[2];
-    int32_t env = wg_follow(&S->env, in, n), pr, loss, bf;
+    int32_t env = wg_follow(&S->env, in, n), pr, loss, bf, ow[CTL];
     int32_t e = env > PX_ONE / 12 ? 65536 : env * 12 / 16;   /* 0..1 Q16: the breath, full at 1/12 scale */
     pr = env * 16 > PX_ONE * 13 / 10 ? PX_ONE * 13 / 10 : env * 16;
     for (s = 0; s < 2u; s++) {   /* the pitch: two octaves up, rising with the breath; the second apart */
         int32_t oct = 2 * 65536 + (int32_t)(((int64_t)chirp * 1032 * e) >> 16)     /* up to +2 octaves */
                       + (s ? two * 301 : 0);                                      /* +0 .. 7 semitones */
         uint64_t f = ((uint64_t)f0 * px_exp2(oct)) >> 16;
-        uint32_t per = f < 65536u ? 0xFFFFFFFFu : f >= 0x40000000u ? 4u << 16 : px_period((uint32_t)f);
-        while (per > (WG_SB - 8u) << 16)
+        uint32_t per = f < 65536u ? 0xFFFFFFFFu : f >= 0x40000000u ? 4u << 16 : px_period((uint32_t)f) >> 1;
+        while (per > (WG_SB - 8u) << 16)         /* (half-rate samples) */
             per >>= 1;
         bd[s] = per > (4u << 16) ? per - (2u << 16) : 2u << 16;
         jd[s] = bd[s] / 3u < (2u << 16) ? 2u << 16 : bd[s] / 3u;
@@ -242,22 +291,9 @@ static void wg_syrinx_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_
     }
     loss = 29000 + (int32_t)(((int64_t)damp * 3400) >> 16);
     bf = 14000 + bright / 6;                     /* the beak: 2 sin(pi f / FS), ~1.5 .. 6 kHz (Q15) */
+    wg_whistles(S, in, ow, n, bd, jd, pr, loss, 12);
     for (i = 0; i < n; i++) {
-        int32_t o = 0, hi, noise = px_m((int32_t)(px_rand(&S->rng) >> 12) - (1 << 19), pr, 22);   /* (one for both) */
-        for (s = 0; s < 2u; s++) {
-            int32_t b = wg_read(S->bore[s], WG_SB - 1u, S->w, bd[s]), t, pd, j;
-            S->lp[s] += px_m(20000, b - S->lp[s], 15);
-            t = S->lp[s] - S->dcx[s] + px_m(S->dcy[s], 32604, 15);
-            S->dcx[s] = S->lp[s];
-            S->dcy[s] = t;
-            t = px_m(t, loss, 15);
-            pd = pr + noise + (in[i] >> 4) - (t >> 1);
-            S->jet[s][S->w & (WG_SJ - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
-            j = wg_jet(wg_tap(S->jet[s], WG_SJ - 1u, S->w + 1u, jd[s]));
-            S->bore[s][S->w & (WG_SB - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
-            o += b;
-        }
-        S->w++;
+        int32_t o = ow[i], hi;
         S->blo += px_m(bf, S->bbd, 15);          /* the beak (Q 2.5) */
         hi = o - S->blo - px_m(13107, S->bbd, 15);
         S->bbd = px_clamp(S->bbd + px_m(bf, hi, 15), -16 * PX_ONE, 16 * PX_ONE);
@@ -277,7 +313,7 @@ static void wg_hawk_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_t 
                         int32_t rasp, int32_t bright, int32_t damp)
 {
     uint32_t i, s, bd[2], jd[2], len = 4410u + (uint32_t)scream * 882u, ph;
-    int32_t env = wg_follow(&S->env, in, n), pr, loss, bf, g;
+    int32_t env = wg_follow(&S->env, in, n), pr, loss, bf, g, ow[CTL];
     int32_t e = env > PX_ONE / 12 ? 65536 : env * 12 / 16;
     if (env < PX_ONE / 400)                      /* silent: the next breath is a new scream */
         S->quiet = 1;
@@ -294,8 +330,8 @@ static void wg_hawk_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_t 
         int32_t oct = 5 * 32768 + g + (int32_t)(((int64_t)13107 * e) >> 16)   /* 2.5 octaves, +0.2 with the breath */
                       + (s ? 2731 : 0);                                       /* (a quarter tone apart) */
         uint64_t f = ((uint64_t)f0 * px_exp2(oct)) >> 16;
-        uint32_t per = f < 65536u ? 0xFFFFFFFFu : f >= 0x40000000u ? 4u << 16 : px_period((uint32_t)f);
-        while (per > (WG_SB - 8u) << 16)
+        uint32_t per = f < 65536u ? 0xFFFFFFFFu : f >= 0x40000000u ? 4u << 16 : px_period((uint32_t)f) >> 1;
+        while (per > (WG_SB - 8u) << 16)         /* (half-rate samples) */
             per >>= 1;
         bd[s] = per > (4u << 16) ? per - (2u << 16) : 2u << 16;
         jd[s] = bd[s] / 3u < (2u << 16) ? 2u << 16 : bd[s] / 3u;
@@ -303,24 +339,13 @@ static void wg_hawk_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_t 
     }
     loss = 29000 + (int32_t)(((int64_t)damp * 3400) >> 16);
     bf = 20000 + bright / 5;                     /* the beak: ~2.3 .. 7 kHz */
+    wg_whistles(S, in, ow, n, bd, jd, pr, loss, 11);   /* (the breath's noise twice the SYRINX's) */
     for (i = 0; i < n; i++) {
-        int32_t o = 0, hi, noise = px_m((int32_t)(px_rand(&S->rng) >> 11) - (1 << 20), pr, 22);   /* (twice the SYRINX's) */
-        for (s = 0; s < 2u; s++) {
-            int32_t b = wg_read(S->bore[s], WG_SB - 1u, S->w, bd[s]), t, pd, j;
-            S->lp[s] += px_m(20000, b - S->lp[s], 15);
-            t = S->lp[s] - S->dcx[s] + px_m(S->dcy[s], 32604, 15);
-            S->dcx[s] = S->lp[s];
-            S->dcy[s] = t;
-            t = px_m(t, loss, 15);
-            pd = pr + noise + (in[i] >> 4) - (t >> 1);
-            S->jet[s][S->w & (WG_SJ - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
-            j = wg_jet(wg_tap(S->jet[s], WG_SJ - 1u, S->w + 1u, jd[s]));
-            S->bore[s][S->w & (WG_SB - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
-            o += b;
-        }
-        S->w++;
-        if (!(S->w & 63u))                       /* the rasp: a new random depth every ~1.5 ms (a ~700 Hz roughness) */
+        int32_t o = ow[i], hi;
+        if (!S->rc--) {                          /* the rasp: a new random depth every ~1.5 ms (a ~700 Hz roughness) */
+            S->rc = 63u;
             S->amt = (int32_t)(px_rand(&S->rng) >> 17);   /* 0 .. 32767 */
+        }
         S->am += (S->amt - S->am) >> 3;
         o = px_m(o, 32767 - (S->am * rasp >> 7), 15);
         S->blo += px_m(bf, S->bbd, 15);          /* the beak (Q ~1.6: wider) */
