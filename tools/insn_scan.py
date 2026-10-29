@@ -31,7 +31,7 @@ def main(args):
     out = ["words: " + ", ".join(f"{t} {n}" for t, n in sorted(toks.items(), key=lambda kv: -kv[1]) if not re.match(r"r\d+$", t))]
     for f, l in sorted(where.items()):
         out.append(f"{f}: {len(l)}: " + " | ".join(sorted(set(l))[:6]))
-    for o in out:
+    for o in out[:45]:
         print(f"::notice title=insn::{o[:3500]}" if gh else o)
 
 
