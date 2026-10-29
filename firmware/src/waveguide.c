@@ -218,6 +218,8 @@ typedef struct {
     int32_t lp[2], dcx[2], dcy[2], env;
     int32_t blo, bbd;                            /* the beak: a resonant band-pass (Chamberlin) */
     int32_t ox, oy;                              /* the output's DC blocker */
+    uint32_t t, quiet;                           /* HAWK: samples since the scream began; the input silent */
+    int32_t am, amt;                             /* HAWK: the rasp's level now, its next target */
 } wg_syrinx_t;
 
 static void wg_syrinx_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_t n, uint32_t f0, int32_t chirp,
@@ -264,4 +266,70 @@ static void wg_syrinx_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_
         S->ox = o >> 2;
         y[i] = S->bbd + S->oy;
     }
+}
+
+/* -------------------------------------------------------------------- HAWK --- */
+/* A raptor's scream (the red-tailed hawk's "kee-eeeee-arr"), from the SYRINX: its two whistles a quarter tone apart
+ * (they beat: the roughness), ~2.5 octaves above the note, and a pitch that rises a little at the start and then
+ * falls half an octave over the scream (SCREAM: 0.1 .. 2.7 s, from when the input starts after a silence); the
+ * breath noisier, the output torn by a fast random tremolo (RASP), the beak's band-pass higher and wider */
+static void wg_hawk_run(wg_syrinx_t *S, const int32_t *in, int32_t *y, uint32_t n, uint32_t f0, int32_t scream,
+                        int32_t rasp, int32_t bright, int32_t damp)
+{
+    uint32_t i, s, bd[2], jd[2], len = 4410u + (uint32_t)scream * 882u, ph;
+    int32_t env = wg_follow(&S->env, in, n), pr, loss, bf, g;
+    int32_t e = env > PX_ONE / 12 ? 65536 : env * 12 / 16;
+    if (env < PX_ONE / 400)                      /* silent: the next breath is a new scream */
+        S->quiet = 1;
+    else if (S->quiet) {
+        S->quiet = 0;
+        S->t = 0;
+    }
+    ph = S->t < len ? S->t / (len / 256u + 1u) : 256u;   /* 0 .. 256 over the scream */
+    ph = ph > 256u ? 256u : ph;
+    g = ph < 40u ? (int32_t)ph * 16384 / 40 :   /* +1/4 octave in the first sixth, then down to -1/4 */
+        16384 - ((int32_t)ph - 40) * 32768 / 216;
+    pr = env * 16 > PX_ONE * 13 / 10 ? PX_ONE * 13 / 10 : env * 16;
+    for (s = 0; s < 2u; s++) {
+        int32_t oct = 5 * 32768 + g + (int32_t)(((int64_t)13107 * e) >> 16)   /* 2.5 octaves, +0.2 with the breath */
+                      + (s ? 2731 : 0);                                       /* (a quarter tone apart) */
+        uint64_t f = ((uint64_t)f0 * px_exp2(oct)) >> 16;
+        uint32_t per = f < 65536u ? 0xFFFFFFFFu : f >= 0x40000000u ? 4u << 16 : px_period((uint32_t)f);
+        while (per > (WG_SB - 8u) << 16)
+            per >>= 1;
+        bd[s] = per > (4u << 16) ? per - (2u << 16) : 2u << 16;
+        jd[s] = bd[s] / 3u < (2u << 16) ? 2u << 16 : bd[s] / 3u;
+        jd[s] = jd[s] > (WG_SJ - 4u) << 16 ? (WG_SJ - 4u) << 16 : jd[s];
+    }
+    loss = 29000 + (int32_t)(((int64_t)damp * 3400) >> 16);
+    bf = 20000 + bright / 5;                     /* the beak: ~2.3 .. 7 kHz */
+    for (i = 0; i < n; i++) {
+        int32_t o = 0, hi, noise = px_m((int32_t)(px_rand(&S->rng) >> 11) - (1 << 20), pr, 22);   /* (twice the SYRINX's) */
+        for (s = 0; s < 2u; s++) {
+            int32_t b = wg_read(S->bore[s], WG_SB - 1u, S->w, bd[s]), t, pd, j;
+            S->lp[s] += px_m(20000, b - S->lp[s], 15);
+            t = S->lp[s] - S->dcx[s] + px_m(S->dcy[s], 32604, 15);
+            S->dcx[s] = S->lp[s];
+            S->dcy[s] = t;
+            t = px_m(t, loss, 15);
+            pd = pr + noise + (in[i] >> 4) - (t >> 1);
+            S->jet[s][S->w & (WG_SJ - 1u)] = px_clamp(pd, -5 * PX_ONE, 5 * PX_ONE);
+            j = wg_jet(wg_tap(S->jet[s], WG_SJ - 1u, S->w + 1u, jd[s]));
+            S->bore[s][S->w & (WG_SB - 1u)] = px_clamp(j + (t >> 1), -5 * PX_ONE, 5 * PX_ONE);
+            o += b;
+        }
+        S->w++;
+        if (!(S->w & 63u))                       /* the rasp: a new random depth every ~1.5 ms (a ~700 Hz roughness) */
+            S->amt = (int32_t)(px_rand(&S->rng) >> 17);   /* 0 .. 32767 */
+        S->am += (S->amt - S->am) >> 3;
+        o = px_m(o, 32767 - (S->am * rasp >> 7), 15);
+        S->blo += px_m(bf, S->bbd, 15);          /* the beak (Q ~1.6: wider) */
+        hi = o - S->blo - px_m(20000, S->bbd, 15);
+        S->bbd = px_clamp(S->bbd + px_m(bf, hi, 15), -16 * PX_ONE, 16 * PX_ONE);
+        S->blo = px_clamp(S->blo, -16 * PX_ONE, 16 * PX_ONE);
+        S->oy = (o >> 2) - S->ox + px_m(S->oy, 32604, 15);
+        S->ox = o >> 2;
+        y[i] = S->bbd + S->oy;
+    }
+    S->t = S->t < 0x7FFFFFFFu ? S->t + n : S->t;
 }

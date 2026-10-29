@@ -121,6 +121,8 @@ static const preset_t PRESETS[] = {
     {"BIRD SONG", 6, 64, 64, 0, 90, 0, 60, 30, RZ_SYRINX, 90, 70, 60, 15, 127,        /* chirps falling away */
      100, 90, 30, 40, SI_OCT, 100},
     {"TWO BIRDS", 30, 100, 32, 0, 60, 40, 50, 30, RZ_SYRINX, 60, 90, 70, 110, 127},   /* the two sides a fifth */
+    {"HAWK CRY", 6, 64, 64, 0, 100, 0, 80, 30, RZ_HAWK, 70, 90, 70, 70, 127,          /* kee-eeee-arr, over a valley */
+     110, 100, 40, 35, SI_OCT, 90},
     /* the FM oscillator on them (the MOD page) */
     {"FM BELL CLUSTER", 85, 76, 0, 0, 70, 30, 90, 30, RZ_MODAL, 70, 100, 100, 12, 50,    /* sines FMed at 7/2: */
      NOSH, NZ(1, 3), 20, 30, 0, 9, 30, 90, 0, 110},                                        /* metal, a strike */
@@ -1026,8 +1028,8 @@ static void fx_pos_text(char *d, uint32_t n, int brief)
 {
     uint32_t md = sys.fx_model % RZ_COUNT, p = sys.fx_pos & 127u;
     char v[12];
-    static const char *const L[RZ_COUNT] = {"POSITION", "AMOUNT", "POSITION", "VOWEL", "BREATH", "TWO VOICE"};
-    static const char *const S[RZ_COUNT] = {"POS", "AMT", "POS", "VOWEL", "BREATH", "TWO"};
+    static const char *const L[RZ_COUNT] = {"POSITION", "AMOUNT", "POSITION", "VOWEL", "BREATH", "TWO VOICE", "RASP"};
+    static const char *const S[RZ_COUNT] = {"POS", "AMT", "POS", "VOWEL", "BREATH", "TWO", "RASP"};
     str_cpy(d, brief ? S[md] : L[md], n);
     ui_cat(d, n, " ");
     if (md == RZ_THROAT) {                       /* the vowel: U O A E I, or between two */
@@ -1260,7 +1262,7 @@ static void ui_draw(void)
         ui_cell(T_C4, "4 MIX", b);
     } else if (sys.page == 2u) {
         uint32_t md = sys.fx_model % RZ_COUNT;
-        static const char *const K1[RZ_COUNT] = {"1 STRUCTURE", "1 CHORD", "1 STRUCTURE", "1 ANIMAL", "1 JET", "1 CHIRP"};
+        static const char *const K1[RZ_COUNT] = {"1 STRUCTURE", "1 CHORD", "1 STRUCTURE", "1 ANIMAL", "1 JET", "1 CHIRP", "1 SCREAM"};
         if (md == RZ_SYMP)
             str_cpy(b, RZ_CHORD_NAME[(sys.fx_struct & 127u) >> 4], sizeof b);
         else if (md == RZ_THROAT)

@@ -28,10 +28,10 @@
  *                                BASIS takes off the left / right (synth.c), each resonator panned as its note */
 #include "phys_dsp.c"
 #include "phys_symp.c"
-#include "waveguide.c"                           /* THROAT, FLUTE, SYRINX: this firmware's own waveguides */
+#include "waveguide.c"                           /* THROAT, FLUTE, SYRINX, HAWK: this firmware's own waveguides */
 
-enum { RZ_MODAL, RZ_SYMP, RZ_STRING, RZ_THROAT, RZ_FLUTE, RZ_SYRINX, RZ_COUNT };
-static const char *const RZ_NAME[RZ_COUNT] = {"MODAL", "SYMP STRING", "STRING", "THROAT", "FLUTE", "SYRINX"};
+enum { RZ_MODAL, RZ_SYMP, RZ_STRING, RZ_THROAT, RZ_FLUTE, RZ_SYRINX, RZ_HAWK, RZ_COUNT };
+static const char *const RZ_NAME[RZ_COUNT] = {"MODAL", "SYMP STRING", "STRING", "THROAT", "FLUTE", "SYRINX", "HAWK"};
 static const char *const RZ_CHORD_NAME[8] = {"OCT", "5TH", "4TH", "MAJ", "MIN", "SUS", "7TH", "OCTAVES"};
 static const int8_t RZ_CHORDS[8][PX_NSYMP] = {   /* semitones above the note (Felucca's PHYS chords) */
     {-12, 12, 24}, {7, 12, 19}, {5, 12, 17}, {4, 7, 12}, {3, 7, 12}, {2, 7, 14}, {4, 7, 10}, {12, 24, 36},
@@ -39,9 +39,9 @@ static const int8_t RZ_CHORDS[8][PX_NSYMP] = {   /* semitones above the note (Fe
 /* model 1.0 (Q20) -> Q15: measured so that the wet output is about as loud as the dry at every DAMPING (a longer
  * decay holds more energy: 20x for the modes from DAMPING 0 to 127, 6x for the strings): gain 2^(off - slope d),
  * octaves Q16 (tests/basis_test.c checks it) */
-static const int32_t RZ_GAIN[RZ_COUNT] = {9000, 5200, 5200, 9000, 1800, 2600};   /* (THROAT: per animal, too) */
-static const int32_t RZ_OFF[RZ_COUNT] = {229376, 0, 0, 0, 0, 0};          /* 3.5, 0, 0 octaves */
-static const int32_t RZ_SLOPE[RZ_COUNT] = {283771, 170394, 170394, 0, 0, 0};   /* 4.33, 2.6, 2.6 octaves over the knob */
+static const int32_t RZ_GAIN[RZ_COUNT] = {9000, 5200, 5200, 9000, 1800, 2600, 2600};   /* (THROAT: per animal, too) */
+static const int32_t RZ_OFF[RZ_COUNT] = {229376, 0, 0, 0, 0, 0, 0};          /* 3.5, 0, 0 octaves */
+static const int32_t RZ_SLOPE[RZ_COUNT] = {283771, 170394, 170394, 0, 0, 0, 0};   /* 4.33, 2.6, 2.6 octaves over the knob */
 #define RZ_IN_SHIFT 5                            /* Q15 -> Q20 */
 
 #define RZ_POLY 4                                /* resonators (Rings: 1, 2 or 4) */
@@ -83,8 +83,10 @@ static void rz_reset(rz_t *R, uint32_t md)
         R->u.m.rng = 0x9E3779B9u;
     else if (md == RZ_FLUTE)
         R->u.f.rng = 0x9E3779B9u;
-    else if (md == RZ_SYRINX)
+    else if (md == RZ_SYRINX || md == RZ_HAWK) {
         R->u.x.rng = 0x9E3779B9u;
+        R->u.x.quiet = 1;
+    }
     else if (md == RZ_THROAT)
         R->u.t.ag = 4096;                        /* (the automatic gain at 1) */
     else {
@@ -202,6 +204,15 @@ static void rz_run(uint32_t r, uint32_t n)
                 rz_view.a[i] = (int16_t)(32767 / (int32_t)(i * i + 1u));
             }
             rz_view.n = i;
+        }
+        break;
+    case RZ_HAWK:
+        wg_hawk_run(&R->u.x, in, y, n, f0, strc / 516, pos, brit, damp);
+        if (view) {
+            uint64_t a = ((uint64_t)f0 * px_exp2(5 * 32768)) >> 16;
+            rz_view.f[0] = a < 0x7F000000u ? (uint32_t)a : 0u;
+            rz_view.a[0] = 32767;
+            rz_view.n = 1;
         }
         break;
     case RZ_SYRINX:
