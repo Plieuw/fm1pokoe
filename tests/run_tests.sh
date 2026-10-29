@@ -61,7 +61,7 @@ san_try() {
             cat "$OUT/san_try.log"
             return 0
         fi
-        if ! grep -q "DEADLYSIGNAL" "$OUT/san_try.log" || grep -q " ok$\| FAIL$" "$OUT/san_try.log"; then
+        if ! grep -q "DEADLYSIGNAL\|unexpected memory mapping" "$OUT/san_try.log" || grep -q " ok$\| FAIL$" "$OUT/san_try.log"; then
             cat "$OUT/san_try.log"
             return 1
         fi

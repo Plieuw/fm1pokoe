@@ -429,11 +429,13 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
         break;
     }
     case 11: {  /* PW CLUSTER: six detuned pulses, their pulse width Y */
-        uint32_t pw = 0x10000000u + (uint32_t)y * 0x6000u;
+        uint32_t pw = 0x10000000u + (uint32_t)y * 0x6000u, ci[6];
+        for (j = 0; j < 6u; j++)                     /* (the increments: once a block) */
+            ci[j] = np_mul(inc, (uint32_t)(65536 + ((int32_t)j * 2 - 5) * (x >> 6)));
         for (i = 0; i < n; i++) {
             int32_t s = 0;
             for (j = 0; j < 6u; j++) {
-                S->ph[j] += NPF(np_mul(inc, (uint32_t)(65536 + ((int32_t)j * 2 - 5) * (x >> 6))));
+                S->ph[j] += NPF(ci[j]);
                 s += np_pulse(S->ph[j], pw);
             }
             out[i] = s / 4;
@@ -443,17 +445,22 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     case 12:    /* CR CLUSTER: six detuned sines, a slow FM on all */
     case 13:    /* SINE FM CLUST: six detuned sines, each FMed by its own sine */
     case 14: {  /* TRI FM CLUST: six detuned triangles, each FMed by its own sine */
+        uint32_t cv[6], mv[6];
+        for (j = 0; j < 6u; j++) {                   /* (the increments: once a block) */
+            cv[j] = np_mul(inc, (uint32_t)(65536 + ((int32_t)j * 2 - 5) * (x >> 6)));
+            mv[j] = np_mul(cv[j], NP_MODR[j]);
+        }
         for (i = 0; i < n; i++) {
             int32_t s = 0, slow;
             S->mp[5] += NPF(inc >> 4);
             slow = np_sin(S->mp[5]);
             for (j = 0; j < 6u; j++) {
-                uint32_t ci = np_mul(inc, (uint32_t)(65536 + ((int32_t)j * 2 - 5) * (x >> 6)));
+                uint32_t ci = cv[j];
                 int32_t m;
                 if (alg == 12u)
                     m = slow;
                 else {
-                    S->mp[j] += NPF(np_mul(ci, NP_MODR[j]));
+                    S->mp[j] += NPF(mv[j]);
                     m = np_sin(S->mp[j]);
                 }
                 S->ph[j] += NPF(np_fm(ci, m, y));
@@ -465,7 +472,9 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     }
     case 15:    /* PRIME CLUSTER: 16 saws detuned by the primes, one sine FMs them all */
     case 16: {  /* PRIME C NOISE: 16 triangles detuned by the primes, white noise FMs them */
-        uint32_t sp = (uint32_t)x >> 6;              /* a prime's share, 0 .. 512 / 65536 */
+        uint32_t sp = (uint32_t)x >> 6, ci[16];      /* a prime's share, 0 .. 512 / 65536 */
+        for (j = 0; j < 16u; j++)                    /* (the increments: once a block) */
+            ci[j] = np_mul(inc, 65536u + sp * NP_PRIMES[j]);
         for (i = 0; i < n; i++) {
             int32_t s = 0, m;
             if (alg == 15u) {
@@ -474,7 +483,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
             } else
                 m = np_noise(&S->rng);
             for (j = 0; j < 16u; j++) {
-                S->ph[j] += NPF(np_fm(np_mul(inc, 65536u + sp * NP_PRIMES[j]), m, y >> 1));
+                S->ph[j] += NPF(np_fm(ci[j], m, y >> 1));
                 s += alg == 15u ? np_saw(S->ph[j]) : np_tri(S->ph[j]);
             }
             out[i] = s / 6;
@@ -550,13 +559,16 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     }
     case 22: {  /* WAKING FILOM.: 16 random walkers in a box of X tune pulse oscillators, each FMing the next */
         int32_t box = 2000 + x * 3 / 2;              /* (at most ~0.78: no frequency below 0) */
+        uint32_t ci[16];
         for (i = 0; i < n; i++) {
             int32_t s = 0, prev = S->last[0];
             for (j = 0; j < 16u; j++) {
                 int32_t o;
-                if (!(i & 7u))
+                if (!(i & 7u)) {                     /* (the walk, and the increment it sets: every 8 samples) */
                     np_walk(&S->walk[j], &S->rng, 600, box);
-                S->ph[j] += NPF(np_fm(np_mul(inc, (uint32_t)(65536 + S->walk[j])), prev, y >> 2));
+                    ci[j] = np_mul(inc, (uint32_t)(65536 + S->walk[j]));
+                }
+                S->ph[j] += NPF(np_fm(ci[j], prev, y >> 2));
                 o = np_pulse(S->ph[j], 0x80000000u);
                 s += o;
                 prev = o;
@@ -597,7 +609,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     case 26: {  /* WHO KNOWS: a pulse wave through the same four swept band-passes */
         static const uint32_t BASE[4] = {0x01200000u, 0x02400000u, 0x04800000u, 0x09000000u};   /* ~200 .. 1600 Hz */
         static const uint16_t LR[4] = {300, 470, 710, 1130};   /* hundredths of a hertz */
-        uint32_t lr = 1u + (uint32_t)x / 64u;
+        uint32_t lr = 1u + (uint32_t)x / 64u, fq[4];
         for (i = 0; i < n; i++) {
             int32_t in, s = 0;
             uint32_t prev = S->ph[0];
@@ -609,10 +621,10 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
             } else
                 in = np_pulse(S->ph[0], 0x40000000u);
             for (j = 0; j < 4u; j++) {
-                int32_t t;
                 S->mp[j] += LR[j] * 10u * lr;            /* 0.3 .. 1.1 Hz, x 1 .. 512 */
-                t = np_tri(S->mp[j]);
-                s += np_bp(&S->lo[j], &S->bd[j], in, np_mul(BASE[j], (uint32_t)px_exp2((t * (y >> 6)) >> 7)), 3000);
+                if (!(i & 3u))                           /* (the sweep's frequency: every 4 samples) */
+                    fq[j] = np_mul(BASE[j], (uint32_t)px_exp2((np_tri(S->mp[j]) * (y >> 6)) >> 7));
+                s += np_bp(&S->lo[j], &S->bd[j], in, fq[j], 3000);
             }
             out[i] = s / 2;
         }
@@ -632,13 +644,16 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     }
     case 28: {  /* RWALK BITCRUSH: nine walkers in a box tune nine pulses (and their widths); crushed by the first */
         int32_t box = 2000 + x * 3 / 2;
+        uint32_t ci[9];
         for (i = 0; i < n; i++) {
             int32_t s = 0, w;
             uint32_t bits;
             for (j = 0; j < 9u; j++) {
-                if (!(i & 7u))
+                if (!(i & 7u)) {
                     np_walk(&S->walk[j], &S->rng, 500, box);
-                S->ph[j] += NPF(np_mul(inc, (uint32_t)(65536 + S->walk[j]) * (1u + j % 3u) / 2u));
+                    ci[j] = np_mul(inc, (uint32_t)(65536 + S->walk[j]) * (1u + j % 3u) / 2u);
+                }
+                S->ph[j] += NPF(ci[j]);
                 s += np_pulse(S->ph[j], 0x80000000u + (uint32_t)S->walk[j] * 16384u);
             }
             s /= 4;

@@ -66,6 +66,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         }
         if (fm1_audio_free_half() != half)
             felucca_dbg.late++;                         /* the DMA moved on while we rendered */
+        if (us * 100u > (HALF_FRAMES * 1000000u / FS) * 80u)
+            synth_shed = 1;                             /* (over 80 % of the half: the synth lets a voice go) */
         felucca_dbg.halves++;
         felucca_dbg.last_us = us;
         if (us > felucca_dbg.max_us)

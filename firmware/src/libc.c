@@ -2,9 +2,24 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The few libc routines the compiler may call implicitly (struct copies,
  * zeroing). Freestanding: no other libc. */
-void *memset(void *d, int c, unsigned n)
+void *memset(void *d, int c, unsigned n)        /* (whole words where it can: a voice's buffer, 8 KB, is cleared in the
+                                                  * audio ISR when its oscillator changes) */
 {
     unsigned char *p = d;
+    while (n && ((unsigned long)p & 3u)) {
+        *p++ = (unsigned char)c;
+        n--;
+    }
+    {
+        unsigned w = (unsigned char)c * 0x01010101u;
+        unsigned *q = (unsigned *)(void *)p;
+        for (; n >= 16u; n -= 16u, q += 4) {
+            q[0] = w; q[1] = w; q[2] = w; q[3] = w;
+        }
+        for (; n >= 4u; n -= 4u)
+            *q++ = w;
+        p = (unsigned char *)q;
+    }
     while (n--)
         *p++ = (unsigned char)c;
     return d;
@@ -14,6 +29,14 @@ void *memcpy(void *d, const void *s, unsigned n)
 {
     unsigned char *p = d;
     const unsigned char *q = s;
+    if (!(((unsigned long)p | (unsigned long)q) & 3u)) {   /* (both aligned: words) */
+        unsigned *pw = (unsigned *)(void *)p;
+        const unsigned *qw = (const unsigned *)(const void *)q;
+        for (; n >= 4u; n -= 4u)
+            *pw++ = *qw++;
+        p = (unsigned char *)pw;
+        q = (const unsigned char *)qw;
+    }
     while (n--)
         *p++ = *q++;
     return d;

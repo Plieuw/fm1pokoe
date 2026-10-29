@@ -238,6 +238,8 @@ static const int16_t VOICE_PAN[4] = {-32767, 32767, -16384, 16384};
 /* ORBIT: the pan also follows the voice's picture: the circuit's x (the double scroll's two lobes: left and right),
  * low-passed to ~7 Hz, or for a noise program (whose picture is noise) a drift to a new random place every ~0.2 s;
  * ORBIT how far (added to BASIS's place, together at most full left / right). The resonators follow their voices */
+static volatile uint8_t synth_shed;              /* audio.c: the last half took too long: let the least needed voice go */
+static uint32_t synth_sheds;                     /* (how often: a diagnostic) */
 static uint32_t voice_rr;                        /* the voice the next note looks at first (the cycle) */
 static int16_t synth_pan_next;                  /* karma.c: the next note's place instead (synth_pan_set) */
 static uint8_t synth_pan_set;
@@ -589,6 +591,24 @@ static void synth_render(int32_t *out, uint32_t n)
     int32_t m = (int32_t)sys.master_q12, sum[CTL], dl[CTL], dr[CTL], basis = (int32_t)(sys.basis & 127u);
     voice_t *tv = 0;
     int inner;
+    if (synth_shed) {                                   /* the CPU over its budget: one voice less, the one least heard
+                                                         * (the oldest ringing tail, else released, else the oldest) */
+        voice_t *best = 0;
+        uint32_t st;
+        synth_shed = 0;
+        for (st = ST_TAIL; st >= ST_RELEASE && !best; st--)
+            for (k = 0; k < NVOICE; k++)
+                if (voice[k].stage == st && (!best || voice[k].age < best->age))
+                    best = &voice[k];
+        if (!best && sys.voices >= 3u)                  /* (held notes only when there are many) */
+            for (k = 0; k < NVOICE; k++)
+                if (voice[k].stage != ST_OFF && (!best || voice[k].age < best->age))
+                    best = &voice[k];
+        if (best) {
+            best->stage = ST_OFF;
+            synth_sheds++;
+        }
+    }
     chua_params();
     env_params();
     inner = chua_regime(cc.chaos) != REG_OUTER;

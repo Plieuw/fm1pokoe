@@ -156,6 +156,9 @@ static void wav_hdr(FILE *f, uint32_t frames)
 
 int main(int argc, char **argv)
 {
+    if (getenv("SIZES"))
+        printf("   (sizes: rz_t %u, its union %u, np_t %u, np_buf %u, voice_t %u)\n", (unsigned)sizeof(rz_t),
+               (unsigned)sizeof rz[0].u, (unsigned)sizeof(np_t), (unsigned)sizeof np_buf[0], (unsigned)sizeof(voice_t));
     uint32_t k, w;
     keys_init();
     sys.master_q12 = 4096;
@@ -526,6 +529,32 @@ int main(int argc, char **argv)
         okk &= voice[1].note == 48u && voice[2].note == 50u && voice[2].pan == VOICE_PAN[2];
         synth_kill();
         check("BASIS: the notes cycle through the voices, each voice at its own place", okk);
+    }
+
+    /* the CPU governor: a half over budget lets one voice go, the least heard (a tail before a held note) */
+    {
+        uint32_t okk = 1;
+        synth_kill();
+        sys.attack = 0; sys.sustain = 127; sys.release = 60;
+        synth_note_on(48, 100); synth_note_on(52, 100); synth_note_on(55, 100); synth_note_on(59, 100);
+        for (k = 0; k < 100u; k++)
+            synth_render(buf, CTL);
+        synth_note_off(52);
+        synth_render(buf, CTL);
+        synth_shed = 1;
+        synth_render(buf, CTL);
+        okk &= voice[1].stage == ST_OFF && voice[0].stage != ST_OFF && voice[2].stage != ST_OFF && !synth_shed;
+        if (!okk)
+            printf("   (governor 1: stages %u %u %u %u, notes %u %u)\n", voice[0].stage, voice[1].stage, voice[2].stage,
+                   voice[3].stage, voice[0].note, voice[1].note);
+        synth_shed = 1;                                  /* held notes only: three of them, the oldest goes */
+        synth_render(buf, CTL);
+        synth_render(buf, CTL);
+        okk &= voice[0].stage == ST_OFF && voice[2].stage != ST_OFF;
+        if (!okk)
+            printf("   (governor: stages %u %u %u %u)\n", voice[0].stage, voice[1].stage, voice[2].stage, voice[3].stage);
+        synth_kill();
+        check("CPU governor: over budget, the least heard voice goes", okk);
     }
 
     /* the MOD ENV's BEND: 64 straight (bit for bit), ends kept (0 and full), monotonic, + below the line (exponential),

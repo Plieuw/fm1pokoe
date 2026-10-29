@@ -180,7 +180,7 @@ static inline int fm1_cpu1_wait(void)
                 fm1_c1_wait_max = FM1_C1_T4 - t0;
             return 0;
         }
-        if (FM1_C1_T4 - t0 > 24000u * 30u) {    /* 30 ms (Jangada: 4): a job is far shorter, but a preset or an
+        if (FM1_C1_T4 - t0 > 24000u * 10u) {    /* 10 ms (Jangada: 4): a job is far shorter, but a preset or an
                                                  * oscillator changed under every voice at once (states anew, the
                                                  * flash's cache cold) took longer, and holding core 1 in the middle
                                                  * of a job was what crashed (fm1_sys.h): a glitch, not a hold */
