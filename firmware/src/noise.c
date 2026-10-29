@@ -234,6 +234,23 @@ static const uint16_t NP_PRIMES[16] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 3
 static const uint16_t NP_FIB[16] = {1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597};
 static const uint32_t NP_MODR[6] = {65536, 92682, 131072, 180879, 196608, 32768};   /* 1, 1.41, 2, 2.76, 3, 0.5 */
 
+/* the MOD ENV's BEND: the envelope's level x (Q15) curved, 64 straight; above, towards x^3 (rises slowly, then
+ * fast; falls fast, then slowly: exponential); below, towards 1 - (1 - x)^3 (the other way: logarithmic) */
+static int32_t np_bend(int32_t x, uint32_t bend)
+{
+    int32_t b = (int32_t)(bend & 127u) - 64, t, m;
+    if (!b)
+        return x;
+    if (b > 0)
+        t = (((x * x) >> 15) * x) >> 15;
+    else {
+        int32_t u = 32768 - x;
+        t = 32768 - ((((u * u) >> 15) * u) >> 15);
+    }
+    m = b < 0 ? -b : b + 1;                      /* 0 .. 64 */
+    return x + (((t - x) * m) >> 6);
+}
+
 /* ---------------------------------------------------------------- render --- */
 static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint32_t n)
 {
@@ -270,14 +287,14 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
                 } else
                     S->menv -= id;
             }
-            fk[i] = S->menv >> 15;               /* (Q15, for the VCA below) */
+            fk[i] = (uint32_t)np_bend((int32_t)(S->menv >> 15), sys.menv_bend);   /* (Q15, BEND, for the FM below) */
         }
     }
     {   /* the FM oscillator's depth: DEPTH (always) + HEIGHT x the envelope, each depth^2 x 1.5 (Q14: 0 .. 1.48), at
          * most 1.48 together */
         int32_t dd = (int32_t)(dep * dep * 3u / 2u), dh = (int32_t)(hgt * hgt * 3u / 2u);
         if (voice + k == render_tv) {            /* (the screen: the depth now, 0..32767) */
-            int32_t now = dd + ((dh * (int32_t)(S->menv >> 15)) >> 15);
+            int32_t now = dd + ((dh * np_bend((int32_t)(S->menv >> 15), sys.menv_bend)) >> 15);
             sys.menv_view = (uint16_t)(now >= 24193 ? 32767 : now * 32767 / 24193);
         }
         if (fm) {   /* per sample the factor on every audio-rate increment, Q16 */

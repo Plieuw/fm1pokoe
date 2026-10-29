@@ -476,7 +476,7 @@ int main(int argc, char **argv)
     {
         uint32_t okk = 1, b, j, r = 0x13579BDFu;
         static volatile uint8_t *const P[] = {&sys.chaos, &sys.shape, &sys.output, &sys.ring, &sys.np_x, &sys.np_y,
-            &sys.np_level, &sys.mod_wave, &sys.mod_depth, &sys.mod_fine, &sys.menv_len, &sys.menv_skew,
+            &sys.np_level, &sys.mod_wave, &sys.mod_depth, &sys.mod_fine, &sys.menv_len, &sys.menv_skew, &sys.menv_bend,
             &sys.menv_height, &sys.fx_struct, &sys.fx_bright, &sys.fx_damp, &sys.fx_pos, &sys.fx_mix, &sys.sh_size,
             &sys.sh_decay, &sys.sh_shimmer, &sys.sh_mix, &sys.sh_tone, &sys.basis, &sys.orbit, &sys.attack,
             &sys.decay, &sys.sustain, &sys.release};
@@ -504,10 +504,32 @@ int main(int argc, char **argv)
         sys.chaos = 85; sys.shape = 76; sys.output = 0; sys.ring = 50; sys.attack = 6; sys.decay = 80; sys.sustain = 110;
         sys.release = 70; sys.fx_model = 0; sys.fx_struct = 70; sys.fx_bright = 90; sys.fx_damp = 100; sys.fx_pos = 24;
         sys.sh_size = 100; sys.sh_decay = 90; sys.sh_shimmer = 70; sys.sh_interval = 0; sys.sh_tone = 80;
-        sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64; sys.menv_len = 80; sys.menv_skew = 10;
+        sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64; sys.menv_len = 80; sys.menv_skew = 10; sys.menv_bend = 64;
         sys.fx_mix = 0; sys.sh_mix = 0; sys.basis = 0; sys.orbit = 0; sys.mod_depth = 0; sys.menv_height = 0;
         sys.np_x = sys.np_y = sys.np_level = 64; sys.osc = 0;
         check("every sound parameter at random every block, presets, 0..127 notes: in bounds", okk);
+    }
+
+    /* the MOD ENV's BEND: 64 straight (bit for bit), ends kept (0 and full), monotonic, + below the line (exponential),
+     * - above it (logarithmic), the most at the ends of the knob */
+    {
+        uint32_t okk = 1, bd;
+        int32_t x;
+        for (x = 0; x <= 32768; x += 512)
+            okk &= np_bend(x, 64) == x;
+        for (bd = 0; bd < 128u; bd += 9u) {
+            int32_t prev = -1;
+            okk &= np_bend(0, bd) == 0 && np_bend(32768, bd) == 32768;
+            for (x = 0; x <= 32768; x += 256) {
+                int32_t y = np_bend(x, bd);
+                okk &= y >= prev && y >= 0 && y <= 32768;
+                prev = y;
+                if (x > 0 && x < 32768)
+                    okk &= bd > 64u ? y <= x : bd < 64u ? y >= x : y == x;
+            }
+        }
+        okk &= np_bend(16384, 127) < 5000 && np_bend(16384, 0) > 28000;   /* (x^3: 1/8; 1 - (1/2)^3: 7/8) */
+        check("MOD ENV BEND: straight at 64, ends kept, monotonic, both ways", okk);
     }
 
     /* the FM oscillator (MOD): at DEPTH 0 its other knobs change nothing, bit for bit; at full DEPTH, every wave and

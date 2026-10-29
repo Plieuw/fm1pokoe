@@ -94,6 +94,7 @@ FM-oscillator, gestart door elke noot (hij loopt zijn vorm af, ook als je de toe
 | KNOB 1 LENGTH | de hele duur, 0,5 ms .. 10 s |
 | KNOB 2 SKEW | waar de piek valt: 0 = meteen (FALL: een aanslag die wegvalt), 64 = in het midden, 127 = aan het eind (RISE: aanzwellen, dan weg) |
 | KNOB 3 HEIGHT | hoeveel FM de envelope toevoegt bovenop DEPTH (0 = geen envelope) |
+| KNOB 4 BEND | de kromming, twee kanten op: in het midden STRAIGHT (recht); rechtsom (+) exponentieel: traag omhoog en dan snel, snel omlaag met een lange staart (een klassieke FM-pluk); linksom (−) logaritmisch: snel omhoog en lang bovenin, dan pas omlaag |
 
 DEPTH (MOD-pagina) is de vaste FM die er altijd is, HEIGHT het deel dat de envelope er bovenop zet: samen zijn ze
 begrensd op het maximum. DEPTH 0 en HEIGHT hoog geeft alleen FM in de envelope (FM PLUCK); DEPTH hoog en HEIGHT 0 is

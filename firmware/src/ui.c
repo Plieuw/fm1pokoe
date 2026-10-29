@@ -14,7 +14,8 @@
  *            morphing), KNOB 2 RATIO to the note, KNOB 3 DEPTH (always, under the envelope), KNOB 4 FINE;
  *            drawn: its wave and a sine it modulates
  *   MOD ENV  (ENV again) the FM oscillator's AD envelope, started by each note: KNOB 1 LENGTH, KNOB 2 SKEW (where the
- *            peak falls), KNOB 3 HEIGHT (how much FM it adds to DEPTH); drawn: its shape over DEPTH, the depth now
+ *            peak falls), KNOB 3 HEIGHT (how much FM it adds to DEPTH), KNOB 4 BEND (its curve, both ways); drawn: its
+ *            shape over DEPTH, the depth now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   SCL      the PAN page (again: back HOME): KNOB 1 BASIS: the stereo spread, each note the next place of a cycle
  *            (left, right, half left, ...); KNOB 2 ORBIT: how far each voice's picture moves it (the circuit's
@@ -170,6 +171,7 @@ static void preset_load(uint32_t i)
         sys.menv_len = p->menv_height ? p->menv_len : 80;
         sys.menv_skew = p->menv_height ? p->menv_skew : 10;
         sys.menv_height = p->menv_height;
+        sys.menv_bend = 64;
     }
 }
 static int preset_edited(void)
@@ -185,11 +187,11 @@ static int preset_edited(void)
            sys.mod_depth != p->mod_depth || sys.menv_height != p->menv_height ||
            ((p->mod_depth || p->menv_height) && (sys.mod_wave != p->mod_wave || sys.mod_ratio != p->mod_ratio ||
            sys.mod_fine != 64u)) || (p->menv_height && (sys.menv_len != p->menv_len ||
-           sys.menv_skew != p->menv_skew))));
+           sys.menv_skew != p->menv_skew || sys.menv_bend != 64u))));
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485540u      /* "CHU@": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485541u      /* "CHUA": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -198,7 +200,7 @@ typedef struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;
     uint8_t osc, np_x, np_y, np_level;
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;
-    uint8_t menv_len, menv_skew, menv_height, basis, orbit;
+    uint8_t menv_len, menv_skew, menv_height, basis, orbit, menv_bend;
     uint8_t arp_on, arp_type, arp_bpm, arp_div, arp_gate, arp_swing, arp_hold;
     uint8_t midi_trs, midi_usb, midi_rx, midi_tx;
     uint8_t feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts, feg_curve[FEG_N];
@@ -249,6 +251,7 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.menv_len = (uint8_t)(s.menv_len & 127u);
         sys.menv_skew = (uint8_t)(s.menv_skew & 127u);
         sys.menv_height = (uint8_t)(s.menv_height & 127u);
+        sys.menv_bend = (uint8_t)(s.menv_bend & 127u);
         sys.basis = (uint8_t)(s.basis & 127u);
         sys.orbit = (uint8_t)(s.orbit & 127u);
         sys.arp_on = (uint8_t)(s.arp_on != 0);
@@ -320,6 +323,7 @@ static int settings_save(void)     /* 0 = saved */
     s.menv_len = sys.menv_len;
     s.menv_skew = sys.menv_skew;
     s.menv_height = sys.menv_height;
+    s.menv_bend = sys.menv_bend;
     s.basis = sys.basis;
     s.orbit = sys.orbit;
     s.arp_on = sys.arp_on;
@@ -957,7 +961,7 @@ static void draw_arp(void)
 }
 
 /* the MOD ENV page's picture: the FM depth over the envelope's LENGTH (the time axis: 0.5 ms .. 10 s, log), DEPTH the
- * floor, HEIGHT the peak above it at SKEW; on the right the newest voice's depth now */
+ * floor, HEIGHT the peak above it at SKEW, BEND its curve; on the right the newest voice's depth now */
 static void draw_menv(void)
 {
     const int32_t top = 10, bot = PLOT_H - 16, hh = bot - top, x0 = 8;
@@ -973,8 +977,17 @@ static void draw_menv(void)
     cv_rect(x0, bot, 196, 1, T_LINE);
     if (dd)
         cv_rect(x0, yf, 196, 1, ux_mix(T_BG, T_FM, 40));   /* DEPTH: the floor */
-    cv_line_t(x0, yf, xp, yp, c, 2);
-    cv_line_t(xp, yp, xl, yf, c, 2);
+    {   /* the rise and the fall, BEND curving them as noise.c does */
+        int32_t i, n = xl - x0, px = x0, py = yf;
+        for (i = 1; i <= n; i++) {
+            int32_t x = x0 + i, lvq = x <= xp ? (xp > x0 ? (x - x0) * 32768 / (xp - x0) : 32768)
+                                               : (xl > xp ? (xl - x) * 32768 / (xl - xp) : 0);
+            int32_t y = yf + (yp - yf) * np_bend(lvq, sys.menv_bend) / 32768;
+            cv_line_t(px, py, x, y, c, 2);
+            px = x;
+            py = y;
+        }
+    }
     cv_line_t(xl, yf, x0 + 196, yf, c, 2);
     cv_frame(212, top, 20, hh + 1, T_LINE);      /* the depth now */
     if (lv > 0)
@@ -1136,7 +1149,13 @@ static void ui_draw(void)
         else
             str_cpy(v, "OFF", sizeof v);
         ui_cell(T_C3, "3 HEIGHT", v);
-        ui_cell(T_C4, "4", "");
+        {
+            int32_t bd = (int32_t)(sys.menv_bend & 127u) - 64;
+            fmt_int(v, bd);
+            str_cpy(b, bd > 0 ? "+" : "", sizeof b);
+            ui_cat(b, sizeof b, bd ? v : "STRAIGHT");
+            ui_cell(T_C4, "4 BEND", b);
+        }
     } else if (sys.page == 4u) {
         mod_wave_name(b, sizeof b, sys.mod_wave);
         ui_cell(T_C1, "1 WAVE", b);
@@ -1644,6 +1663,7 @@ static void ui_input(void)
         knob(&sys.menv_len, EN_K1, 0);
         knob(&sys.menv_skew, EN_K2, 1);
         knob(&sys.menv_height, EN_K3, 2);
+        knob(&sys.menv_bend, EN_K4, 3);
     } else if (sys.page == 4u) {
         knob(&sys.mod_wave, EN_K1, 0);
         if ((s = ui_enc(EN_K2)) != 0) {           /* (the ratio in steps, a detent each) */

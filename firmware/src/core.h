@@ -50,6 +50,7 @@ static volatile struct {
     uint8_t np_x, np_y, np_level;   /* noise.c: its X, Y and level, 0..127 */
     uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;   /* noise.c: the FM oscillator (HOME again: the MOD page) */
     uint8_t menv_len, menv_skew, menv_height;   /* noise.c: its AD envelope (ENV again: the MOD ENV page) */
+    uint8_t menv_bend;           /* noise.c: its curve, 0 (bent up: fast, then slow) .. 64 straight .. 127 (bent down) */
     uint8_t basis;               /* synth.c: the voices' stereo spread, 0 (mono) .. 127 (ENV page, SELECT) */
     uint8_t orbit;               /* synth.c: how far each voice's picture moves it in the stereo field (ENV, ALGORITHM) */
     uint8_t arp_on, arp_type, arp_bpm, arp_div, arp_gate, arp_swing, arp_hold;   /* arp.c: the arpeggiator (ARP) */
@@ -64,7 +65,7 @@ static volatile struct {
          .sh_size = 100, .sh_decay = 90, .sh_shimmer = 70, .sh_mix = 0, .sh_interval = 0, .sh_tone = 80,
          .osc = 0, .np_x = 64, .np_y = 64, .np_level = 64,
          .mod_wave = 0, .mod_ratio = 3, .mod_depth = 0, .mod_fine = 64,
-         .menv_len = 80, .menv_skew = 10, .menv_height = 0, .basis = 0, .orbit = 0,
+         .menv_len = 80, .menv_skew = 10, .menv_height = 0, .menv_bend = 64, .basis = 0, .orbit = 0,
          .arp_on = 0, .arp_type = 0, .arp_bpm = 120, .arp_div = 7, .arp_gate = 80, .arp_swing = 0, .arp_hold = 0,
          .midi_trs = 1, .midi_usb = 3, .midi_rx = 0, .midi_tx = 0,
          .feg_val = 64, .feg_len = 9, .feg_depth = 127, .feg_target = 0, .feg_on = 0, .feg_has = 0, .feg_npts = 0,
