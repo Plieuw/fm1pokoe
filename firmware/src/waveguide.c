@@ -135,7 +135,7 @@ static void wg_throat_run(wg_throat_t *T, const int32_t *in, int32_t *y, uint32_
         }
         T->iav += ((int32_t)(si / n) - T->iav) / 8;
         T->oav += ((int32_t)(so / n) - T->oav) / 8;
-        gt = T->oav > 0 ? (int32_t)((uint32_t)T->iav * 14746u / (uint32_t)T->oav) : 4096;   /* Q12 (32 bits) */
+        gt = T->oav > 0 ? (int32_t)((uint32_t)T->iav * 14746u / (uint32_t)(T->oav > 0 ? T->oav : 1)) : 4096;   /* Q12 (32 bits; never / 0) */
         gt = gt < 512 ? 512 : gt > 98304 ? 98304 : gt;
         T->ag += (gt - T->ag) / 16;
         for (i = 0; i < n; i++)

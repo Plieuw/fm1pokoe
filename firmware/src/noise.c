@@ -266,7 +266,10 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     {   /* the MOD ENV: an AD envelope, started by each note (not gated: it runs its course), per sample. LENGTH the
          * whole of it, SKEW where the peak falls (0: at once, a fall; 64: the middle; 127: a rise, then off) */
         uint32_t len = ENV_FRAMES[sys.menv_len & 127u], a = len * (sys.menv_skew & 127u) / 127u;   /* (<= 441000 x 127: 32 bits) */
-        uint32_t ia = a ? ENV_MAX / a : ENV_MAX, id = len - a ? ENV_MAX / (len - a) : ENV_MAX;
+        /* (the divisors never 0, even where the guard says so: this compiler may divide before it tests, and on the
+         * second core a divide by 0 traps; SKEW 0 or 127 made one) */
+        uint32_t da = a ? a : 1u, dd = len - a ? len - a : 1u;
+        uint32_t ia = a ? ENV_MAX / da : ENV_MAX, id = len - a ? ENV_MAX / dd : ENV_MAX;
         const voice_t *v = &voice[k];
         if ((v->stage == ST_ATTACK || v->stage == ST_SUSTAIN) && v->age != S->mage) {   /* a note: from 0 again */
             S->mage = v->age;
