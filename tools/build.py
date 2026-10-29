@@ -233,6 +233,7 @@ def build_app():
                                ("common/bin/objdump", "-d", "-j", ".ram_text", *(("-j", ".c1_text") if CPU2 else ()),
                                 elf))
     (OUT / "felucca.dis").write_text(dis)
+    (OUT / "felucca.sym").write_text(syms)      # (with felucca.dis: a crash report's PC and RETS to a function)
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)

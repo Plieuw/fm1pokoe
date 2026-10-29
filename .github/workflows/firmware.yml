@@ -113,6 +113,14 @@ jobs:
             build/host/ui/sheet.png
             build/host/basis.wav
 
+      - name: Disassembly (a crash report's addresses to code)
+        uses: actions/upload-artifact@v4
+        with:
+          name: disassembly-${{ steps.ver.outputs.label }}
+          path: |
+            build/felucca.dis
+            build/felucca.sym
+
       - name: Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
