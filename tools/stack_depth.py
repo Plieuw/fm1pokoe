@@ -62,6 +62,13 @@ def main(args):
 
     if not want:
         want = ["main", "fm1_alnk0_irq", "fm1_timer5_irq", "keys_block", "karma_block", "synth_render", "ui_draw"]
+    if not args or "--gh" in args:            # (the biggest frames; and who calls through a register: not followed)
+        top = sorted(fn.items(), key=lambda kv: -kv[1]["frame"])[:30]
+        line = "biggest frames: " + ", ".join(f"{n} {f['frame']}" for n, f in top)
+        print(f"::notice title=stack frames::{line}" if gh else line)
+        ind = sorted((n for n, f in fn.items() if f["indirect"]), key=lambda n: -depth(n)[0])
+        line = "calls through a register (depth before them): " + ", ".join(f"{n} {depth(n)[0]}" for n in ind)
+        print(f"::notice title=stack indirect::{line}" if gh else line)
     for w in want:
         d, p = depth(w)
         line = f"{w}: {d} bytes deep: " + " > ".join(p)
