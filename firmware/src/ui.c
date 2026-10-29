@@ -1351,12 +1351,50 @@ static void ui_draw(void)
     ui_force = 0;
 }
 
+/* the splash: HAWK in capitals of a chunky 8-bit font (7 x 7 cells, strokes two cells wide, drawn as white outlines:
+ * no fill), under it CHUA, what it is, PLIEUWSKI in the theme's orange (the UI's own font) */
 static void draw_splash(void)
 {
+    static const uint8_t HAWK[4][7] = {                 /* rows, bit 6 the left cell */
+        {0x63, 0x63, 0x63, 0x7F, 0x63, 0x63, 0x63},     /* H */
+        {0x3E, 0x63, 0x63, 0x7F, 0x63, 0x63, 0x63},     /* A */
+        {0x63, 0x63, 0x6B, 0x6B, 0x7F, 0x77, 0x63},     /* W */
+        {0x63, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0x63},     /* K */
+    };
+    const int32_t c = 7, t = 2, gap = 8, w = 4 * 7 * c + 3 * gap, x0 = (240 - w) / 2, y0 = 4;
+    int32_t l, r, k;
     lcd_fill(0, 0, 240, 240, T_BG);
-    draw_text_box(0, 92, 240, &AF_L, "CHUA", T_THEME, 1);
-    draw_text_box(0, 134, 240, &AF_S, "A CHAOTIC CIRCUIT SYNTH", T_MID, 1);
-    draw_text_box(0, 152, 240, &AF_S, UI_VERSION, T_DIM, 1);
+    cv_begin(240, 7 * c + 8, T_BG);
+    for (l = 0; l < 4; l++)
+        for (r = 0; r < 7; r++)
+            for (k = 0; k < 7; k++) {
+                int32_t x = x0 + l * (7 * c + gap) + k * c, y = y0 + r * c;
+#define ON(rr, kk) ((rr) >= 0 && (rr) < 7 && (kk) >= 0 && (kk) < 7 && (HAWK[l][rr] >> (6 - (kk)) & 1u))
+                if (!ON(r, k))
+                    continue;
+                if (!ON(r - 1, k))                      /* the edges facing an empty cell: the outline */
+                    cv_rect(x, y, c, t, T_TEXT);
+                if (!ON(r + 1, k))
+                    cv_rect(x, y + c - t, c, t, T_TEXT);
+                if (!ON(r, k - 1))
+                    cv_rect(x, y, t, c, T_TEXT);
+                if (!ON(r, k + 1))
+                    cv_rect(x + c - t, y, t, c, T_TEXT);
+                if (!ON(r - 1, k - 1) && ON(r - 1, k) && ON(r, k - 1))   /* (inner corners closed) */
+                    cv_rect(x, y, t, t, T_TEXT);
+                if (!ON(r - 1, k + 1) && ON(r - 1, k) && ON(r, k + 1))
+                    cv_rect(x + c - t, y, t, t, T_TEXT);
+                if (!ON(r + 1, k - 1) && ON(r + 1, k) && ON(r, k - 1))
+                    cv_rect(x, y + c - t, t, t, T_TEXT);
+                if (!ON(r + 1, k + 1) && ON(r + 1, k) && ON(r, k + 1))
+                    cv_rect(x + c - t, y + c - t, t, t, T_TEXT);
+#undef ON
+            }
+    cv_blit(0, 46);
+    draw_text_box(0, 112, 240, &AF_L, "CHUA", T_TEXT, 1);
+    draw_text_box(0, 152, 240, &AF_S, "MODELLING SYNTHESIZER", T_MID, 1);
+    draw_text_box(0, 172, 240, &AF_M, "PLIEUWSKI", T_THEME, 1);
+    draw_text_box(0, 218, 240, &AF_S, UI_VERSION, T_DIM, 1);
 }
 
 /* -------------------------------------------------------------- LEDs --- */
