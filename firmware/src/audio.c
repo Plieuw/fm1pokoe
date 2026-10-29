@@ -23,17 +23,17 @@ static uint32_t audio_cpu_rem;
 
 static void audio_block(int32_t *out, uint32_t n)
 {
-    uint32_t i;
     keys_block();
     synth_render(out, n);
 #if FELUCCA_UAC
     uac_tap(out, n);                                    /* the USB audio input: the same output */
 #endif
-    for (i = 0; i < n; i++) {
-        out[2u * i] *= 1 << OUT_SHIFT;
-        out[2u * i + 1u] *= 1 << OUT_SHIFT;
-    }
 }
+
+/* the half is rendered here, then copied into the DMA's half only while that half is still the free one (after
+ * M-VAVE's fm1_open, app/board/audio.c): a render that ran late (the CPU full) leaves the half the DMA already
+ * plays alone, a short repeat instead of a crackle of old and new samples */
+static int32_t arender[HALF_WORDS] __attribute__((aligned(4)));
 
 void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) */
 {
@@ -51,7 +51,12 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         uac_render_start();
 #endif
         for (b = 0; b < HALF_FRAMES; b += CTL)
-            audio_block(o + 2u * b, CTL);
+            audio_block(arender + 2u * b, CTL);
+        if (fm1_audio_free_half() == half) {            /* (still ours: 24-bit, into the DMA's half) */
+            for (b = 0; b < HALF_WORDS; b++)
+                o[b] = arender[b] * (1 << OUT_SHIFT);
+            __asm__ volatile("csync" ::: "memory");
+        }
         fm1_audio_ack_half();
         us = (fm1_ticks() - t0 - t5_nested_ticks) / FM1_TICKS_PER_US;
         {

@@ -23,7 +23,8 @@ and the drawing code all come from Felucca. Each part keeps its own licence (see
   triggers. This firmware's own code and its own GEs, none of KARMA's
 - [fm1_open](https://github.com/m-vave/fm1_open) by M-VAVE (GPL-3.0 with a linking exception): the LCD's barrier
   before a DMA and its SPI reset after a timeout (`firmware/hal/fm1_lcd_hw.h`), the knobs' acceleration
-  (`firmware/src/ui.c` knob_accel), after its board files and screen.c
+  (`firmware/src/ui.c` knob_accel), the plot sent only where it changed (`firmware/src/gfx.c` cv_blit), the audio
+  copied into the DMA's half only while it is free (`firmware/src/audio.c`), after its board files and screen.c
 - Font: [Inter Tight](https://github.com/rsms/inter-tight) by The Inter Project Authors, [SIL OFL 1.1](LICENSES/OFL-InterTight.txt)
 - Second core: its start, mailbox and guards from [X0X](https://github.com/charlesvestal/fm1-x0x) by
   [charlesvestal](https://github.com/charlesvestal) with the dual-core findings of [Melodee](https://github.com/keremimo/melodee)

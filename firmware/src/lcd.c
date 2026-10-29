@@ -66,9 +66,12 @@ static void lcd_window(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1)
 
 static uint16_t lcd_fillbuf[240];
 
+static uint8_t lcd_fresh = 1;      /* the panel was painted over (a fill) or slept: gfx.c's cv_blit sends all again */
+
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, n, k, sw = (uint16_t)((c >> 8) | (c << 8));
+    lcd_fresh = 1;
     if (!w || !h || x >= 240u || y >= 240u)
         return;
     if (x + w > 240u)
@@ -137,6 +140,7 @@ static void lcd_init(void)
  * high no button, key or knob reads and nothing could wake the screen (#157 follow-up, found on 1.1.5) */
 static void lcd_power(uint32_t s)
 {
+    lcd_fresh = 1;
     if (s == 1u)
         lcd_cmd(0x11);                             /* SLPOUT */
     else if (s == 2u)

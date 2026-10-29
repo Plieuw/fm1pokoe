@@ -68,7 +68,7 @@ typedef struct { uint16_t off; uint8_t w; const char *label; } kc_t;
 #define AL_N(n) ((uint32_t)(n) << 8)
 
 #define CV_MAX (240u * 124u)      /* the graph strip is 240 x 124 */
-static uint16_t cv_px[CV_MAX] __attribute__((section(".pool")));
+static uint16_t cv_px[CV_MAX] __attribute__((section(".pool"), aligned(4)));   /* (cv_blit hashes it by words) */
 static uint32_t cv_w, cv_h;
 static uint16_t cv_bg;           /* what cv_begin cleared the canvas to */
 static uint8_t cv_scroll;        /* 1: drawing a scrolled view (its text may run past the canvas) */
@@ -203,16 +203,49 @@ static void cv_begin(uint32_t w, uint32_t h, uint16_t bg)
         cv_px[i] = s;
 }
 
+/* the big canvas (full width, the plot): only its bands of CV_BAND rows that changed since it was last sent there go
+ * out (after M-VAVE's fm1_open, app/screen.c: a still page sends next to nothing, the SPI and the bus free); a hash
+ * per band, all again after anything painted over the panel (lcd_fresh) or a canvas of another place or size */
+#define CV_BAND 8u
+#define CV_NBAND ((124u + CV_BAND - 1u) / CV_BAND)
+static uint32_t cv_hash[CV_NBAND], cv_key;
 static void cv_blit(uint32_t x, uint32_t y)
 {
+    uint32_t key = x | y << 8 | cv_w << 16 | cv_h << 24, nb, b, run = 0, all;
     GFX_HOOK_BLIT(x, y, 0u);
-    lcd_blit(x, y, cv_w, cv_h, cv_px);
+    if (cv_w != 240u || cv_h < 64u || cv_h > 124u) {
+        lcd_blit(x, y, cv_w, cv_h, cv_px);
+        return;
+    }
+    all = lcd_fresh || key != cv_key;
+    lcd_fresh = 0;
+    cv_key = key;
+    nb = (cv_h + CV_BAND - 1u) / CV_BAND;
+    for (b = 0; b <= nb; b++) {                  /* (b == nb: the last run's end) */
+        int changed = 0;
+        if (b < nb) {
+            const uint32_t *p = (const uint32_t *)(const void *)(cv_px + b * CV_BAND * 240u);
+            uint32_t rows = (b + 1u) * CV_BAND > cv_h ? cv_h - b * CV_BAND : CV_BAND, i, h = 2166136261u;
+            for (i = 0; i < rows * 120u; i++)
+                h = (h ^ p[i]) * 16777619u;
+            changed = all || h != cv_hash[b];
+            cv_hash[b] = h;
+        }
+        if (changed && !run)
+            run = b + 1u;                        /* (a run of changed bands starts: its band + 1) */
+        else if (!changed && run) {
+            uint32_t r0 = (run - 1u) * CV_BAND, r1 = b * CV_BAND > cv_h ? cv_h : b * CV_BAND;
+            lcd_blit(x, y + r0, 240u, r1 - r0, cv_px + r0 * 240u);
+            run = 0;
+        }
+    }
 }
 
 /* canvas rows r0 .. cv_h-1 only, to screen row y + r0 */
 static void cv_blit_from(uint32_t x, uint32_t y, uint32_t r0)
 {
     GFX_HOOK_BLIT(x, y, r0);
+    cv_key = 0;                                  /* (past cv_blit's hashes: all again next time) */
     if (r0 < cv_h)
         lcd_blit(x, y + r0, cv_w, cv_h - r0, cv_px + r0 * cv_w);
 }

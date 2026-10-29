@@ -1421,7 +1421,7 @@ static void ui_leds_init(void)                         /* the idle glow under ev
 
 /* ------------------------------------------------------------- input --- */
 /* a knob turned on (the same way within 40 ms) speeds up to x4: 0 .. 127 in a flick, one detent still one step
- * (after M-VAVE's fm1_open, app/screen.c read_encoders; selectors keep their detents) */
+ * (after M-VAVE's fm1_open, app/screen.c read_encoders); every knob and encoder (ui_enc), lists too */
 static uint32_t enc_t[NE];
 static int8_t enc_dir[NE];
 static uint8_t enc_speed[NE];
@@ -1435,12 +1435,17 @@ static int32_t knob_accel(uint32_t role, int32_t s)
     return s * enc_speed[role];
 }
 
-static void knob(volatile uint8_t *p, uint32_t role, uint32_t cell)
+static int32_t ui_enc(uint32_t role)            /* every knob and encoder: detents, accelerated */
 {
     int32_t s = panel_enc(role);
+    return s ? knob_accel(role, s) : 0;
+}
+
+static void knob(volatile uint8_t *p, uint32_t role, uint32_t cell)
+{
+    int32_t s = ui_enc(role);
     if (!s)
         return;
-    s = knob_accel(role, s);
     *p = (uint8_t)clamp(*p + s, 0, 127);
     if (cell < 4u) {
         ui_hot = (uint8_t)cell;
@@ -1531,41 +1536,41 @@ static void ui_input(void)
         knob(&sys.k_m[3], EN_K4, 3);
     } else if (sys.page == 8u) {
         knob(&sys.feg_val, EN_K1, 0);
-        if ((s = panel_enc(EN_K2)) != 0) {
+        if ((s = ui_enc(EN_K2)) != 0) {
             sys.feg_len = (uint8_t)clamp((int32_t)sys.feg_len + s, 0, FEG_NLEN - 1);
             ui_hot = 1; ui_hot_ms = fm1_ms;
         }
         knob(&sys.feg_depth, EN_K3, 2);
-        if ((s = panel_enc(EN_K4)) != 0) {
+        if ((s = ui_enc(EN_K4)) != 0) {
             sys.feg_target = (uint8_t)clamp((int32_t)sys.feg_target + s, 0, FEG_NT - 1);
             ui_hot = 3; ui_hot_ms = fm1_ms;
         }
     } else if (sys.page == 7u) {                /* MIDI: an input changed: what it held let go (no note hangs) */
-        if ((s = panel_enc(EN_K1)) != 0) {
+        if ((s = ui_enc(EN_K1)) != 0) {
             sys.midi_trs = (uint8_t)(s > 0);
             keys_panic_req = 1;
             ui_hot = 0; ui_hot_ms = fm1_ms;
         }
-        if ((s = panel_enc(EN_K2)) != 0) {
+        if ((s = ui_enc(EN_K2)) != 0) {
             sys.midi_usb = (uint8_t)clamp((int32_t)sys.midi_usb + s, 0, 3);
             keys_panic_req = 1;
             ui_hot = 1; ui_hot_ms = fm1_ms;
         }
-        if ((s = panel_enc(EN_K3)) != 0) {
+        if ((s = ui_enc(EN_K3)) != 0) {
             sys.midi_rx = (uint8_t)clamp((int32_t)sys.midi_rx + s, 0, 16);
             keys_panic_req = 1;
             ui_hot = 2; ui_hot_ms = fm1_ms;
         }
-        if ((s = panel_enc(EN_K4)) != 0) {
+        if ((s = ui_enc(EN_K4)) != 0) {
             sys.midi_tx = (uint8_t)clamp((int32_t)sys.midi_tx + s, 0, 15);
             ui_hot = 3; ui_hot_ms = fm1_ms;
         }
     } else if (sys.page == 6u) {
-        if ((s = panel_enc(EN_K1)) != 0) {
-            sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + knob_accel(EN_K1, s), 40, 250);
+        if ((s = ui_enc(EN_K1)) != 0) {
+            sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
             ui_hot = 0; ui_hot_ms = fm1_ms;
         }
-        if ((s = panel_enc(EN_K2)) != 0) {
+        if ((s = ui_enc(EN_K2)) != 0) {
             sys.arp_div = (uint8_t)clamp((int32_t)sys.arp_div + s, 0, ARP_NDIV - 1);
             ui_hot = 1; ui_hot_ms = fm1_ms;
         }
@@ -1577,7 +1582,7 @@ static void ui_input(void)
         knob(&sys.menv_height, EN_K3, 2);
     } else if (sys.page == 4u) {
         knob(&sys.mod_wave, EN_K1, 0);
-        if ((s = panel_enc(EN_K2)) != 0) {           /* (the ratio in steps, a detent each) */
+        if ((s = ui_enc(EN_K2)) != 0) {           /* (the ratio in steps, a detent each) */
             sys.mod_ratio = (uint8_t)clamp((int32_t)sys.mod_ratio + s, 0, NP_NRATIO - 1);
             ui_hot = 1;
             ui_hot_ms = fm1_ms;
@@ -1610,7 +1615,7 @@ static void ui_input(void)
         knob(&sys.sustain, EN_K3, 2);
         knob(&sys.release, EN_K4, 3);
     }
-    if ((s = panel_enc(EN_SELECT)) != 0 && sys.page == 0u) {   /* HOME: SELECT turns the view */
+    if ((s = ui_enc(EN_SELECT)) != 0 && sys.page == 0u) {   /* HOME: SELECT turns the view */
         sys.view = (uint8_t)((sys.view + V_COUNT * 8 + s) % V_COUNT);
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
@@ -1641,7 +1646,7 @@ static void ui_input(void)
             fx_pos_text(t, sizeof t, 0);
         ui_say(t);
     }
-    if ((s = panel_enc(EN_ALGO)) != 0 && sys.page == 3u) {
+    if ((s = ui_enc(EN_ALGO)) != 0 && sys.page == 3u) {
         sys.sh_interval = (uint8_t)((sys.sh_interval + SI_COUNT * 8 + s) % SI_COUNT);
         str_cpy(t, "INTERVAL ", sizeof t);
         ui_cat(t, sizeof t, SH_INTERVAL_NAME[sys.sh_interval]);
@@ -1671,8 +1676,8 @@ static void ui_input(void)
             ui_cat(t, sizeof t, " CIRCUIT");
         ui_say(t);
     }
-    if ((s = panel_enc(EN_PRESET)) != 0 && sys.page == 9u) {   /* KARMA: PRESETS is the tempo (the ARP page's BPM) */
-        sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + knob_accel(EN_PRESET, s), 40, 250);
+    if ((s = ui_enc(EN_PRESET)) != 0 && sys.page == 9u) {   /* KARMA: PRESETS is the tempo (the ARP page's BPM) */
+        sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
         str_cpy(t, arp_ext() ? "MIDI CLOCK: BPM " : "BPM ", sizeof t);
         fmt_int(v, sys.arp_bpm);
         ui_cat(t, sizeof t, v);

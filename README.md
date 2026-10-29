@@ -51,7 +51,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
-| KNOB 1–4 snel draaien | versnelt tot 4× (van 0 naar 127 in één zwaai); één klik blijft één stap. Ook voor BPM |
+| Snel draaien | elke knop en encoder (KNOB 1–4, SELECT, ALGORITHM, PRESETS) versnelt tot 4×, net als BPM (van 0 naar 127 in één zwaai); één klik blijft één stap |
 | MASTER | volume |
 | MIDI in (USB en TRS) | note on/off op het RX-kanaal (of elk: OMNI), CC 123 = all notes off; clock voor de arpeggiator |
 | USB | class-compliant MIDI + USB-audio-ingang (opnemen in je DAW) |

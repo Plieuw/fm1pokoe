@@ -22,9 +22,11 @@ static uint16_t fb[240 * 240];
 static int off_screen;
 static void lcd_sync(void) {}
 static void lcd_wake_now(void) {}
+static uint8_t lcd_fresh = 1;          /* (as lcd.c: gfx.c's cv_blit sends only the bands that changed) */
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, j;
+    lcd_fresh = 1;
     for (j = y; j < y + h && j < 240u; j++)
         for (i = x; i < x + w && i < 240u; i++)
             fb[j * 240u + i] = c;
@@ -92,11 +94,20 @@ static void run_ms(uint32_t ms)                  /* the audio for ms, the clock 
     }
 }
 
+static int stale_bands;                          /* frames whose plot on the panel is not the canvas (cv_blit's bands) */
 static void frames(uint32_t n)                  /* n UI frames, 40 ms of audio each (the scales settle) */
 {
     while (n--) {
         run_ms(40);
         ui_draw();
+        if (cv_w == 240u && cv_h == PLOT_H) {    /* (the plot drawn last: the panel must show it all) */
+            uint32_t i;
+            for (i = 0; i < 240u * PLOT_H; i++)
+                if (fb[PLOT_Y * 240u + i] != (uint16_t)(cv_px[i] >> 8 | cv_px[i] << 8)) {
+                    stale_bands++;
+                    break;
+                }
+        }
     }
 }
 
@@ -361,6 +372,10 @@ int main(int argc, char **argv)
     }
     if (off_screen) {
         printf("%d strips drawn outside the screen FAIL\n", off_screen);
+        bad = 1;
+    }
+    if (stale_bands) {
+        printf("ui shots: %d frames left part of the plot stale on the panel\n", stale_bands);
         bad = 1;
     }
     printf(bad ? "ui shots: FAILED\n" : "ui shots: ok (%s)\n", dir);
