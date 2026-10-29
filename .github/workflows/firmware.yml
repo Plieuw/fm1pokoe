@@ -10,6 +10,11 @@ on:
     tags: ["v[0-9].[0-9]*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      crash_addrs:
+        description: "a CRASH screen's addresses (hex, spaces between): their functions as annotations"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -112,6 +117,10 @@ jobs:
             build/chua.fwsc
             build/host/ui/sheet.png
             build/host/basis.wav
+
+      - name: Crash addresses
+        if: github.event.inputs.crash_addrs != ''
+        run: python3 tools/crash_where.py --gh ${{ github.event.inputs.crash_addrs }}
 
       - name: Disassembly (a crash report's addresses to code)
         uses: actions/upload-artifact@v4
