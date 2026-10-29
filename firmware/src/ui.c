@@ -891,9 +891,9 @@ static void draw_pan(void)
     cv_rect(x0 + w / 2, yc - 30, 1, 61, T_LINE);
     cv_text(x0 - 8, yc + 34, &AF_S, "L", T_DIM);
     cv_text_r(x0 + w + 8, yc + 34, &AF_S, "R", T_DIM, T_BG);
-    for (k = 0; k < 8; k++) {                    /* BASIS: the cycle's places (the next note's: tall) */
-        int32_t x = x0 + w / 2 + (int32_t)PAN_CYCLE[k] * basis / 127 * (w / 2) / 32767;
-        int nx = (uint32_t)k == (pan_next & 7u);
+    for (k = 0; k < (int32_t)NVOICE; k++) {      /* BASIS: the voices' places (the next note's: tall) */
+        int32_t x = x0 + w / 2 + (int32_t)VOICE_PAN[k & 3] * basis / 127 * (w / 2) / 32767;
+        int nx = (uint32_t)k == voice_rr;
         cv_rect(x, yc - (nx ? 12 : 6), nx ? 2 : 1, nx ? 25 : 13, nx ? T_MID : ux_mix(T_BG, T_THEME, 50));
     }
     for (k = 0; k < (int32_t)NVOICE; k++)        /* the voices sounding, where they are */

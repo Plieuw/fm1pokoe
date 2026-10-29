@@ -183,7 +183,7 @@ int main(int argc, char **argv)
     fm1_in.notes = 0;
     run_ms(10);
     check("octave +1: the key plays 72; changed to -1 while held, 72 still ends",
-          sent(0, 0x90, 72, KEY_VEL) && sent(1, 0x80, 72, 0) && voice[0].stage == ST_RELEASE);
+          sent(0, 0x90, 72, KEY_VEL) && sent(1, 0x80, 72, 0) && voice[1].note == 72u && voice[1].stage == ST_RELEASE);   /* (the next voice of the cycle) */
     sys.octave = 0;
     run_ms(2000);
 
@@ -338,7 +338,7 @@ int main(int argc, char **argv)
             sys.fx_mix = 0; sys.fx_model = RZ_MODAL; sys.fx_struct = 70; sys.fx_damp = 100;
             c1_mode = mode;
             sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30; sys.osc = 0;
-            sys.mod_depth = 0; sys.basis = 100; sys.orbit = 90; pan_next = 0;   /* (BASIS, ORBIT: panned, each core its own) */
+            sys.mod_depth = 0; sys.basis = 100; sys.orbit = 90; voice_rr = 0;   /* (BASIS, ORBIT: panned, each core its own) */
             memset(rz_epan, 0, sizeof rz_epan); memset(rz_age, 0, sizeof rz_age);
             for (b = 0; b < 2000u; b++) {
                 if (b % 250u == 0u)
@@ -510,6 +510,24 @@ int main(int argc, char **argv)
         check("every sound parameter at random every block, presets, 0..127 notes: in bounds", okk);
     }
 
+    /* BASIS's places belong to the voices: notes one after another cycle through the four, each voice always at its
+     * own place (left, right, half left, half right), a note held keeps its voice and place */
+    {
+        uint32_t okk = 1, j;
+        synth_kill();
+        for (j = 0; j < 9u; j++) {
+            synth_note_on(60u + j, 100);
+            okk &= voice[j % 4u].note == 60u + j && voice[j % 4u].pan == VOICE_PAN[j % 4u];
+            synth_note_off(60u + j);
+            voice[j % 4u].stage = ST_OFF;                /* (its tail over) */
+        }
+        synth_note_on(48, 100);                          /* voice 1 (after voice 0, the 9th): held */
+        synth_note_on(50, 100);                          /* voice 2 */
+        okk &= voice[1].note == 48u && voice[2].note == 50u && voice[2].pan == VOICE_PAN[2];
+        synth_kill();
+        check("BASIS: the notes cycle through the voices, each voice at its own place", okk);
+    }
+
     /* the MOD ENV's BEND: 64 straight (bit for bit), ends kept (0 and full), monotonic, + below the line (exponential),
      * - above it (logarithmic), the most at the ends of the knob */
     {
@@ -630,7 +648,7 @@ int main(int argc, char **argv)
             for (b = 0; b < 2u; b++) {                       /* 0: BASIS 0, 1: BASIS 127 */
                 synth_kill(); run_ms(1500);
                 sys.basis = b ? 127 : 0;
-                pan_next = 0;
+                voice_rr = 0;
                 for (j = 0; j < 4u; j++) {
                     uint32_t q;
                     e[j][0] = e[j][1] = 0;

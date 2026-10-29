@@ -219,7 +219,7 @@ typedef struct {
     uint8_t lpg_n;               /* frames until the next coefficient update */
     uint8_t osc;                 /* the oscillator its state belongs to (sys.osc when it started; a change restarts it) */
     uint8_t rz;                  /* the FX resonator it feeds (resonator.c: the one tuned to its note) */
-    int16_t pan;                 /* its place in the stereo field at BASIS 127, Q15 (- left): the next of PAN_CYCLE */
+    int16_t pan;                 /* its place in the stereo field at BASIS 127, Q15 (- left): VOICE_PAN (KARMA: its own) */
     int32_t orb;                 /* ORBIT: its picture's slow movement, Q15 (- left): the circuit's x low-passed (the
                                   * scroll it is on), a noise program a slow random drift */
     uint32_t orng, ocnt;         /* (the drift's random numbers, blocks to its next target) */
@@ -229,14 +229,15 @@ static voice_t voice[NVOICE];
 #define NP_COUNT 30                              /* the noise programs (noise.c, included below) */
 static void np_start(uint32_t k, uint32_t seed);
 static uint32_t rz_assign(uint32_t note);
-/* BASIS: each note takes the next place of the cycle (left, right, half left, half right, ...); BASIS scales them all,
- * held notes too. The pan law is a balance: the far side turned down, the centre at full level (BASIS 0: the mono
- * output as it was, bit for bit) */
-static const int16_t PAN_CYCLE[8] = {-32767, 32767, -16384, 16384, -24576, 24576, -8192, 8192};
+/* BASIS: each of the four voices has its own place (left, right, half left, half right), always the same, and the
+ * notes cycle through the voices (a new note takes the next free one); BASIS scales the places, held notes too. The
+ * pan law is a balance: the far side turned down, the centre at full level (BASIS 0: the mono output as it was, bit
+ * for bit) */
+static const int16_t VOICE_PAN[4] = {-32767, 32767, -16384, 16384};
 /* ORBIT: the pan also follows the voice's picture: the circuit's x (the double scroll's two lobes: left and right),
  * low-passed to ~7 Hz, or for a noise program (whose picture is noise) a drift to a new random place every ~0.2 s;
  * ORBIT how far (added to BASIS's place, together at most full left / right). The resonators follow their voices */
-static uint32_t pan_next;
+static uint32_t voice_rr;                        /* the voice the next note looks at first (the cycle) */
 static int16_t synth_pan_next;                  /* karma.c: the next note's place instead (synth_pan_set) */
 static uint8_t synth_pan_set;
 static uint32_t voice_clock;
@@ -262,9 +263,9 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     for (i = 0; i < NVOICE && !v; i++)              /* the same note again: retrigger its voice */
         if (voice[i].stage != ST_OFF && voice[i].note == note)
             v = &voice[i];
-    for (i = 0; i < NVOICE && !v; i++)              /* a free voice */
-        if (voice[i].stage == ST_OFF)
-            v = &voice[i];
+    for (i = 0; i < NVOICE && !v; i++)              /* a free voice: the next of the cycle */
+        if (voice[(voice_rr + i) % NVOICE].stage == ST_OFF)
+            v = &voice[(voice_rr + i) % NVOICE];
     if (!v) {                                       /* steal: the oldest ringing tail, else released, else the oldest */
         voice_t *best = 0;
         uint32_t s;
@@ -292,7 +293,8 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     }
     v->note = (uint8_t)note;
     v->rz = (uint8_t)rz_assign(note);
-    v->pan = synth_pan_set ? synth_pan_next : PAN_CYCLE[pan_next++ & 7u];
+    voice_rr = (uint32_t)(v - voice + 1) % NVOICE;
+    v->pan = synth_pan_set ? synth_pan_next : VOICE_PAN[(v - voice) & 3];
     if (v->stage == ST_OFF || v->stage == ST_TAIL) {  /* (a new voice: its picture's place from the middle) */
         v->orb = 0;
         v->ocnt = 0;
@@ -327,6 +329,7 @@ static void synth_kill(void)
     uint32_t i;
     for (i = 0; i < NVOICE; i++)
         voice[i].stage = ST_OFF;
+    voice_rr = 0;                                   /* (the cycle from the first voice again) */
 }
 
 /* the ADSR and the gate's control, one frame; 1 = the voice is done */
@@ -511,7 +514,7 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
  * or stopped: then it is held for good) C1_RUN takes nothing and this core renders them all. */
 static int32_t c1_bus[RZ_POLY][CTL];            /* its voices' output, per resonator they feed */
 static int32_t c1_dl[CTL], c1_dr[CTL];           /* and what BASIS takes off the left, the right */
-static int32_t vpan[NVOICE];                     /* this block's pan per voice (PAN_CYCLE x BASIS; ORBIT added by
+static int32_t vpan[NVOICE];                     /* this block's pan per voice (VOICE_PAN x BASIS; ORBIT added by
                                                   * voice_mix, which leaves the sum here), Q15 */
 
 /* a voice into the bus of its resonator; BASIS: what its pan takes off the far side into dl / dr */

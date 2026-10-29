@@ -101,9 +101,9 @@ begrensd op het maximum. DEPTH 0 en HEIGHT hoog geeft alleen FM in de envelope (
 vaste FM zoals voorheen. Het scherm toont de vorm boven de DEPTH-lijn en rechts de FM-diepte van de nieuwste stem nu.
 Nog een keer ENV: terug naar HOME.
 
-**BASIS (SCL, KNOB 1).** De stereo-spreiding van de stemmen. Elke noot die je speelt krijgt de volgende
-plek in een vaste cyclus: links, rechts, half links, half rechts, driekwart links, driekwart rechts, kwart links, kwart
-rechts, en weer van voren af aan. BASIS schaalt die plekken: 0 is mono (precies zoals voorheen), 127 de volle breedte.
+**BASIS (SCL, KNOB 1).** De stereo-spreiding van de stemmen. Elk van de vier stemmen heeft een vaste plek:
+links, rechts, half links, half rechts. De noten lopen de stemmen rond (elke nieuwe noot neemt de volgende vrije stem),
+dus ook de plekken, en een stem staat altijd op dezelfde plek. BASIS schaalt die plekken: 0 is mono (precies zoals voorheen), 127 de volle breedte.
 Ook noten die al klinken schuiven mee als je draait. De resonator van een noot klinkt op dezelfde plek als die noot; de
 shimmer krijgt het midden en maakt er zijn eigen stereo van. De pan-wet is een balans: het midden blijft op vol niveau,
 de andere kant gaat zachter (bij volle breedte uit).
