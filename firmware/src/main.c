@@ -90,6 +90,20 @@ static void fm1_fault(const fm1_crash_t *c)
     draw_text_line(10, 102, 220, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
     hexs(b, c->rets);
     draw_text_line(10, 120, 220, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
+    hexs(b, c->rete);                          /* the second column (after a photo: tools/crash_where.py, the CI's
+                                                * crash_addrs): RETE, RETX, SP (which stack: main or an interrupt), the
+                                                * last four branches (ETM), the seconds since power-on */
+    draw_text_line(126, 40, 110, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
+    hexs(b, c->retx);
+    draw_text_line(126, 60, 110, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
+    hexs(b, c->sp);
+    draw_text_line(126, 84, 110, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
+    for (t0 = 0; t0 < 4u; t0++) {
+        hexs(b, c->etm[t0]);
+        draw_text_line(t0 & 1u ? 126 : 10, 148 + 20 * (int32_t)(t0 >> 1), 110, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
+    }
+    hexs(b, c->uptime_ms / 1000u);
+    draw_text_line(10, 196, 220, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
     t0 = fm1_ticks();
     while ((uint32_t)(fm1_ticks() - t0) < 4000u * 1000u * FM1_TICKS_PER_US)
         ;

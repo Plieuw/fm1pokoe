@@ -442,6 +442,35 @@ int main(int argc, char **argv)
         sys.np_x = sys.np_y = sys.np_level = 64;
     }
 
+    /* every oscillator and FX model over the whole MIDI range (KARMA reaches 12..120, MIDI in 0..127), X / Y and FM at
+     * their ends, notes retriggered fast: nothing out of bounds (the sanitizers), bounded */
+    {
+        static const uint8_t NT[] = {0, 1, 12, 24, 36, 100, 108, 115, 120, 126, 127};
+        uint32_t a, j, b, m, okk = 1;
+        for (a = 0; a <= NP_COUNT; a++)
+            for (m = 0; m < 3u; m++) {
+                synth_kill();
+                sys.osc = (uint8_t)a;
+                sys.np_x = sys.np_y = (uint8_t)(m == 1u ? 0u : 127u);
+                sys.mod_depth = (uint8_t)(m == 2u ? 127u : 0u);
+                sys.mod_ratio = (uint8_t)(m == 2u ? NP_NRATIO - 1u : 0u);
+                sys.fx_model = (uint8_t)((a + m) % RZ_COUNT);
+                sys.fx_mix = 100;
+                for (b = 0; b < 3u * sizeof NT; b++) {
+                    synth_note_on(NT[(b * 7u) % sizeof NT], 127);
+                    for (j = 0; j < 4u; j++) {
+                        synth_render(buf, CTL);
+                        for (uint32_t k = 0; k < 2u * CTL; k++)
+                            if (buf[k] > 8388607 || buf[k] < -8388608)
+                                okk = 0;
+                    }
+                }
+            }
+        synth_kill();
+        sys.osc = 0; sys.np_x = sys.np_y = 64; sys.mod_depth = 0; sys.mod_ratio = 3; sys.fx_mix = 0; sys.fx_model = 0;
+        check("every oscillator and FX model over the whole MIDI range, fast retriggers: in bounds", okk);
+    }
+
     /* the FM oscillator (MOD): at DEPTH 0 its other knobs change nothing, bit for bit; at full DEPTH, every wave and
      * the lowest and highest ratio, every program changes, sounds and stays bounded without DC */
     {

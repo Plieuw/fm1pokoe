@@ -42,6 +42,7 @@ static inline void fm1_irq_on(void) { __asm__ volatile("csync\n\tsti" ::: "memor
 #define FM1_CRASH_MAGIC 0x43525348u          /* "CRSH" */
 typedef struct {
     uint32_t magic, count, vec, pc, rets, emu, dbg, sp, psr, icfg, uptime_ms;
+    uint32_t rete, retx;                     /* the exception's own return registers (the screen shows them too) */
     uint32_t etm[4];
     uint32_t early;                          /* consecutive crashes < 3 s after boot */
 #if FM1_CPU1_USED
@@ -131,6 +132,8 @@ void fm1_fault_c(uint32_t *f)
     fm1_crash.count = count + 1u;
     fm1_crash.vec = (f[19] - (uint32_t)(uintptr_t)fm1_fatal_stubs) / 6u - 1u;
     fm1_crash.pc = f[16];
+    fm1_crash.rete = f[17];
+    fm1_crash.retx = f[18];
     fm1_crash.rets = f[25];
     fm1_crash.emu = FM1_EMU_MSG;
     fm1_crash.dbg = FM1_DBG_MSG;
