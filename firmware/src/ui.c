@@ -229,7 +229,7 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.ring = (uint8_t)(s.ring & 127u);
         sys.view = (uint8_t)(s.view % V_COUNT);
         sys.preset = (uint8_t)(s.preset % NPRESETS);
-        sys.cpu2 = (uint8_t)(s.cpu2 != 0);
+        sys.cpu2 = (uint8_t)(s.cpu2 & 3u);
         sys.fx_model = (uint8_t)(s.fx_model % RZ_COUNT);
         sys.fx_struct = (uint8_t)(s.fx_struct & 127u);
         sys.fx_bright = (uint8_t)(s.fx_bright & 127u);
@@ -1316,7 +1316,9 @@ static void ui_draw(void)
             str_cpy(a, feg.rec ? "FREE EG   RECORDING: TURN KNOB 1" : !sys.feg_has ? "FREE EG   REC: RECORD" :
                     sys.feg_on ? "FREE EG   PLAYING" : "FREE EG   SELECT: PLAY", sizeof a);
         } else if (sys.page == 7u) {             /* MIDI: the second core (SELECT) */
-            str_cpy(a, sys.cpu2 ? "MIDI   2ND CORE ON" : "MIDI   2ND CORE OFF", sizeof a);
+            static const char *const C2[4] = {"MIDI   2ND CORE OFF", "MIDI   2ND CORE ALL", "MIDI   2ND CORE VOICES",
+                                              "MIDI   2ND CORE FX"};
+            str_cpy(a, C2[sys.cpu2 & 3u], sizeof a);
         } else if (sys.page == 6u) {             /* ARP: on or off, the pattern, HOLD */
             str_cpy(a, sys.arp_on ? "ARP ON  " : "ARP OFF  ", sizeof a);
             ui_cat(a, sizeof a, arp_type_name(sys.arp_type));
@@ -1746,12 +1748,14 @@ static void ui_input(void)
     } else if (s && sys.page == 8u) {           /* FREE EG: PLAY (right on, left off) */
         sys.feg_on = (uint8_t)(s > 0);
         ui_say(sys.feg_on ? (sys.feg_has ? "PLAY ON" : "NOTHING RECORDED") : "PLAY OFF");
-    } else if (s && sys.page == 7u) {           /* MIDI: 2ND CORE (right on, left off; saved at once) */
-        if ((uint8_t)(s > 0) != sys.cpu2) {
-            sys.cpu2 = (uint8_t)(s > 0);
+    } else if (s && sys.page == 7u) {           /* MIDI: 2ND CORE: OFF, ALL, VOICES only, FX only (saved at once) */
+        static const char *const C2[4] = {"2ND CORE OFF", "2ND CORE ALL", "2ND CORE VOICES", "2ND CORE FX"};
+        uint8_t was = sys.cpu2;
+        sys.cpu2 = (uint8_t)clamp((int32_t)sys.cpu2 + (s > 0 ? 1 : -1), 0, 3);
+        if (sys.cpu2 != was)
             settings_save();
-        }
-        ui_say(sys.cpu2 ? "2ND CORE ON: RESTART" : "2ND CORE OFF: RESTART");
+        str_cpy(t, C2[sys.cpu2 & 3u], sizeof t);
+        ui_say(!was != !sys.cpu2 ? (sys.cpu2 ? "2ND CORE ON: RESTART" : "2ND CORE OFF: RESTART") : t);
     } else if (s && sys.page == 6u) {           /* ARP: HOLD (right on, left off) */
         sys.arp_hold = (uint8_t)(s > 0);
         ui_say(sys.arp_hold ? "HOLD ON" : "HOLD OFF");

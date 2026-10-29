@@ -42,7 +42,7 @@ static volatile struct {
     uint32_t cpu_q8;             /* audio load, 256 = 100 % */
     int32_t batt_raw;            /* battery ADC, smoothed (main loop) */
     uint8_t view, preset;        /* ui.c: the screen's view, the last preset loaded */
-    uint8_t cpu2;                /* 2ND CORE: start the second core at power-on (main.c; GLO toggles it) */
+    uint8_t cpu2;                /* 2ND CORE: 0 off, 1 all, 2 voices only, 3 FX only (main.c starts it at power-on; GLO) */
     uint8_t page;                /* ui.c: 0 the oscillator (HOME), 1 ENV, 2 FX: resonator, 3 FX: shimmer, 4 MOD (HOME 2x), 5 MOD ENV (ENV 2x), 6 ARP, 7 MIDI (GLO), 8 FREE EG (REC), 9 KARMA (SEQ) */
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;   /* resonator.c: the FX resonator, 0..127 */
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* shimmer.c: the shimmer reverb */
