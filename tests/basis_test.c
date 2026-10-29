@@ -1073,9 +1073,15 @@ int main(int argc, char **argv)
         midi_in(0x90, 48, 100); midi_in(0x90, 55, 100); midi_in(0x90, 60, 100); midi_in(0x90, 64, 100);
         run_ms(20);
         midi_in(0x80, 48, 0); midi_in(0x80, 55, 0); midi_in(0x80, 60, 0); midi_in(0x80, 64, 0);
-        for (b = 0; b < 3000u; b++) {
+        for (b = 0; b < 12000u; b++) {
             r = r * 1664525u + 1013904223u;
-            switch ((r >> 24) % 8u) {
+            switch ((r >> 24) % 13u) {
+            case 8: sys.k_on = (uint8_t)!sys.k_on; break;
+            case 9: sys.arp_on = (uint8_t)!sys.arp_on; break;
+            case 10: sys.k_latch = (uint8_t)((r >> 8) & 1u); sys.arp_hold = (uint8_t)((r >> 9) & 1u); break;
+            case 11: midi_in((r >> 8) & 1u ? 0x90 : 0x80, 36u + (r >> 10) % 48u, 100); break;
+            case 12: sys.feg_on = (uint8_t)((r >> 8) & 1u); sys.feg_has = 1; sys.feg_len = (uint8_t)((r >> 9) % FEG_NLEN);
+                     sys.feg_target = (uint8_t)((r >> 13) % FEG_NT); break;
             case 0: sys.osc = (uint8_t)((r >> 8) % (NP_COUNT + 1u)); break;
             case 1: sys.k_ge = (uint8_t)((r >> 8) % KGE_N); break;
             case 2: sys.k_m[(r >> 8) & 3u] = (uint8_t)((r >> 12) & 127u); break;
@@ -1090,7 +1096,9 @@ int main(int argc, char **argv)
                 if (buf[j] > 8388607 || buf[j] < -8388608)
                     okk = 0;
         }
-        sys.k_on = 0; sys.k_latch = 0; sys.octave = 0;
+        sys.k_on = 0; sys.k_latch = 0; sys.octave = 0; sys.arp_on = 0; sys.arp_hold = 0; sys.feg_on = 0; sys.feg_has = 0;
+        sys.feg_len = 9; sys.feg_target = 0;
+        keys_all_off();
         run_ms(500);
         synth_kill();
         sys.osc = 0; sys.np_x = sys.np_y = 64; sys.mod_depth = 0; sys.mod_ratio = 3; sys.fx_mix = 0; sys.sh_mix = 0;

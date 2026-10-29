@@ -104,6 +104,21 @@ static void fm1_fault(const fm1_crash_t *c)
     }
     hexs(b, c->uptime_ms / 1000u);
     draw_text_line(10, 196, 220, &AF_M, b, UI_CRASH_INK, UI_CRASH_BG, 0);
+    {   /* what was going on: P the page, S where the main loop was, A in the audio interrupt, C the second core
+         * (1 on, 0 off, 2 / 3 it gave up), K KARMA on, L late audio halves, U the audio load % */
+        char d[40], v[12];
+        str_cpy(d, "P", sizeof d);
+        fmt_int(v, sys.page); ui_cat(d, sizeof d, v);
+        ui_cat(d, sizeof d, " S"); fmt_int(v, (int32_t)felucca_dbg.stage); ui_cat(d, sizeof d, v);
+        ui_cat(d, sizeof d, " A"); fmt_int(v, (int32_t)felucca_dbg.in_audio); ui_cat(d, sizeof d, v);
+#if FELUCCA_CPU2
+        ui_cat(d, sizeof d, " C"); fmt_int(v, fm1_c1_gave_up ? 1 + (int32_t)fm1_c1_gave_up : fm1_c1_on); ui_cat(d, sizeof d, v);
+#endif
+        ui_cat(d, sizeof d, " K"); fmt_int(v, sys.k_on); ui_cat(d, sizeof d, v);
+        ui_cat(d, sizeof d, " L"); fmt_int(v, (int32_t)felucca_dbg.late); ui_cat(d, sizeof d, v);
+        ui_cat(d, sizeof d, " U"); fmt_int(v, (int32_t)(sys.cpu_q8 * 100u / 256u)); ui_cat(d, sizeof d, v);
+        draw_text_line(10, 216, 220, &AF_M, d, UI_CRASH_INK, UI_CRASH_BG, 0);
+    }
     t0 = fm1_ticks();
     while ((uint32_t)(fm1_ticks() - t0) < 4000u * 1000u * FM1_TICKS_PER_US)
         ;
