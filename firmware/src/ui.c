@@ -1361,8 +1361,8 @@ static const struct { char ch; uint8_t row[7]; } PIX_FONT[] = {
     {'W', {0x63, 0x63, 0x6B, 0x6B, 0x7F, 0x77, 0x63}},
 };
 
-/* s in those letters, cells of c px, centred at screen row y: filled orange, the edges facing up and right lit white
- * (the highlight) */
+/* s in those letters, cells of c px, centred at screen row y: an orange outline, no fill, a white glint inside each
+ * top left corner (the highlight) */
 static void pix_text(const char *s, uint32_t y, int32_t c, int32_t gap)
 {
     const uint8_t *g[16];
@@ -1383,11 +1383,27 @@ static void pix_text(const char *s, uint32_t y, int32_t c, int32_t gap)
 #define ON(rr, kk) ((rr) >= 0 && (rr) < 7 && (kk) >= 0 && (kk) < 7 && (g[l][rr] >> (6 - (kk)) & 1u))
                 if (!ON(r, k))
                     continue;
-                cv_rect(x, yy, c, c, T_THEME);
-                if (!ON(r - 1, k))
-                    cv_rect(x, yy, c, t, T_TEXT);
+                if (!ON(r - 1, k))                      /* the outline: the edges facing an empty cell */
+                    cv_rect(x, yy, c, t, T_THEME);
+                if (!ON(r + 1, k))
+                    cv_rect(x, yy + c - t, c, t, T_THEME);
+                if (!ON(r, k - 1))
+                    cv_rect(x, yy, t, c, T_THEME);
                 if (!ON(r, k + 1))
-                    cv_rect(x + c - t, yy, t, c, T_TEXT);
+                    cv_rect(x + c - t, yy, t, c, T_THEME);
+                if (!ON(r - 1, k - 1) && ON(r - 1, k) && ON(r, k - 1))   /* (inner corners closed) */
+                    cv_rect(x, yy, t, t, T_THEME);
+                if (!ON(r - 1, k + 1) && ON(r - 1, k) && ON(r, k + 1))
+                    cv_rect(x + c - t, yy, t, t, T_THEME);
+                if (!ON(r + 1, k - 1) && ON(r + 1, k) && ON(r, k - 1))
+                    cv_rect(x, yy + c - t, t, t, T_THEME);
+                if (!ON(r + 1, k + 1) && ON(r + 1, k) && ON(r, k + 1))
+                    cv_rect(x + c - t, yy + c - t, t, t, T_THEME);
+                if (!ON(r, k - 1) && !ON(r - 1, k)) {   /* the highlight: a white glint inside the letter, in its */
+                    int32_t hl = c > 2 * t ? c : 1, ht = t > 1 ? t - 1 : 1;   /* top left corners, along the stroke */
+                    cv_rect(x + t, yy + t, ON(r, k + 1) ? hl : c - 2 * t, ht, T_TEXT);
+                    cv_rect(x + t, yy + t, ht, ON(r + 1, k) ? hl : c - 2 * t, T_TEXT);
+                }
 #undef ON
             }
     cv_blit(0, y);
