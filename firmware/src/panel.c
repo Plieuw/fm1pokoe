@@ -16,7 +16,8 @@ static const struct {
     int8_t dir[NE];              /* +1 / -1 so that clockwise is + */
 } panel = {
     {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1},
-    {0, 1, 6, 2, 3, 4, 5},
+    {0, 1, 6, 2, 4, 3, 5},       /* (KNOB 2 and 3 crossed: the screen's cells read left to right, top row then bottom,
+                                  * as the knobs sit: 1 and 2 above, 3 and 4 below) */
     {1, 1, 1, 1, 1, 1, 1},
 };
 
