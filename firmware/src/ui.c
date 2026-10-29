@@ -1351,50 +1351,57 @@ static void ui_draw(void)
     ui_force = 0;
 }
 
-/* the splash: HAWK in capitals of a chunky 8-bit font (7 x 7 cells, strokes two cells wide, drawn as white outlines:
- * no fill), under it CHUA, what it is, PLIEUWSKI in the theme's orange (the UI's own font) */
-static void draw_splash(void)
+/* the splash's 8-bit letters: 7 x 7 cells, strokes two cells wide (rows, bit 6 the left cell) */
+static const struct { char ch; uint8_t row[7]; } PIX_FONT[] = {
+    {'A', {0x3E, 0x63, 0x63, 0x7F, 0x63, 0x63, 0x63}}, {'C', {0x3E, 0x63, 0x60, 0x60, 0x60, 0x63, 0x3E}},
+    {'E', {0x7F, 0x60, 0x60, 0x7E, 0x60, 0x60, 0x7F}}, {'H', {0x63, 0x63, 0x63, 0x7F, 0x63, 0x63, 0x63}},
+    {'I', {0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7E}}, {'K', {0x63, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0x63}},
+    {'L', {0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x7F}}, {'P', {0x7E, 0x63, 0x63, 0x7E, 0x60, 0x60, 0x60}},
+    {'S', {0x3F, 0x60, 0x60, 0x3E, 0x03, 0x03, 0x7E}}, {'U', {0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x3E}},
+    {'W', {0x63, 0x63, 0x6B, 0x6B, 0x7F, 0x77, 0x63}},
+};
+
+/* s in those letters, cells of c px, centred at screen row y: filled orange, the edges facing up and right lit white
+ * (the highlight) */
+static void pix_text(const char *s, uint32_t y, int32_t c, int32_t gap)
 {
-    static const uint8_t HAWK[4][7] = {                 /* rows, bit 6 the left cell */
-        {0x63, 0x63, 0x63, 0x7F, 0x63, 0x63, 0x63},     /* H */
-        {0x3E, 0x63, 0x63, 0x7F, 0x63, 0x63, 0x63},     /* A */
-        {0x63, 0x63, 0x6B, 0x6B, 0x7F, 0x77, 0x63},     /* W */
-        {0x63, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0x63},     /* K */
-    };
-    const int32_t c = 7, t = 2, gap = 8, w = 4 * 7 * c + 3 * gap, x0 = (240 - w) / 2, y0 = 4;
-    int32_t l, r, k;
-    lcd_fill(0, 0, 240, 240, T_BG);
-    cv_begin(240, 7 * c + 8, T_BG);
-    for (l = 0; l < 4; l++)
+    const uint8_t *g[16];
+    int32_t n = 0, l, r, k, t = c >= 6 ? 2 : 1, w, x0;
+    for (; *s && n < 16; s++) {
+        uint32_t i;
+        for (i = 0; i < sizeof PIX_FONT / sizeof PIX_FONT[0]; i++)
+            if (PIX_FONT[i].ch == *s)
+                g[n++] = PIX_FONT[i].row;
+    }
+    w = n * 7 * c + (n - 1) * gap;
+    x0 = (240 - w) / 2;
+    cv_begin(240, (uint32_t)(7 * c), T_BG);
+    for (l = 0; l < n; l++)
         for (r = 0; r < 7; r++)
             for (k = 0; k < 7; k++) {
-                int32_t x = x0 + l * (7 * c + gap) + k * c, y = y0 + r * c;
-#define ON(rr, kk) ((rr) >= 0 && (rr) < 7 && (kk) >= 0 && (kk) < 7 && (HAWK[l][rr] >> (6 - (kk)) & 1u))
+                int32_t x = x0 + l * (7 * c + gap) + k * c, yy = r * c;
+#define ON(rr, kk) ((rr) >= 0 && (rr) < 7 && (kk) >= 0 && (kk) < 7 && (g[l][rr] >> (6 - (kk)) & 1u))
                 if (!ON(r, k))
                     continue;
-                if (!ON(r - 1, k))                      /* the edges facing an empty cell: the outline */
-                    cv_rect(x, y, c, t, T_TEXT);
-                if (!ON(r + 1, k))
-                    cv_rect(x, y + c - t, c, t, T_TEXT);
-                if (!ON(r, k - 1))
-                    cv_rect(x, y, t, c, T_TEXT);
+                cv_rect(x, yy, c, c, T_THEME);
+                if (!ON(r - 1, k))
+                    cv_rect(x, yy, c, t, T_TEXT);
                 if (!ON(r, k + 1))
-                    cv_rect(x + c - t, y, t, c, T_TEXT);
-                if (!ON(r - 1, k - 1) && ON(r - 1, k) && ON(r, k - 1))   /* (inner corners closed) */
-                    cv_rect(x, y, t, t, T_TEXT);
-                if (!ON(r - 1, k + 1) && ON(r - 1, k) && ON(r, k + 1))
-                    cv_rect(x + c - t, y, t, t, T_TEXT);
-                if (!ON(r + 1, k - 1) && ON(r + 1, k) && ON(r, k - 1))
-                    cv_rect(x, y + c - t, t, t, T_TEXT);
-                if (!ON(r + 1, k + 1) && ON(r + 1, k) && ON(r, k + 1))
-                    cv_rect(x + c - t, y + c - t, t, t, T_TEXT);
+                    cv_rect(x + c - t, yy, t, c, T_TEXT);
 #undef ON
             }
-    cv_blit(0, 46);
-    draw_text_box(0, 112, 240, &AF_L, "CHUA", T_TEXT, 1);
-    draw_text_box(0, 152, 240, &AF_S, "MODELLING SYNTHESIZER", T_MID, 1);
-    draw_text_box(0, 172, 240, &AF_M, "PLIEUWSKI", T_THEME, 1);
-    draw_text_box(0, 218, 240, &AF_S, UI_VERSION, T_DIM, 1);
+    cv_blit(0, y);
+}
+
+/* the splash: HAWK, CHUA smaller, what it is, PLIEUWSKI, all in the 8-bit letters */
+static void draw_splash(void)
+{
+    lcd_fill(0, 0, 240, 240, T_BG);
+    pix_text("HAWK", 30, 7, 8);
+    pix_text("CHUA", 96, 4, 5);
+    draw_text_box(0, 138, 240, &AF_S, "MODELLING SYNTHESIZER", T_MID, 1);
+    pix_text("PLIEUWSKI", 166, 3, 3);
+    draw_text_box(0, 216, 240, &AF_S, UI_VERSION, T_DIM, 1);
 }
 
 /* -------------------------------------------------------------- LEDs --- */
