@@ -1025,6 +1025,41 @@ int main(int argc, char **argv)
 #undef KOK
     }
 
+    /* KARMA running every GE while the oscillator, X / Y, FM, the FX model and the GE's knobs are turned at random
+     * (the crash report of 2026-10-29: KARMA and the oscillator's ALGORITHM): in bounds (the sanitizers), bounded */
+    {
+        uint32_t okk = 1, b, j, r = 0x2468ACE1u;
+        synth_kill(); keys_all_off(); run_ms(20);
+        sys.arp_on = 0; sys.k_on = 1; sys.k_latch = 1; sys.fx_mix = 90; sys.sh_mix = 40; sys.basis = 100; sys.orbit = 60;
+        midi_in(0x90, 48, 100); midi_in(0x90, 55, 100); midi_in(0x90, 60, 100); midi_in(0x90, 64, 100);
+        run_ms(20);
+        midi_in(0x80, 48, 0); midi_in(0x80, 55, 0); midi_in(0x80, 60, 0); midi_in(0x80, 64, 0);
+        for (b = 0; b < 3000u; b++) {
+            r = r * 1664525u + 1013904223u;
+            switch ((r >> 24) % 8u) {
+            case 0: sys.osc = (uint8_t)((r >> 8) % (NP_COUNT + 1u)); break;
+            case 1: sys.k_ge = (uint8_t)((r >> 8) % KGE_N); break;
+            case 2: sys.k_m[(r >> 8) & 3u] = (uint8_t)((r >> 12) & 127u); break;
+            case 3: sys.np_x = (uint8_t)((r >> 8) & 127u); sys.np_y = (uint8_t)((r >> 16) & 127u); break;
+            case 4: sys.mod_depth = (uint8_t)((r >> 8) & 127u); sys.mod_ratio = (uint8_t)((r >> 16) % NP_NRATIO); break;
+            case 5: sys.fx_model = (uint8_t)((r >> 8) % RZ_COUNT); break;
+            case 6: sys.chaos = (uint8_t)((r >> 8) & 127u); sys.arp_bpm = (uint8_t)(40u + (r >> 16) % 211u); break;
+            default: sys.octave = (int8_t)((int32_t)((r >> 8) % 7u) - 3); break;
+            }
+            run_ms(5);
+            for (j = 0; j < 2u * CTL; j++)
+                if (buf[j] > 8388607 || buf[j] < -8388608)
+                    okk = 0;
+        }
+        sys.k_on = 0; sys.k_latch = 0; sys.octave = 0;
+        run_ms(500);
+        synth_kill();
+        sys.osc = 0; sys.np_x = sys.np_y = 64; sys.mod_depth = 0; sys.mod_ratio = 3; sys.fx_mix = 0; sys.sh_mix = 0;
+        sys.fx_model = 0; sys.chaos = 85; sys.basis = 0; sys.orbit = 0; sys.arp_bpm = 120; sys.k_ge = 0;
+        for (j = 0; j < 4u; j++) sys.k_m[j] = 64;
+        check("KARMA under turned knobs: every GE, oscillator, FM, FX model at random, 15 s", okk);
+    }
+
     /* the ADSR: attack time, the decay settling on the sustain level, the release into the tail and off */
     {
         voice_t v;
