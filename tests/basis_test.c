@@ -671,33 +671,31 @@ int main(int argc, char **argv)
             okk &= e[0][0] > 20 * e[0][1] && e[1][1] > 20 * e[1][0];          /* hard left, hard right */
             okk &= e[2][0] > 2.5 * e[2][1] && e[3][1] > 2.5 * e[3][0];        /* half: the far side at ~1/4 the energy */
         }
-        {   /* ORBIT, BASIS 0: the double scroll moves a held note between left and right (both sides, at times far);
-             * a noise program drifts; the circuit on one scroll (SPIRAL) stays to one side */
-            uint32_t q, w2, sw = 0, side = 0;
-            double lmax = 0, rmax = 0;
-            int32_t last = 0;
+        {   /* ORBIT, BASIS 0: the voice's phase moves with the double scroll (all-passes): a side signal that comes and
+             * goes with the chaos, the middle the voice itself; the circuit on one scroll (SPIRAL) still has a side */
+            uint32_t q, w2, side = 0;
+            double smin = 1e30, smax = 0, mid = 0;
             synth_kill(); run_ms(500);
             sys.fx_mix = 0; sys.basis = 0; sys.orbit = 127; sys.chaos = 85; sys.shape = 76;
             synth_note_on(48, 110);
-            for (q = 0; q < 3000u; q++) {                     /* ~2.2 s, the balance every 32 samples */
-                double el = 0, er = 0, bal;
-                synth_render(buf, CTL);
-                for (w2 = 0; w2 < CTL; w2++) {
-                    el += (double)buf[2 * w2] * buf[2 * w2];
-                    er += (double)buf[2 * w2 + 1] * buf[2 * w2 + 1];
+            run_ms(200);
+            for (q = 0; q < 60u; q++) {                       /* ~2.6 s in windows of ~44 ms */
+                double es = 0, em = 0;
+                for (w2 = 0; w2 < 60u; w2++) {
+                    uint32_t j;
+                    synth_render(buf, CTL);
+                    for (j = 0; j < CTL; j++) {
+                        double l = buf[2 * j], r = buf[2 * j + 1];
+                        es += (l - r) * (l - r);
+                        em += (l + r) * (l + r);
+                    }
                 }
-                if (el + er < 1e6)
-                    continue;
-                bal = (er - el) / (er + el);                  /* -1 left .. 1 right */
-                lmax = -bal > lmax ? -bal : lmax;
-                rmax = bal > rmax ? bal : rmax;
-                if ((bal > 0.3 && last < 0) || (bal < -0.3 && last > 0))
-                    sw++;
-                if (bal > 0.3) last = 1;
-                if (bal < -0.3) last = -1;
+                smin = es < smin ? es : smin;
+                smax = es > smax ? es : smax;
+                mid += em;
             }
-            printf("   (ORBIT, double scroll: as far as %.2f left, %.2f right, %u crossings)\n", lmax, rmax, sw);
-            okk &= lmax > 0.6 && rmax > 0.6 && sw >= 2u;
+            printf("   (ORBIT, double scroll: side energy %.2g .. %.2g, mid %.2g)\n", smin, smax, mid / 60.0);
+            okk &= smax > mid / 60.0 * 0.01 && smax > smin * 2.0;
             synth_kill(); run_ms(500);
             sys.chaos = 54;                                   /* SPIRAL: one scroll, one side */
             synth_note_on(48, 110);
@@ -712,7 +710,7 @@ int main(int argc, char **argv)
         }
         synth_kill();
         sys.basis = 0; sys.fx_mix = 0; sys.orbit = 0; sys.chaos = 85;
-        check("BASIS: 0 mono bit for bit; 127 cycles L, R, half L, half R (resonator too); ORBIT moves with the scroll", okk && mono);
+        check("BASIS: 0 mono bit for bit; 127 cycles L, R, half L, half R (resonator too); ORBIT: a phase that moves with the scroll", okk && mono);
     }
 
     /* FREE EG: 1 BAR at 120 BPM (2 s) records a ramp of the knob and plays it onto CHAOS, looping; DEPTH scales it

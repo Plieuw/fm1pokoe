@@ -18,7 +18,7 @@
  *            shape over DEPTH, the depth now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   SCL      the PAN page (again: back HOME): KNOB 1 BASIS: the stereo spread, each note the next place of a cycle
- *            (left, right, half left, ...); KNOB 2 ORBIT: how far each voice's picture moves it (the circuit's
+ *            (left, right, half left, ...); KNOB 2 ORBIT: how much each voice's phase moves with its picture (all-passes: the circuit's
  *            scroll left / right, a drift); the voices drawn where they are
  *   FX       KNOB 1..4      STRUCTURE, BRIGHTNESS, DAMPING, MIX of the resonators (resonator.c: Rings' models, 4 voices;
  *            and the waveguides of waveguide.c: THROAT (KNOB 1 the ANIMAL, SELECT the VOWEL), FLUTE (JET, BREATH),
@@ -882,7 +882,7 @@ static void draw_karma(void)
 }
 
 /* the PAN page's picture: the stereo field from left to right, BASIS's cycle of places (the next one ringed), the
- * voices sounding where they are now (ORBIT moving them), each with its note */
+ * voices sounding where they are, each with its note */
 static void draw_pan(void)
 {
     const int32_t x0 = 16, w = 208, yc = 58;

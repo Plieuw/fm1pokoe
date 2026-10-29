@@ -109,14 +109,14 @@ Ook noten die al klinken schuiven mee als je draait. De resonator van een noot k
 shimmer krijgt het midden en maakt er zijn eigen stereo van. De pan-wet is een balans: het midden blijft op vol niveau,
 de andere kant gaat zachter (bij volle breedte uit).
 
-**ORBIT (SCL, KNOB 2).** De tweede pan-parameter naast BASIS: elke stem beweegt ook mee met zijn eigen
-plaatje. Bij het Chua-circuit is dat de x van de attractor: in de double scroll springt de stem mee van de ene lus
-(links) naar de andere (rechts), in één lus (SPIRAL) blijft hij aan één kant hangen, bij een cyclus staat hij stil.
-Het rondcirkelen binnen een lus (op de toonhoogte van de noot) wordt eruit gefilterd (~7 Hz). Een noise-programma (zijn
-plaatje is ruis) zwerft elke ~0,2 s naar een nieuwe willekeurige plek. ORBIT bepaalt hoe ver; het komt bovenop de
-plek van BASIS (samen hooguit helemaal links of rechts), dus ORBIT werkt ook met BASIS op 0. De resonator van een noot
-beweegt mee met zijn stem. De PAN-pagina tekent het stereobeeld van links naar rechts: de plekken van BASIS (de
-volgende noot krijgt de hoge streep) en de stemmen die klinken, met hun noot, waar ze nu staan.
+**ORBIT (SCL, KNOB 2).** De tweede stereo-parameter naast BASIS: de fase van elke stem beweegt mee met zijn eigen
+plaatje. Twee all-pass filters per stem verschuiven de fase; waar ze samen 180° draaien gaat dat deel van de klank
+wijd uit elkaar (links en rechts in tegenfase), de rest blijft in het midden. Dat punt volgt de x van de attractor:
+in de double scroll springt het mee van de ene lus (~150 Hz) naar de andere (~3 kHz), in één lus (SPIRAL) blijft het
+op één plek, een noise-programma zwerft elke ~0,2 s naar een nieuw punt. ORBIT bepaalt hoe sterk. Mono (links +
+rechts) blijft de stem zelf, dus niets valt weg op een mono-speaker. ORBIT werkt ook met BASIS op 0. De PAN-pagina
+tekent het stereobeeld van links naar rechts: de plekken van BASIS (de volgende noot krijgt de hoge streep) en de
+stemmen die klinken, met hun noot.
 
 **De arpeggiator (ARP).** ARP opent de ARP-pagina; PLAY zet hem aan of uit (het lampje brandt zolang
 hij aan staat). Aan: de noten die je vasthoudt (toetsen en MIDI in) klinken niet zelf, de arpeggiator speelt ze.

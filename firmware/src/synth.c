@@ -224,6 +224,7 @@ typedef struct {
                                   * scroll it is on), a noise program a slow random drift */
     uint32_t orng, ocnt;         /* (the drift's random numbers, blocks to its next target) */
     int32_t otgt;
+    int32_t apx[2], apy[2];      /* ORBIT: its two all-passes' last in and out */
 } voice_t;
 static voice_t voice[NVOICE];
 #define NP_COUNT 30                              /* the noise programs (noise.c, included below) */
@@ -298,6 +299,7 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     if (v->stage == ST_OFF || v->stage == ST_TAIL) {  /* (a new voice: its picture's place from the middle) */
         v->orb = 0;
         v->ocnt = 0;
+        v->apx[0] = v->apx[1] = v->apy[0] = v->apy[1] = 0;
         v->orng = 0x9E3779B9u * (uint32_t)(v - voice + 1) + voice_clock;
     }
     v->inc = note_inc(note);
@@ -514,10 +516,13 @@ static void render_voice(voice_t *v, uint32_t n, int32_t *sum, uint32_t *restart
  * or stopped: then it is held for good) C1_RUN takes nothing and this core renders them all. */
 static int32_t c1_bus[RZ_POLY][CTL];            /* its voices' output, per resonator they feed */
 static int32_t c1_dl[CTL], c1_dr[CTL];           /* and what BASIS takes off the left, the right */
-static int32_t vpan[NVOICE];                     /* this block's pan per voice (VOICE_PAN x BASIS; ORBIT added by
-                                                  * voice_mix, which leaves the sum here), Q15 */
+static int32_t vpan[NVOICE];                     /* this block's pan per voice (VOICE_PAN x BASIS), Q15 */
 
-/* a voice into the bus of its resonator; BASIS: what its pan takes off the far side into dl / dr */
+/* a voice into the bus of its resonator; BASIS: what its pan takes off the far side into dl / dr. ORBIT: its phase
+ * moves with its picture: two first-order all-passes whose coefficient follows the circuit's x (or a noise program's
+ * drift) make the voice's side signal (it, less itself phase-shifted, halved), added to the left and taken off the
+ * right: the frequencies near the all-passes' 180 degrees spread wide, the rest stays in the middle, and that
+ * moves with the chaos. L + R is the voice as before (mono: unchanged) */
 static void voice_mix(voice_t *v, uint32_t n, int32_t (*bus)[CTL], int32_t *dl, int32_t *dr, uint32_t *restarts)
 {
     int32_t t[CTL], *b = bus[v->rz % RZ_POLY], p = vpan[v - voice], orbit = (int32_t)(sys.orbit & 127u);
@@ -538,8 +543,24 @@ static void voice_mix(voice_t *v, uint32_t n, int32_t (*bus)[CTL], int32_t *dl, 
         v->orb += (tgt - v->orb) / (v->osc ? 64 : 32);  /* ~7 Hz at 1378 blocks a second: the scroll's hops (the
                                                          * circling within a lobe at the note's pitch smoothed off);
                                                          * the drift ~3.4 Hz */
-        p = clamp(p + v->orb * orbit / 127, -32767, 32767);
-        vpan[v - voice] = p;                            /* (the resonators follow: synth_render) */
+        {
+            /* the all-passes' 90 degrees (two: 180) where the picture is: ~150 Hz (left) .. ~3 kHz (right); their
+             * coefficient cos(w) ~ 1 - w^2 / 2 (w = 2 pi f / FS, Q15) */
+            int32_t w = 700 + (v->orb + 32767) / 2 * (14005 - 700) / 32767, k;   /* (32 bits) */
+            int32_t a = 32768 - ((w * w) >> 16);
+            for (i = 0; i < n; i++) {
+                int32_t x = t[i], s;
+                for (k = 0; k < 2; k++) {               /* y = -a x + x[-1] + a y[-1] */
+                    int32_t y = (int32_t)(((int64_t)-a * x + (int64_t)a * v->apy[k]) >> 15) + v->apx[k];
+                    v->apx[k] = x;
+                    v->apy[k] = y;
+                    x = y;
+                }
+                s = (t[i] - x) / 2 * orbit / 127 / 2;   /* the side, at most half the voice */
+                dl[i] -= s;                             /* (L = dry - dl, R = dry - dr) */
+                dr[i] += s;
+            }
+        }
     }
     for (i = 0; i < n; i++)
         b[i] += t[i];
