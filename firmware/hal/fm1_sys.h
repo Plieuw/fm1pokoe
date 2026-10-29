@@ -66,11 +66,15 @@ FM1_INLINE void fm1_cpu1_halt(void)
     FM1_C1_CON |= 0x2u;
     FM1_C1_CON &= ~0x8u;
     __asm__ volatile("csync" ::: "memory");
-    for (n = 0; n < 256u; n++)                   /* the flag comes some instructions after the hold */
-        ;
-    FM1__DBG_MSG_CLR = FM1__DBG_BUS;
+    for (n = 0; n < 65536u; n++)                 /* the flag comes some instructions after the hold: held in the */
+        ;                                        /* middle of a render (a flash fetch, not the mailbox) it came */
+    FM1__DBG_MSG_CLR = FM1__DBG_BUS;             /* later than 256 loops: core 0 took it (CHUA's crashes, 2026-10) */
     __asm__ volatile("csync" ::: "memory");
-    FM1__DBG_EN = en;
+    {
+        uint32_t c1 = 0x00380030u;               /* (AXI rd/wr, core 1's fetch/rd/wr: kept off, core 1 is held, a */
+        __asm__("" : "+r"(c1));                  /* late flag of its cut access must not stop core 0; opaque as bus) */
+        FM1__DBG_EN = en & ~c1;
+    }
     if (locked && (FM1__DBG_WR_EN & 1u))
         FM1__DBG_WR_EN = 0xE7u;                  /* lock again */
     __asm__ volatile("csync" ::: "memory");
