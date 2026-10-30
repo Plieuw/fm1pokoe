@@ -124,6 +124,55 @@ static int shot(const char *dir, const char *name)
     return 0;
 }
 
+
+/* every preset: a chord held 1 s, its peak and RMS; none much quieter than the others (14 dB under their median
+ * peak), none into the clip (PRESET_LEVELS=1 prints all) */
+#include <math.h>
+static int cmp_d(const void *a, const void *b) { double x = *(const double *)a, y = *(const double *)b; return x < y ? -1 : x > y; }
+static int preset_levels(void)
+{
+    static double pdb[NPRESETS], rdb[NPRESETS], srt[NPRESETS];
+    static uint32_t clip[NPRESETS];
+    uint32_t i, b, j, bad = 0;
+    int verbose = getenv("PRESET_LEVELS") != 0;
+    double med;
+    for (i = 0; i < NPRESETS; i++) {
+        double e = 0;
+        int32_t pk = 0;
+        uint32_t n = 0;
+        synth_kill();
+        preset_load(i);
+        synth_note_on(48, 100); synth_note_on(55, 100); synth_note_on(60, 100);
+        for (b = 0; b < FS * 3u / 2u / CTL; b++) {
+            if (b == FS / CTL)
+                synth_note_off(48), synth_note_off(55), synth_note_off(60);
+            synth_render(abuf_, CTL);
+            for (j = 0; j < 2u * CTL; j++) {
+                int32_t v = abuf_[j], a = v < 0 ? -v : v;
+                pk = a > pk ? a : pk;
+                clip[i] += a >= 8388000;
+                e += (double)v * v;
+                n++;
+            }
+        }
+        pdb[i] = srt[i] = 20 * log10((pk + 1) / 8388608.0);
+        rdb[i] = 10 * log10(e / n / (8388608.0 * 8388608.0) + 1e-20);
+    }
+    synth_kill();
+    qsort(srt, NPRESETS, sizeof srt[0], cmp_d);
+    med = srt[NPRESETS / 2];
+    for (i = 0; i < NPRESETS; i++) {
+        int w = pdb[i] < med - 14 || clip[i] > 0u;
+        if (verbose || w)
+            printf("  %3u %-16s peak %6.1f dB  rms %6.1f dB  clip %u%s\n", i, PRESETS[i].name, pdb[i] - med,
+                   rdb[i] - med, clip[i], w ? "  <-" : "");
+        bad |= w;
+    }
+    if (bad)
+        printf("presets: some much quieter than the rest, or clipping\n");
+    return bad != 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *dir = argc > 1 ? argv[1] : ".";
@@ -131,6 +180,7 @@ int main(int argc, char **argv)
     uint32_t i;
     char name[32];
     palette_set(UI_PALETTE);
+    bad |= preset_levels();
 
     draw_splash();
     bad |= shot(dir, "a_splash");
