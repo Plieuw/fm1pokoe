@@ -594,7 +594,7 @@ static void art_syrinx(int hawk)
  * middle out are the tail from now back in time: each lit as the tail was then (hist: the level, a UI frame each,
  * the newest last), so the sound flows outward through the pattern; with SHIMMER the outer rings (the older tail,
  * climbed higher) have more and finer elements, an INTERVAL's ratio a step; DECAY how far out it reaches, TONE how
- * bright the outer rings stay */
+ * bright the outer rings stay; the whole turning slowly in time with the BPM */
 static void orn_pt(int32_t r, uint32_t th, int32_t *sx, int32_t *sy)   /* r Q8, th a phase: on the window */
 {
     a3_proj(a3_rot((art_cos(th) >> 7) * (r >> 8), (art_sin(th) >> 7) * (r >> 8), 0), sx, sy);
@@ -625,8 +625,17 @@ static void orn_lobe(int32_t rc, uint32_t th, int32_t rl, uint16_t c)
         py = sy;
     }
 }
+/* the ornament turns with the tempo: a sixteenth of a turn a beat (a turn in four bars), the rings in alternate
+ * directions, the outer ones slower; the tempo the BPM's or the MIDI clock's */
+static uint32_t orn_beat, orn_ms;
 static void art_shimmer(const uint8_t *hist, uint32_t nh)
 {
+    {
+        uint32_t d = fm1_ms - orn_ms, bpm = arp_bpm_now();
+        orn_ms = fm1_ms;
+        d = d > 200u ? 200u : d;                                 /* (after a pause: no jump) */
+        orn_beat += d * (bpm ? bpm : 120u) * 4474u;              /* (2^32 / 16 / 60000 a ms a BPM) */
+    }
     static const uint8_t RATIO8[SI_COUNT] = {16, 12, 24, 32};    /* the interval's ratio x 8 */
     static const uint8_t FOLD[SS_COUNT] = {6, 8, 12, 8};
     const uint32_t NR = 6u, SP = 7u;                             /* rings, frames of the tail between two */
@@ -656,7 +665,7 @@ static void art_shimmer(const uint8_t *hist, uint32_t nh)
     for (k = 0; k < NR; k++) {                                   /* the rings: the tail, now (inside) to earlier */
         uint32_t age = k * SP, n, climb;
         int32_t lv, a, ri = Q8(8) + (R - Q8(8)) * (int32_t)k / (int32_t)NR, ro = Q8(8) + (R - Q8(8)) * (int32_t)(k + 1u) / (int32_t)NR;
-        uint32_t rot = (k & 1u ? 1u : (uint32_t)-1) * art_t * 0x00200000u;
+        uint32_t rot = (k & 1u ? 1u : (uint32_t)-1) * (orn_beat >> (k >> 1));   /* (the outer ones slower) */
         uint16_t c;
         lv = age < nh ? hist[nh - 1u - age] : 0;
         a = age < life ? lv * (int32_t)(life - age) / (int32_t)life : 0;
