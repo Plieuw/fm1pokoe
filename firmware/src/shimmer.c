@@ -20,7 +20,12 @@
  *   MIX 0..127       0: off (nothing runs; the tank is cleared at the next use)
  *   INTERVAL         +OCT, +5TH, +OCT+5TH, +2 OCT
  *   TONE 0..127      the tank's damping: dark (1.5 kHz) .. open (16 kHz)
- * Fixed point: signals Q15 in int32, the lines int16 (saturating), coefficients Q15 / Q16.
+ *   SPACE            the building it rings in (ALGORITHM, with the INTERVAL): HALL (the plain tank), TEMPLE (a stone
+ *                    chamber: dense early reflections, the hypogeum's resonance ~110 Hz and its neighbours, dark),
+ *                    CATHEDRAL (the nave: echoes off the pillars 23 .. 89 ms, the long low modes 49 / 98 / 147 Hz),
+ *                    MOSQUE (the dome: a flutter echo focused back and forth, its ringing modes 165 / 330 / 495 Hz,
+ *                    bright)
+ * Fixed point: signals Q15 in int32, the lines int16 (saturating), coefficients Q15 / Q16; the modes Q28.
  *
  *   fx_shimmer(in, l, r, n)   audio ISR, core 0: in[] mono Q15 -> l[], r[] Q15 */
 #define SH_NLINE 4
@@ -33,11 +38,30 @@ static const uint16_t SH_LEN[SH_NLINE] = {4799, 3931, 3203, 2687};   /* mutually
 enum { SI_OCT, SI_FIFTH, SI_OCT5, SI_2OCT, SI_COUNT };
 static const char *const SH_INTERVAL_NAME[SI_COUNT] = {"+OCT", "+5TH", "+OCT+5TH", "+2 OCT"};
 static const uint32_t SH_INC[SI_COUNT] = {1u << 21, 1u << 20, 1u << 22, 3u << 21};   /* (ratio - 1) 2^32 / SH_WIN */
+enum { SS_HALL, SS_TEMPLE, SS_CATHEDRAL, SS_MOSQUE, SS_COUNT };
+static const char *const SH_SPACE_NAME[SS_COUNT] = {"HALL", "TEMPLE", "CATHEDRAL", "MOSQUE"};
+/* each space: its three modes (two-pole resonators: a1 = 2 r cos w, a2 = r^2, b = (1 - r) 2 sin w x 2 gain: the peak
+ * twice the gain; Q28), its early
+ * reflections (taps in ms, gains Q15; MOSQUE: one tap fed back, the flutter), its damping (x / 16 of TONE's) */
+static const int32_t SH_MODE[SS_COUNT][3][3] = {
+    {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+    {{536777290, 268368535, 667}, {536711510, 268341983, 2930}, {536510598, 268259584, 4611}},
+    {{536782875, 268360505, 628}, {536668693, 268285575, 3349}, {536528380, 268210666, 4709}},
+    {{536512317, 268225188, 7910}, {535857546, 268015084, 23718}, {534907193, 267805145, 35554}},
+};
+static const uint8_t SH_ER_MS[SS_COUNT][4] = {{0, 0, 0, 0}, {7, 13, 19, 29}, {23, 41, 67, 89}, {31, 0, 0, 0}};
+static const uint16_t SH_ER_G[SS_COUNT][4] = {{0, 0, 0, 0}, {16384, 13107, 9830, 6554}, {14746, 13107, 11469, 9830},
+                                              {18022, 0, 0, 0}};
+static const uint8_t SH_DAMP16[SS_COUNT] = {16, 9, 12, 20};
+#define SH_ER 4096u                              /* the early reflections' line (93 ms, a power of two) */
 
 static struct {
     int16_t line[SH_NLINE][SH_MAXLEN];
     int16_t ap1[SH_AP1], ap2[SH_AP2];
     int16_t ps[SH_PS];
+    int16_t er[SH_ER];
+    int32_t my[3][2];                            /* the modes' last two outputs */
+    uint32_t ew;
     uint32_t wp[SH_NLINE], a1, a2, pw;
     uint32_t len[SH_NLINE];                      /* the read lengths now (gliding to SIZE's) */
     int32_t lp[SH_NLINE];                        /* the damping filters */
@@ -68,7 +92,8 @@ static inline int32_t sh_soft(int32_t v)
 static int32_t sh_dry = 32768;                   /* this block's dry level, Q15 (synth.c pans the dry with it) */
 static void fx_shimmer(const int32_t *in, int32_t *l, int32_t *r, uint32_t n)
 {
-    uint32_t i, k, size = sys.sh_size & 127u, iv = sys.sh_interval % SI_COUNT;
+    uint32_t i, k, size = sys.sh_size & 127u, iv = sys.sh_interval % SI_COUNT, sp = sys.sh_space % SS_COUNT;
+    uint32_t etap[4];
     int32_t mix = sys.sh_mix > 127u ? 127 : (int32_t)sys.sh_mix, g[SH_NLINE], damp, fa, fb_, dry, wet;
     uint32_t inc = SH_INC[iv], peak = 0;
     sh_dry = 32768;
@@ -89,7 +114,9 @@ static void fx_shimmer(const int32_t *in, int32_t *l, int32_t *r, uint32_t n)
         uint32_t scale = 22938u + size * 330u;   /* 0.35 .. 1, Q16 */
         uint32_t rt = (uint32_t)(((uint64_t)17640u * px_exp2((int32_t)((sys.sh_decay & 127u) * 408220u / 127u))) >> 16);
         int32_t fc_oct = (int32_t)((sys.sh_tone & 127u) * 222822u / 127u);   /* 1.5 kHz x 2^(0 .. 3.4) */
-        uint32_t fc = (uint32_t)(((uint64_t)1500u * px_exp2(fc_oct)) >> 16);
+        uint32_t fc = (uint32_t)(((uint64_t)1500u * px_exp2(fc_oct)) >> 16) * SH_DAMP16[sp] / 16u;
+        for (k = 0; k < 4u; k++)                 /* the early reflections' taps, samples */
+            etap[k] = (uint32_t)SH_ER_MS[sp][k] * 441u / 10u;
         for (k = 0; k < SH_NLINE; k++) {
             uint32_t t = (uint32_t)(((uint64_t)SH_LEN[k] * scale) >> 16);
             int32_t d = (int32_t)t - (int32_t)sh.len[k];
@@ -126,6 +153,18 @@ static void fx_shimmer(const int32_t *in, int32_t *l, int32_t *r, uint32_t n)
             sh.ap2[sh.a2] = sh_sat(v);
             x = d2 - (v * 19661 >> 15);
             sh.a2 = sh.a2 + 1u == SH_AP2 ? 0u : sh.a2 + 1u;
+        }
+        /* the building: early reflections (MOSQUE: the flutter, fed back) into the tank's input */
+        if (sp != SS_HALL) {
+            int32_t e = 0, w = in[i] >> 1;
+            for (k = 0; k < 4u; k++)
+                if (etap[k])
+                    e += sh.er[(sh.ew - etap[k]) & (SH_ER - 1u)] * (int32_t)SH_ER_G[sp][k] >> 15;
+            if (sp == SS_MOSQUE)
+                w += e;
+            sh.er[sh.ew & (SH_ER - 1u)] = sh_sat(w);
+            sh.ew++;
+            x += e / 2;
         }
         /* the tank's outputs, damped */
         for (k = 0; k < SH_NLINE; k++) {
@@ -173,6 +212,20 @@ static void fx_shimmer(const int32_t *in, int32_t *l, int32_t *r, uint32_t n)
         /* out: left and right from different lines */
         v = o[0] - o[2] + o[1] / 2;
         y = o[1] - o[3] + o[0] / 2;
+        if (sp != SS_HALL) {                     /* the building's modes, rung by the input and the tail */
+            int32_t e = x + s / 4, m = 0;
+            for (k = 0; k < 3u; k++) {
+                const int32_t *c = SH_MODE[sp][k];
+                int32_t z = (int32_t)(((int64_t)c[0] * sh.my[k][0] - (int64_t)c[1] * sh.my[k][1] +
+                                       (int64_t)c[2] * e) >> 28);
+                z = z > 60000 ? 60000 : z < -60000 ? -60000 : z;
+                sh.my[k][1] = sh.my[k][0];
+                sh.my[k][0] = z;
+                m += z;
+            }
+            v += m / 2;
+            y += m / 2;
+        }
         {   /* DC blockers on the wet, y = x - x' + R y' (R ~ 1 - 2 pi 23 Hz / FS), states x 256 for precision */
             int32_t xv = v * 256, xy = y * 256;
             sh.dc[0] = xv - sh.dcx[0] + (int32_t)(((int64_t)sh.dc[0] * 32622 + 16384) >> 15);

@@ -503,6 +503,7 @@ int main(int argc, char **argv)
             if ((r >> 28) == 1u) sys.fx_model = (uint8_t)((r >> 8) % RZ_COUNT);
             if ((r >> 28) == 2u) sys.menv_height = (uint8_t)((r >> 8) & 127u);
             if ((r >> 28) == 3u) sys.sh_interval = (uint8_t)((r >> 8) % SI_COUNT);
+            if ((r >> 28) == 7u) sys.sh_space = (uint8_t)((r >> 8) % SS_COUNT);
             if ((r >> 28) == 4u) synth_note_on((r >> 8) & 127u, 1u + ((r >> 16) & 126u));
             if ((r >> 28) == 5u) synth_note_off((r >> 8) & 127u);
             if ((r >> 28) == 6u) { sys.osc = (uint8_t)((r >> 8) % (NP_COUNT + 1u)); sys.fx_model = (uint8_t)((r >> 16) % RZ_COUNT); }
@@ -514,7 +515,7 @@ int main(int argc, char **argv)
         synth_kill();
         sys.chaos = 85; sys.shape = 76; sys.output = 0; sys.ring = 50; sys.attack = 6; sys.decay = 80; sys.sustain = 110;
         sys.release = 70; sys.fx_model = 0; sys.fx_struct = 70; sys.fx_bright = 90; sys.fx_damp = 100; sys.fx_pos = 24;
-        sys.sh_size = 100; sys.sh_decay = 90; sys.sh_shimmer = 70; sys.sh_interval = 0; sys.sh_tone = 80;
+        sys.sh_size = 100; sys.sh_decay = 90; sys.sh_shimmer = 70; sys.sh_interval = 0; sys.sh_tone = 80; sys.sh_space = 0;
         sys.menv_len = 80; sys.menv_skew = 10; sys.menv_bend = 64;
         sys.fx_mix = 0; sys.sh_mix = 0; sys.basis = 0; sys.orbit = 0; sys.menv_height = 0;
         sys.np_x = sys.np_y = sys.np_level = 64; sys.osc = 0;
@@ -912,6 +913,37 @@ int main(int argc, char **argv)
         okk &= !feg.playing && sys.fx_struct == base;
         if (!okk) printf("   (fx_struct %u playing %u)\n", sys.fx_struct, feg.playing);
         check("mod wheel on FREE EG's parameter sets FREE EG's depth", okk);
+    }
+    {   /* SHIMMER's SPACEs: each rings on after a note, bounded, unlike the plain HALL */
+        int okk = 1;
+        uint32_t sp, b, j;
+        double e[SS_COUNT];
+        int32_t pk = 0;
+        for (sp = 0; sp < SS_COUNT; sp++) {
+            synth_kill(); keys_all_off(); run_ms(200);
+            sys.sh_mix = 100; sys.sh_size = 110; sys.sh_decay = 110; sys.sh_shimmer = 0; sys.sh_tone = 80;
+            sys.sh_space = (uint8_t)sp; sys.fx_mix = 0;
+            synth_note_on(48, 120);
+            run_ms(300);
+            synth_note_off(48);
+            run_ms(200);
+            e[sp] = 0;
+            for (b = 0; b < 300u; b++) {
+                block();
+                for (j = 0; j < 2u * CTL; j++) {
+                    e[sp] += (double)buf[j] * buf[j];
+                    pk = buf[j] > pk ? buf[j] : -buf[j] > pk ? -buf[j] : pk;
+                }
+            }
+            okk &= e[sp] > 1e6;
+        }
+        okk &= pk < 32767;
+        for (sp = 1; sp < SS_COUNT; sp++)
+            okk &= fabs(e[sp] - e[0]) > e[0] * 0.02;
+        printf("   (spaces' tails: HALL %.3g TEMPLE %.3g CATHEDRAL %.3g MOSQUE %.3g, peak %d)\n", e[0], e[1], e[2], e[3], pk);
+        sys.sh_mix = 0; sys.sh_space = 0; sys.sh_shimmer = 70; sys.sh_size = 100; sys.sh_decay = 90;
+        synth_kill(); run_ms(200);
+        check("SHIMMER SPACEs: each rings on, bounded, unlike the HALL", okk);
     }
     {   /* TAPE: a pass recorded on track 1 plays back under the synth; its level; the speed with the BPM; erased */
         int okk = 1;

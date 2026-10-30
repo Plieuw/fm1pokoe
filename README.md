@@ -295,10 +295,16 @@ hoge aanzwellen, tot TONE de top dempt. Dat is de riser.
 | ALGORITHM | het interval: +OCT, +5TH, +OCT+5TH, +2 OCT |
 | SELECT | TONE: donker (1,5 kHz) tot open (16 kHz) |
 
-Het scherm toont, in dezelfde 3D-stijl als de FX-pagina, de ruimte als draaiende draadkubus (SIZE zijn grootte) met
-linksboven het SHIMMER-pictogram: vanuit een bron op de vloer lopen de golffronten van de staart als ringen naar buiten,
-elk zo fel als de staart was toen hij vertrok; met SHIMMER klimmen ze in stappen van het INTERVAL omhoog, DECAY bepaalt
-hoe lang ze blijven, TONE hoe fel de verre ringen blijven. De uitgang is nu stereo; met de shimmer uit blijft hij mono en bit voor bit hetzelfde.
+SPACE (met ALGORITHM, samen met het INTERVAL: HALL +OCT, HALL +5TH, ..., MOSQUE +2 OCT) kiest het gebouw waarin de
+galm klinkt: HALL (de gewone galm), TEMPLE (een stenen kamer: dichte vroege reflecties, de resonantie van ~110 Hz van
+de oude orakelkamers en zijn buren, donker), CATHEDRAL (het schip: echo's van de pilaren op 23..89 ms, de lange lage
+modes 49 / 98 / 147 Hz), MOSQUE (de koepel: een fladderecho dat heen en weer kaatst, zijn modes 165 / 330 / 495 Hz,
+helder). De SHIMMER-presets (PRESETS-knop) hebben er elk een: STONE TEMPLE, ORACLE CHAMBER, CATHEDRAL, GOTHIC CHOIR,
+MOSQUE DOME, DOME LIGHT, naast HEAVEN, OCTAVE HAZE, SMALL ROOM. Het scherm toont het ornament van die ruimte als een
+raam dat langzaam draait: een roosvenster (CATHEDRAL), een girih-ster (MOSQUE), een lotus-mandala (TEMPLE), golvende
+ringen (HALL). De ringen van binnen naar buiten zijn de galmstaart van nu naar eerder, elk zo fel als de staart toen
+was: het geluid stroomt naar buiten door het patroon; met SHIMMER krijgen de buitenste ringen meer en fijnere
+elementen (per stap de verhouding van het INTERVAL), DECAY bepaalt hoe ver het reikt, TONE hoe fel de buitenkant blijft. De uitgang is nu stereo; met de shimmer uit blijft hij mono en bit voor bit hetzelfde.
 
 Het scherm toont de toestand (x, y, z) van de nieuwste stem; speelt er niets, dan een "spookcircuit" dat op de huidige
 instellingen meedraait. Dat spookcircuit levert ook de beginstand van nieuwe stemmen (al op de attractor, met een kleine

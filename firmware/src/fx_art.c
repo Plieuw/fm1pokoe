@@ -589,65 +589,127 @@ static void art_syrinx(int hawk)
 }
 
 /* --------------------------------------------------------------- SHIMMER --- */
-/* the SHIMMER page (ui.c draw_sh): the room as a wire box (SIZE its size), turning; from a source on its floor the
- * tail's wavefronts spread as rings, each as bright as the tail was when it left (hist: the level, a UI frame each,
- * the newest last); with SHIMMER they climb, a step of the INTERVAL at a time (the pitch going up); DECAY how long
- * they last, TONE how bright the far ones stay */
+/* the SHIMMER page (ui.c draw_sh): the SPACE's ornament as a window seen a little from the side, turning: a rose
+ * window (CATHEDRAL), a girih star (MOSQUE), a lotus mandala (TEMPLE), rippling rings (HALL). Its rings from the
+ * middle out are the tail from now back in time: each lit as the tail was then (hist: the level, a UI frame each,
+ * the newest last), so the sound flows outward through the pattern; with SHIMMER the outer rings (the older tail,
+ * climbed higher) have more and finer elements, an INTERVAL's ratio a step; DECAY how far out it reaches, TONE how
+ * bright the outer rings stay */
+static void orn_pt(int32_t r, uint32_t th, int32_t *sx, int32_t *sy)   /* r Q8, th a phase: on the window */
+{
+    a3_proj(a3_rot((art_cos(th) >> 7) * (r >> 8), (art_sin(th) >> 7) * (r >> 8), 0), sx, sy);
+}
+static void orn_ln(int32_t r0, uint32_t t0, int32_t r1, uint32_t t1, uint16_t c)
+{
+    int32_t a, b, e, f;
+    orn_pt(r0, t0, &a, &b);
+    orn_pt(r1, t1, &e, &f);
+    art_ln(a, b, e, f, c, 0);
+}
+static void orn_circle(int32_t r, uint32_t n, uint16_t c)
+{
+    uint32_t k;
+    for (k = 0; k < n; k++)
+        orn_ln(r, k * (0xFFFFFFFFu / n), r, (k + 1u) * (0xFFFFFFFFu / n), c);
+}
+/* a small circle on the window, centred at (rc, th), radius rl (Q8) */
+static void orn_lobe(int32_t rc, uint32_t th, int32_t rl, uint16_t c)
+{
+    int32_t cx = (art_cos(th) >> 7) * (rc >> 8), cy = (art_sin(th) >> 7) * (rc >> 8), k, px = 0, py = 0, sx, sy;
+    for (k = 0; k <= 12; k++) {
+        uint32_t a = (uint32_t)k * (0xFFFFFFFFu / 12u);
+        a3_proj(a3_rot(cx + (art_cos(a) >> 7) * (rl >> 8), cy + (art_sin(a) >> 7) * (rl >> 8), 0), &sx, &sy);
+        if (k)
+            art_ln(px, py, sx, sy, c, 0);
+        px = sx;
+        py = sy;
+    }
+}
 static void art_shimmer(const uint8_t *hist, uint32_t nh)
 {
-    static const uint8_t SEMI[SI_COUNT] = {12, 7, 19, 24};
-    const uint32_t NR = 12u, SP = 6u;                            /* rings, frames between two */
-    int32_t room = Q8(30 + (int32_t)(sys.sh_size & 127u) * 22 / 127), hgt = Q8(24), fl = Q8(26);
-    int32_t step = (int32_t)SEMI[sys.sh_interval % SI_COUNT] * Q8(3) / 2 * (int32_t)(sys.sh_shimmer & 127u) / 127;
-    uint32_t life = 24u + (sys.sh_decay & 127u) * 150u / 127u, k, e;
-    int32_t sx, sy, sx2, sy2;
-    a3_view((uint32_t)ART_DEG(-30) + art_t * 0x00400000u, (uint32_t)-ART_DEG(20), 120, 72);
-    {   /* the room: floor, ceiling, the corners */
-        static const int8_t C[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
-        v3_t f[4], c[4];
-        for (k = 0; k < 4u; k++) {
-            f[k] = a3_rot(C[k][0] * room, fl, C[k][1] * room);
-            c[k] = a3_rot(C[k][0] * room, fl - hgt * 2, C[k][1] * room);
+    static const uint8_t RATIO8[SI_COUNT] = {16, 12, 24, 32};    /* the interval's ratio x 8 */
+    static const uint8_t FOLD[SS_COUNT] = {6, 8, 12, 8};
+    const uint32_t NR = 6u, SP = 7u;                             /* rings, frames of the tail between two */
+    uint32_t sp = sys.sh_space % SS_COUNT, life = 24u + (sys.sh_decay & 127u) * 150u / 127u, k, j;
+    int32_t sx, sy, R = Q8(50);
+    a3_view((uint32_t)(art_sin(art_t * 0x00500000u) * 7000), (uint32_t)(art_sin(art_t * 0x00380000u) * 4000), 120, 66);
+    /* the frame: a double circle (rose), two squares (the girih's octagram), a square with four gates (mandala) */
+    if (sp == SS_CATHEDRAL) {
+        orn_circle(R + Q8(4), 48, art_c2);
+        orn_circle(R + Q8(7), 48, art_c3);
+    } else if (sp == SS_MOSQUE) {
+        for (k = 0; k < 8u; k++) {
+            uint32_t a = k * 0x20000000u + 0x10000000u;
+            orn_ln(R + Q8(10), a, R + Q8(10), a + 0x40000000u, art_c2);
         }
+    } else if (sp == SS_TEMPLE) {
         for (k = 0; k < 4u; k++) {
-            a3_seg(f[k], f[(k + 1u) & 3u], 0, art_c2);
-            a3_seg(c[k], c[(k + 1u) & 3u], 0, art_c3);
-            a3_seg(f[k], c[k], 0, art_c3);
+            uint32_t a = k * 0x40000000u + 0x20000000u;
+            int32_t d = (R + Q8(4)) * 181 / 128;                /* (the square's corner: x sqrt 2) */
+            orn_ln(d, a, (R + Q8(4)), a + 0x20000000u - 0x04000000u, art_c2);
+            orn_ln((R + Q8(4)), a + 0x20000000u - 0x04000000u, R + Q8(9), a + 0x20000000u - 0x04000000u, art_c3);
+            orn_ln(R + Q8(9), a + 0x20000000u - 0x04000000u, R + Q8(9), a + 0x20000000u + 0x04000000u, art_c3);
+            orn_ln(R + Q8(9), a + 0x20000000u + 0x04000000u, (R + Q8(4)), a + 0x20000000u + 0x04000000u, art_c3);
+            orn_ln((R + Q8(4)), a + 0x20000000u + 0x04000000u, d, a + 0x40000000u, art_c2);
         }
     }
-    a3_proj(a3_rot(0, fl, 0), &sx, &sy);                         /* the source */
-    art_ring(sx, sy, 2, art_c);
-    for (k = 0; k < NR; k++) {                                   /* the wavefronts, oldest out farthest */
-        uint32_t age = k * SP + art_t % SP, j;
-        int32_t lv, r, y, a;
+    for (k = 0; k < NR; k++) {                                   /* the rings: the tail, now (inside) to earlier */
+        uint32_t age = k * SP, n, climb;
+        int32_t lv, a, ri = Q8(8) + (R - Q8(8)) * (int32_t)k / (int32_t)NR, ro = Q8(8) + (R - Q8(8)) * (int32_t)(k + 1u) / (int32_t)NR;
+        uint32_t rot = (k & 1u ? 1u : (uint32_t)-1) * art_t * 0x00200000u;
         uint16_t c;
-        v3_t prev = {0, 0, 0};
-        if (age >= life || age >= nh)
-            continue;
-        lv = hist[nh - 1u - age];
-        a = lv * (int32_t)(life - age) / (int32_t)life;          /* (fading with DECAY) */
-        a = a * (128 + (int32_t)(sys.sh_tone & 127u)) / 255;     /* (TONE: the far ones brighter) */
-        if (a < 12)
-            continue;
-        r = Q8(4) + (room - Q8(4)) * (int32_t)age / (int32_t)life;
-        y = fl - step * (int32_t)(age / 24u) - Q8(1);            /* (climbing a step every ~1 s) */
-        if (y < fl - hgt * 2)
-            y = fl - hgt * 2;
-        c = ux_mix(T_BG, art_c, a * 100 / 255);
-        for (j = 0; j <= 32u; j++) {
-            uint32_t th = j * (0xFFFFFFFFu / 32u);
-            v3_t p = a3_rot((art_cos(th) >> 7) * (r >> 8), y, (art_sin(th) >> 7) * (r >> 8));
-            if (j)
-                a3_seg(prev, p, a3_rot(0, y, 0).z, c);
-            prev = p;
+        lv = age < nh ? hist[nh - 1u - age] : 0;
+        a = age < life ? lv * (int32_t)(life - age) / (int32_t)life : 0;
+        a = a * (128 + (int32_t)(sys.sh_tone & 127u)) / 255;
+        a = 18 + a * 82 / 255;                                   /* (always faintly there: the pattern itself) */
+        c = ux_mix(T_BG, art_c, a);
+        climb = (age * (sys.sh_shimmer & 127u) / 127u + 12u) / 24u;   /* the steps climbed by then */
+        n = FOLD[sp];
+        for (j = 0; j < climb && n < 40u; j++)
+            n = n * RATIO8[sys.sh_interval % SI_COUNT] / 8u;
+        n = n < 3u ? 3u : n > 48u ? 48u : n;
+        if (sp == SS_CATHEDRAL) {                                /* the rose: a ring of lobes, its tracery */
+            int32_t rc = (ri + ro) / 2, rl = (ro - ri) / 2;
+            int32_t lim = (int32_t)((uint32_t)(rc >> 8) * 290u / n) << 8;   /* (pi rc / n, a little less) */
+            rl = rl > lim ? lim : rl;
+            for (j = 0; j < n; j++)
+                orn_lobe(rc, rot + j * (0xFFFFFFFFu / n), rl, c);
+            orn_circle(ro, 48, ux_mix(T_BG, art_c, a / 2));
+        } else if (sp == SS_MOSQUE) {                            /* the girih: a star {n / 3} and its polygon inside */
+            uint32_t sk = n >= 8u ? 3u : 2u;
+            for (j = 0; j < n; j++) {
+                uint32_t t0 = rot + j * (0xFFFFFFFFu / n), t1 = rot + ((j + sk) % n) * (0xFFFFFFFFu / n);
+                orn_ln(ro, t0, ro, t1, c);
+                orn_ln(ri, t0 + (0x7FFFFFFFu / n), ri, t0 + (0x7FFFFFFFu / n) + (0xFFFFFFFFu / n), ux_mix(T_BG, art_c, a / 2));
+            }
+        } else if (sp == SS_TEMPLE) {                            /* the lotus: a ring of petals */
+            uint32_t d = 0x7FFFFFFFu / n;
+            int32_t rm = ri + (ro - ri) * 2 / 5;
+            for (j = 0; j < n; j++) {
+                uint32_t t = rot + j * (0xFFFFFFFFu / n) + (k & 1u ? d : 0u);
+                int32_t x[5], y[5];
+                orn_pt(ri, t - d, &x[0], &y[0]);
+                orn_pt(rm, t - d * 4 / 5, &x[1], &y[1]);
+                orn_pt(ro, t, &x[2], &y[2]);
+                orn_pt(rm, t + d * 4 / 5, &x[3], &y[3]);
+                orn_pt(ri, t + d, &x[4], &y[4]);
+                art_curve(x, y, 5, c, 0, 0);
+            }
+        } else {                                                 /* the hall: a ring rippling in n lobes */
+            uint32_t m;
+            for (m = 0; m < 48u; m++) {
+                uint32_t t0 = m * (0xFFFFFFFFu / 48u), t1 = (m + 1u) * (0xFFFFFFFFu / 48u);
+                int32_t w = (ro - ri) / 3 * a / 100;
+                orn_ln(ro - w + w * art_cos(n * t0 + rot) / 32768, t0, ro - w + w * art_cos(n * t1 + rot) / 32768, t1, c);
+            }
         }
     }
-    e = nh ? hist[nh - 1u] : 0u;                                 /* the newest: a pulse at the source */
-    if (e > 40u) {
-        a3_proj(a3_rot(0, fl - Q8(2), 0), &sx2, &sy2);
-        art_ring(sx2, sy2, 1 + (int32_t)e / 64, art_c);
+    {   /* the middle: a rosette, the newest sound */
+        int32_t e = nh ? hist[nh - 1u] : 0;
+        orn_circle(Q8(3) + e * 12, 16, art_c);
     }
-    art_title(ICON_SHIMMER, "SHIMMER");
+    (void)sx; (void)sy;
+    art_title(ICON_SHIMMER, SH_SPACE_NAME[sp]);
 }
 
 /* ------------------------------------------------------------------ TAPE --- */

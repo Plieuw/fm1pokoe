@@ -45,7 +45,7 @@ static volatile struct {
     uint8_t cpu2;                /* 2ND CORE: 0 off, 1 all, 2 voices only, 3 FX only (main.c starts it at power-on; GLO) */
     uint8_t page;                /* ui.c: 0 the oscillator (HOME), 1 ENV, 2 FX: resonator, 3 FX: shimmer, 4 MOD (HOME 2x), 5 MOD ENV (ENV 2x), 6 ARP, 7 MIDI (GLO), 8 FREE EG (REC), 9 KARMA (SEQ) */
     uint8_t fx_model, fx_struct, fx_bright, fx_damp, fx_pos, fx_mix;   /* resonator.c: the FX resonator, 0..127 */
-    uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* shimmer.c: the shimmer reverb */
+    uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone, sh_space;   /* shimmer.c: the shimmer reverb */
     uint8_t osc;                 /* the oscillator: 0 the CHUA circuit, 1 .. 30 a noise program (noise.c: osc - 1) */
     uint8_t np_x, np_y, np_level;   /* noise.c: its X, Y and level, 0..127 */
     uint8_t menv_len, menv_skew, menv_height;   /* noise.c: its AD envelope (ENV again: the MOD ENV page) */
@@ -65,7 +65,7 @@ static volatile struct {
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
          .ring = 50, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1,
          .fx_model = 0, .fx_struct = 70, .fx_bright = 90, .fx_damp = 100, .fx_pos = 24, .fx_mix = 0,
-         .sh_size = 100, .sh_decay = 90, .sh_shimmer = 70, .sh_mix = 0, .sh_interval = 0, .sh_tone = 80,
+         .sh_size = 100, .sh_decay = 90, .sh_shimmer = 70, .sh_mix = 0, .sh_interval = 0, .sh_tone = 80, .sh_space = 0,
          .osc = 0, .np_x = 64, .np_y = 64, .np_level = 64,
          
          .menv_len = 80, .menv_skew = 10, .menv_height = 0, .menv_bend = 64, .basis = 0, .orbit = 0,

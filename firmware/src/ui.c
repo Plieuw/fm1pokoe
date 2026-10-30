@@ -244,13 +244,18 @@ static const fx_preset_t FX_PRESETS[] = {
 };
 #define NFX_PRESETS (sizeof FX_PRESETS / sizeof FX_PRESETS[0])
 /* the SHIMMER page's own presets */
-typedef struct { const char *name; uint8_t size, decay, shimmer, mix, interval, tone; } sh_preset_t;
+typedef struct { const char *name; uint8_t size, decay, shimmer, mix, interval, tone, space; } sh_preset_t;
 static const sh_preset_t SH_PRESETS[] = {
-    {"SHIMMER OFF", 100, 90, 70, 0, SI_OCT, 80},
-    {"HEAVEN", 110, 110, 100, 96, SI_OCT, 100},     {"OCTAVE HAZE", 127, 120, 50, 80, SI_OCT, 80},
-    {"FIFTHS", 90, 110, 120, 100, SI_FIFTH, 110},   {"SMALL ROOM", 60, 60, 20, 60, SI_OCT, 70},
-    {"VALLEY", 110, 100, 40, 35, SI_OCT, 90},       {"TWO OCTAVES", 120, 115, 90, 80, SI_2OCT, 100},
-    {"OCT + 5TH CLOUD", 127, 125, 80, 90, SI_OCT5, 90},
+    {"SHIMMER OFF", 100, 90, 70, 0, SI_OCT, 80, SS_HALL},
+    {"HEAVEN", 110, 110, 100, 96, SI_OCT, 100, SS_HALL},
+    {"STONE TEMPLE", 70, 95, 15, 70, SI_OCT, 50, SS_TEMPLE},
+    {"ORACLE CHAMBER", 90, 110, 40, 85, SI_FIFTH, 40, SS_TEMPLE},
+    {"CATHEDRAL", 127, 122, 30, 80, SI_OCT, 70, SS_CATHEDRAL},
+    {"GOTHIC CHOIR", 120, 118, 90, 90, SI_OCT5, 80, SS_CATHEDRAL},
+    {"MOSQUE DOME", 110, 112, 25, 75, SI_FIFTH, 100, SS_MOSQUE},
+    {"DOME LIGHT", 115, 120, 100, 90, SI_2OCT, 110, SS_MOSQUE},
+    {"OCTAVE HAZE", 127, 120, 50, 80, SI_OCT, 80, SS_HALL},
+    {"SMALL ROOM", 60, 60, 20, 60, SI_OCT, 70, SS_HALL},
 };
 #define NSH_PRESETS (sizeof SH_PRESETS / sizeof SH_PRESETS[0])
 static uint8_t fx_pre, sh_pre;                   /* the last chosen of each (not saved: the knobs are) */
@@ -282,6 +287,7 @@ static void preset_load(uint32_t i)
         sys.sh_shimmer = p->sh_shimmer;
         sys.sh_interval = p->sh_interval;
         sys.sh_tone = p->sh_tone;
+        sys.sh_space = SS_HALL;                  /* (the sound presets: the plain tank) */
     }
     sys.sh_mix = p->sh_mix;
     sys.osc = (uint8_t)(p->osc % (NP_COUNT + 1u));
@@ -310,7 +316,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485544u      /* "CHUA": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485545u      /* "CHUA": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -324,7 +330,7 @@ typedef struct {
     uint8_t feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts, feg_curve[FEG_N];
     uint8_t k_on, k_ge, k_latch, k_m[4];
     uint8_t mw_target, mw_depth, vel_to, vel_amt;
-    uint8_t tape_lv[4], tape_len, tape_arm;
+    uint8_t tape_lv[4], tape_len, tape_arm, sh_space;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -359,6 +365,7 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.sh_shimmer = (uint8_t)(s.sh_shimmer & 127u);
         sys.sh_mix = (uint8_t)(s.sh_mix & 127u);
         sys.sh_interval = (uint8_t)(s.sh_interval % SI_COUNT);
+        sys.sh_space = (uint8_t)(s.sh_space % SS_COUNT);
         sys.sh_tone = (uint8_t)(s.sh_tone & 127u);
         sys.osc = (uint8_t)(s.osc % (NP_COUNT + 1u));
         sys.np_x = (uint8_t)(s.np_x & 127u);
@@ -435,6 +442,7 @@ static int settings_save(void)     /* 0 = saved */
     s.sh_shimmer = sys.sh_shimmer;
     s.sh_mix = sys.sh_mix;
     s.sh_interval = sys.sh_interval;
+    s.sh_space = sys.sh_space;
     s.sh_tone = sys.sh_tone;
     s.osc = sys.osc;
     s.np_x = sys.np_x;
@@ -1341,8 +1349,10 @@ static void ui_draw(void)
         ui_status(ui_event);
     else {
         if (sys.page == 3u) {
-            str_cpy(a, SH_INTERVAL_NAME[sys.sh_interval % SI_COUNT], sizeof a);
-            ui_cat(a, sizeof a, "   TONE ");
+            str_cpy(a, SH_SPACE_NAME[sys.sh_space % SS_COUNT], sizeof a);
+            ui_cat(a, sizeof a, " ");
+            ui_cat(a, sizeof a, SH_INTERVAL_NAME[sys.sh_interval % SI_COUNT]);
+            ui_cat(a, sizeof a, "  TONE ");
             fmt_int(v, sys.sh_tone);
             ui_cat(a, sizeof a, v);
         } else if (sys.page == 2u) {
@@ -1873,8 +1883,12 @@ static void ui_input(void)
         ui_cat(t, sizeof t, v);
         ui_say(t);
     } else if (s && sys.page == 3u) {
-        sys.sh_interval = (uint8_t)((sys.sh_interval + SI_COUNT * 8 + s) % SI_COUNT);
-        str_cpy(t, "INTERVAL ", sizeof t);
+        int32_t q = (int32_t)(sys.sh_space % SS_COUNT) * SI_COUNT + (int32_t)(sys.sh_interval % SI_COUNT);
+        q = (q + SS_COUNT * SI_COUNT * 8 + s) % (SS_COUNT * SI_COUNT);   /* (the SPACE, each with its INTERVALs) */
+        sys.sh_space = (uint8_t)(q / SI_COUNT);
+        sys.sh_interval = (uint8_t)(q % SI_COUNT);
+        str_cpy(t, SH_SPACE_NAME[sys.sh_space], sizeof t);
+        ui_cat(t, sizeof t, " ");
         ui_cat(t, sizeof t, SH_INTERVAL_NAME[sys.sh_interval]);
         ui_say(t);
     } else if (s && sys.page == 2u) {
@@ -1925,7 +1939,7 @@ static void ui_input(void)
         sh_pre = (uint8_t)(((int32_t)sh_pre + (int32_t)NSH_PRESETS * 8 + s) % (int32_t)NSH_PRESETS);
         h = &SH_PRESETS[sh_pre];
         sys.sh_size = h->size; sys.sh_decay = h->decay; sys.sh_shimmer = h->shimmer;
-        sys.sh_interval = h->interval; sys.sh_tone = h->tone; sys.sh_mix = h->mix;
+        sys.sh_interval = h->interval; sys.sh_tone = h->tone; sys.sh_space = h->space; sys.sh_mix = h->mix;
         str_cpy(t, "SHIMMER: ", sizeof t);
         ui_cat(t, sizeof t, h->name);
         ui_say(t);

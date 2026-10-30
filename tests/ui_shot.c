@@ -310,6 +310,16 @@ int main(int argc, char **argv)
     synth_note_off(48);
     frames(80);
     bad |= shot(dir, "g_shimmer");
+    for (i = 0; i < SS_COUNT; i++) {     /* each SPACE's ornament, a tail flowing out */
+        sys.sh_space = (uint8_t)i;
+        synth_note_on(48, 110);
+        frames(16);
+        synth_note_off(48);
+        frames(14);
+        snprintf(name, sizeof name, "g_space_%u", i);
+        bad |= shot(dir, name);
+    }
+    sys.sh_space = 0;
     sys.sh_mix = 0;
     frames(4);
     bad |= shot(dir, "g_shimmer_off");
@@ -330,8 +340,8 @@ int main(int argc, char **argv)
         sys.page = 3; sh_pre = 0;
         enc_steps[panel.enc[EN_PRESET]] = 3;
         ui_input();
-        if (sys.preset != pr || sys.sh_interval != SI_FIFTH || sys.sh_mix != 100u) {
-            printf("PRESETS on SHIMMER: not FIFTHS\n"); bad = 1;
+        if (sys.preset != pr || sys.sh_interval != SI_FIFTH || sys.sh_space != SS_TEMPLE || sys.sh_mix != 85u) {
+            printf("PRESETS on SHIMMER: not ORACLE CHAMBER\n"); bad = 1;
         }
         sys.sh_mix = 0;
     }
