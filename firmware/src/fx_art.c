@@ -1,21 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* The FX page's pictures (ui.c): each model as a plate from an acoustics book drawn in 3D vector style: thin
  * antialiased wire frames in perspective, turning slowly, the parts behind dashed and dim; a measured quantity
- * plotted beside it; a pictogram of the model (or the animal) with its name top left. In the theme's orange, moving
+ * shown in the moving drawing itself, centred; a pictogram of the model (or the animal) with its name top left. In the theme's orange, moving
  * with the sound (the wet output's level, rz_view) and the FX knobs. Included by ui.c.
  *
- *   MODAL    a bell turning, its (2,0) mode (the rim going oval), the nodal meridians still; the resonator's partials
- *            as a stem plot on a log-frequency axis (rz_view: the model's own)
+ *   MODAL    a bell turning, its wall moving in the modes (2,0), (3,0), (4,0), each as strong as the resonator's
+ *            partial (rz_view: the model's own)
  *   SYMP     the played string in front, every resonance behind it as a string of its length (1 / f), swinging
  *   STRING   the normal modes n = 1..4 one behind the other (weighted by the pluck at POSITION), their sum in front
  *   THROAT   the vocal tract as a tube (glottis up, the bend, forward to the lips): its width along it the model's
- *            area function at the VOWEL, its length the animal's; the vocal folds beating, the lips opening; A(x)
+ *            area function at the VOWEL, its length the animal's; the vocal folds beating, the lips opening
  *   FLUTE    the flute (crown, head joint, body, foot, the keys over the tone holes, the lip plate), the standing
  *            wave inside dashed (one, two, three half waves: the JET
- *            overblowing), the embouchure, the jet bending across its edge; below the pressure along the bore
+ *            overblowing), the embouchure, the jet bending across its edge, the pressure's nodes marked
  *   SYRINX   the trachea down to the syrinx, the two bronchi forking, the labia beating each with its own voice;
- *            beside it the two voices' traces (TWO VOICE: the second apart)
- *   HAWK     the same, the labia rasping (RASP: their traces rough)
+ *            (TWO VOICE: the second apart)
+ *   HAWK     the same, the labia rasping (RASP)
  *
  * Integer only (np_sin, Q8 coordinates, Wu's lines). Nothing here touches the audio. */
 
@@ -230,18 +230,32 @@ static void art_title(const int8_t *icon, const char *name)   /* the pictogram t
 
 /* ------------------------------------------------------------------ MODAL --- */
 static const int8_t BELL_O[9][2] = {{0, 6}, {12, 7}, {19, 12}, {21, 24}, {22, 40}, {25, 54}, {31, 66}, {38, 74}, {41, 78}};
+/* the bell's wall at angle th, height j: pushed out and in by its modes (m,0), m = 2, 3, 4, each as strong as the
+ * resonator's partial it stands for (rz_view: the model's own spectrum) and at its own speed; Q12 of the radius */
+static int32_t art_bamp[3];
+static int32_t art_bell_d(uint32_t th, uint32_t j)
+{
+    int32_t d = 0;
+    uint32_t m;
+    for (m = 0; m < 3u; m++)
+        d += art_bamp[m] * art_cos((m + 2u) * th) / 32768;
+    return 4096 + d * BELL_O[j][1] / 78;
+}
 static void art_bell(void)
 {
     const uint32_t NM = 16u, NP = 48u;
-    int32_t amp = art_lv * 15 * art_sin(art_t * 0x2E000000u) / 32768;   /* the (2,0) mode, Q12 of the radius */
     uint32_t i, j, k;
-    a3_view(art_t * 0x00A00000u, (uint32_t)-ART_DEG(18), 62, 72);
+    for (i = 0; i < 3u; i++) {                                   /* the partials' levels -> the modes' depths */
+        int32_t a = i < rz_view.n && sys.fx_mix ? (rz_view.a[i] < 0 ? 32767 : rz_view.a[i]) : 0;
+        art_bamp[i] = art_lv * 16 * a / 32767 * art_sin(art_t * (0x2E000000u + i * 0x0B000000u)) / 32768 / (int32_t)(i + 1u);
+    }
+    a3_view(art_t * 0x00A00000u, (uint32_t)-ART_DEG(18), 120, 68);
     for (i = 0; i < NM; i++) {                                   /* the meridians */
         uint32_t th = i * (0xFFFFFFFFu / NM);
         v3_t prev = {0, 0, 0};
         for (j = 0; j < 9u; j++) {
-            int32_t d = 4096 + amp * art_cos(2u * th) / 32768 * BELL_O[j][1] / 78, r = BELL_O[j][0] * 216 * d / 4096;
-            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 232, r * (art_sin(th) >> 7) >> 8);
+            int32_t r = BELL_O[j][0] * 250 * art_bell_d(th, j) / 4096;
+            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 268, r * (art_sin(th) >> 7) >> 8);
             if (j)
                 a3_seg(prev, p, 0, art_c2);
             prev = p;
@@ -251,63 +265,18 @@ static void art_bell(void)
         v3_t prev = {0, 0, 0};
         for (k = 0; k <= NP; k++) {
             uint32_t th = k * (0xFFFFFFFFu / NP);
-            int32_t d = 4096 + amp * art_cos(2u * th) / 32768 * BELL_O[j][1] / 78, r = BELL_O[j][0] * 216 * d / 4096;
-            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 232, r * (art_sin(th) >> 7) >> 8);
+            int32_t r = BELL_O[j][0] * 250 * art_bell_d(th, j) / 4096;
+            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 268, r * (art_sin(th) >> 7) >> 8);
             if (k)
                 a3_seg(prev, p, 0, j == 8u ? art_c : art_c2);
             prev = p;
         }
-    }
-    for (i = 0; i < 4u; i++) {                                   /* the (2,0) mode's nodal meridians, still */
-        uint32_t th = 0x20000000u + i * 0x40000000u;
-        v3_t prev = {0, 0, 0};
-        int32_t x0 = 0, y0 = 0, x1, y1, zs = 0;
-        for (j = 0; j < 9u; j++)
-            zs += a3_rot(BELL_O[j][0] * (art_cos(th) >> 7) * 216 >> 8, 0, BELL_O[j][0] * (art_sin(th) >> 7) * 216 >> 8).z;
-        if (zs > 0)
-            continue;
-        for (j = 0; j < 9u; j++) {
-            v3_t p = a3_rot(BELL_O[j][0] * (art_cos(th) >> 7) * 216 >> 8, (BELL_O[j][1] - 44) * 232,
-                            BELL_O[j][0] * (art_sin(th) >> 7) * 216 >> 8);
-            a3_proj(p, &x1, &y1);
-            if (j)
-                art_ln(x0, y0, x1, y1, art_c, 3u | 2u << 8);
-            x0 = x1; y0 = y1; prev = p;
-        }
-        (void)prev;
     }
     {   /* the axis */
         int32_t x0, y0, x1, y1;
         a3_proj(a3_rot(0, Q8(-46), 0), &x0, &y0);
         a3_proj(a3_rot(0, Q8(42), 0), &x1, &y1);
         art_ln(x0, y0, x1, y1, art_c3, 6u | 3u << 8);
-    }
-    {   /* the partials: a stem plot on a log-frequency axis (40 Hz .. 12 kHz), the model's own */
-        const int32_t x0 = 128, x1 = 234, yb = PLOT_H - 16, ht = 80;
-        uint32_t nn = rz_view.n > 16u ? 16u : rz_view.n;
-        static const uint16_t HZ[3] = {100, 1000, 10000};
-        static const char *const HL[3] = {"100", "1k", "10k"};
-        art_l(x0, yb, x1, yb, art_c3);
-        art_l(x0, yb, x0, yb - ht, art_c3);
-        for (k = 0; k < 3u; k++) {
-            int32_t x = x0 + (int32_t)(art_oct(HZ[k]) * (uint32_t)(x1 - x0) / 2106u);
-            art_l(x, yb, x, yb + 3, art_c3);
-            cv_text(k == 2u ? x - 18 : x - 4, yb + 2, &AF_S, HL[k], art_c3);
-        }
-        cv_text(x0 + 4, yb - ht - 4, &AF_S, "A", art_c3);
-        for (k = 0; k < nn && sys.fx_mix; k++) {
-            uint32_t f = rz_view.f[k], hz;
-            int32_t x, h;
-            if (!f)
-                continue;
-            hz = (uint32_t)(((uint64_t)f * 44100u) >> 32);
-            if (hz < 40u || hz > 12000u)
-                continue;
-            x = x0 + (int32_t)(art_oct(hz) * (uint32_t)(x1 - x0) / 2106u);
-            h = 3 + (rz_view.a[k] < 0 ? ht - 3 : rz_view.a[k] * (ht - 3) / 32767);
-            art_l(x, yb, x, yb - h, art_c);
-            art_ring(Q8(x), Q8(yb - h), 2, art_c);
-        }
     }
     art_title(ICON_BELL, "BELL");
 }
@@ -345,7 +314,7 @@ static void art_string_model(void)
 {
     uint32_t k, pp = (sys.fx_pos & 127u) * (0x80000000u / 128u) + 0x01000000u;
     int32_t amp[4], one[4] = {0, 0, 0, 0}, mx = 1, x0 = Q8(-96), x1 = Q8(96), sx, sy, sx2, sy2;
-    a3_view((uint32_t)ART_DEG(-22) + (uint32_t)(art_sin(art_t * 0x00500000u) * 3000), (uint32_t)-ART_DEG(12), 122, 40);
+    a3_view((uint32_t)ART_DEG(-22) + (uint32_t)(art_sin(art_t * 0x00500000u) * 3000), (uint32_t)-ART_DEG(12), 120, 40);
     for (k = 0; k < 4u; k++) {                                   /* each mode's weight: sin(n pi p) / n^2 */
         amp[k] = art_sin((k + 1u) * pp) / (int32_t)((k + 1u) * (k + 1u));
         mx = amp[k] > mx ? amp[k] : -amp[k] > mx ? -amp[k] : mx;
@@ -391,7 +360,7 @@ static void art_sitar(void)
 {
     uint32_t k, nn = rz_view.n > 12u ? 12u : rz_view.n, fmin = 0xFFFFFFFFu, row = 0;
     int32_t x0 = Q8(-100), x1 = Q8(100), a[1], sx, sy, sx2, sy2;
-    a3_view((uint32_t)ART_DEG(-18) + (uint32_t)(art_sin(art_t * 0x00500000u) * 3000), (uint32_t)-ART_DEG(10), 122, 46);
+    a3_view((uint32_t)ART_DEG(-18) + (uint32_t)(art_sin(art_t * 0x00500000u) * 3000), (uint32_t)-ART_DEG(10), 120, 46);
     a[0] = art_lv * 128;
     a3_string(x0, x1, 0, 0, a, 1, 0x26000000u, 8 * 256, art_c, 1);   /* the played string, in front */
     for (k = 0; k < nn; k++)
@@ -437,7 +406,8 @@ static void art_throat(void)
     lv_ = lv_ > 58 ? 58 : lv_;
     lh = lh > 92 ? 92 : lh;
     len = lv_ + R * 157 / 100 + lh;
-    a3_view((uint32_t)ART_DEG(-26) + (uint32_t)(art_sin(art_t * 0x00700000u) * 6000), (uint32_t)-ART_DEG(14), 92, 70);
+    a3_view((uint32_t)ART_DEG(-26) + (uint32_t)(art_sin(art_t * 0x00700000u) * 6000), (uint32_t)-ART_DEG(14),
+            156 - (R + lh) / 2, 30 + (lv_ + R) / 2);   /* (the tube's middle in the middle) */
     for (i = 0; i <= (uint32_t)N; i++) {                         /* the tube: glottis up, the bend, forward */
         int32_t s = len * (int32_t)i / N, ar;
         uint32_t q = i * 15u * 256u / (uint32_t)N, j = q >> 8, j1 = j + 1u < 16u ? j + 1u : j;
@@ -469,24 +439,6 @@ static void art_throat(void)
             art_ln(sx, sy + 256, sx2, sy2 + 256, art_c, 0);
         }
     }
-    {   /* beside it: the area function A(x), glottis (G) to lips (L) */
-        const int32_t x0 = 184, x1 = 234, yc = 98;
-        int32_t k, prev = 0;
-        art_ln(Q8(x0 - 3), Q8(yc), Q8(x1 + 3), Q8(yc), art_c3, 6u | 3u << 8);
-        for (k = 0; k < 16; k++) {
-            int32_t a0 = WG_SHAPE[v0][k] + (((int32_t)WG_SHAPE[v1][k] - WG_SHAPE[v0][k]) * vf >> 8);
-            int32_t h = 1 + (int32_t)art_isqrt((uint32_t)a0 * 4u) * 7 / 10, xa = x0 + (x1 - x0) * k / 16;
-            int32_t xb = x0 + (x1 - x0) * (k + 1) / 16;
-            if (k) {
-                art_l(xa, yc - prev, xa, yc - h, art_c);
-                art_l(xa, yc + prev, xa, yc + h, art_c);
-            }
-            art_l(xa, yc - h, xb, yc - h, art_c);
-            art_l(xa, yc + h, xb, yc + h, art_c);
-            prev = h;
-        }
-        cv_text(x0, yc - 34, &AF_S, "A(x)", art_c3);
-    }
     art_title(ANI_ICON[an], WG_ANIMAL[an]);
 }
 
@@ -495,8 +447,8 @@ static void art_flute(void)
 {
     uint32_t nh = 1u + (sys.fx_struct & 127u) * 3u / 128u, i;
     int32_t px[25], py[25], pr[25], cw = art_cos(art_t * 0x30000000u), sx, sy, sx2, sy2;
-    const int32_t hx = Q8(-80), gy = 100;
-    a3_view((uint32_t)ART_DEG(-24) + (uint32_t)(art_sin(art_t * 0x00500000u) * 3000), (uint32_t)-ART_DEG(24), 126, 66);
+    const int32_t hx = Q8(-80);
+    a3_view((uint32_t)ART_DEG(-24) + (uint32_t)(art_sin(art_t * 0x00500000u) * 3000), (uint32_t)-ART_DEG(24), 124, 70);
     {   /* the flute: crown, head joint, body, foot (rings at the joints, the tenons doubled) */
         static const int16_t JX[] = {-108, -104, -50, -46, 66, 70, 104};
         for (i = 0; i < 7u; i++) {
@@ -547,6 +499,9 @@ static void art_flute(void)
             if (i)
                 art_ln(ox, oy, sx, sy, art_c, 2u | 2u << 8);
             ox = sx; oy = sy;
+        }        for (i = 0; i <= nh; i++) {                              /* its nodes */
+            a3_proj(a3_rot(Q8(-104) + Q8(208) / (int32_t)nh * (int32_t)i, 0, 0), &sx, &sy);
+            art_ring(sx, sy, 2, art_c);
         }
     }
     {   /* the embouchure hole on top, the lips' jet bending across its edge */
@@ -571,25 +526,6 @@ static void art_flute(void)
         a3_proj(a3_rot(hx - Q8(26), Q8(-18), 0), &sx, &sy);
         art_ln(sx, sy, sx2, sy2, art_c, 0);
     }
-    {   /* below: the pressure along the bore, its envelope, its nodes */
-        const int32_t gx0 = 60, gx1 = 234;
-        int32_t ppx = Q8(gx0), pv = Q8(gy), pe = Q8(gy), pf = Q8(gy);
-        art_l(gx0, gy, gx1, gy, art_c3);
-        cv_text(gx0 - 12, gy - 20, &AF_S, "P", art_c3);
-        for (i = 0; i <= 48u; i++) {
-            int32_t xx = Q8(gx0) + (Q8(gx1) - Q8(gx0)) / 48 * (int32_t)i, s = art_sin(i * nh * (0x80000000u / 48u));
-            int32_t yv = Q8(gy) - 12 * art_lv * cw / 32768 * s / 32768, ye = Q8(gy) - 12 * 256 * s / 32768;
-            int32_t yf = Q8(gy) + 12 * 256 * s / 32768;
-            if (i) {
-                art_ln(ppx, pv, xx, yv, art_c, 0);
-                art_ln(ppx, pe, xx, ye, art_c3, 2u | 2u << 8);
-                art_ln(ppx, pf, xx, yf, art_c3, 2u | 2u << 8);
-            }
-            ppx = xx; pv = yv; pe = ye; pf = yf;
-        }
-        for (i = 0; i <= nh; i++)
-            art_ring(Q8(gx0) + (Q8(gx1) - Q8(gx0)) / (int32_t)nh * (int32_t)i, Q8(gy), 1, art_c2);
-    }
     if (art_lv > 8) {                                            /* the breath: dust at the jet */
         uint32_t n = (uint32_t)art_lv * (sys.fx_pos & 127u) / 1024u, r = art_t * 2654435761u;
         for (i = 0; i < n; i++) {
@@ -611,7 +547,7 @@ static void art_syrinx(int hawk)
         g1 += (int32_t)((rr >> 28) & 7u) * beat * 2;
         g2 += (int32_t)((rr >> 24) & 7u) * beat * 2;
     }
-    a3_view((uint32_t)ART_DEG(-30) + (uint32_t)(art_sin(art_t * 0x00600000u) * 5000), (uint32_t)-ART_DEG(16), 70, 70);
+    a3_view((uint32_t)ART_DEG(-30) + (uint32_t)(art_sin(art_t * 0x00600000u) * 5000), (uint32_t)-ART_DEG(16), 120, 70);
     for (i = 0; i < 12; i++) {                                   /* the trachea: down to the syrinx, widening */
         px[i] = 0;
         py[i] = Q8(-44) + Q8(4) * i;
@@ -647,25 +583,6 @@ static void art_syrinx(int hawk)
             else { ay = Q8(-2) - Q8((int32_t)ph - 40); ax = sd * Q8(2); }
             a3_proj(a3_rot(ax, ay, 0), &sx, &sy);
             art_px(sx >> 8, sy >> 8, art_c, 220);
-        }
-    }
-    {   /* beside it: the two voices' traces */
-        const int32_t x0 = 138, x1 = 234;
-        uint32_t k;
-        for (k = 0; k < 2u; k++) {
-            int32_t yc = 48 + (int32_t)k * 44, j, ppx = Q8(x0), ppy = Q8(yc);
-            uint32_t fr = 0x10000000u + (k ? (uint32_t)beat * 0x00080000u : 0u);
-            art_l(x0, yc, x1, yc, art_c3);
-            cv_text(x0 - 12, yc - 8, &AF_S, k ? "R" : "L", art_c3);
-            for (j = 1; j <= 60; j++) {
-                int32_t xx = Q8(x0) + (Q8(x1) - Q8(x0)) / 60 * j;
-                int32_t v = art_sin((uint32_t)j * fr + art_t * 0x09000000u * (k + 1u)) / 128 * art_lv / 256 * 16;
-                if (hawk && art_lv > 16)
-                    v += ((int32_t)((((uint32_t)j * 2654435761u + art_t * 40503u) >> 24) & 255u) - 128) * beat / 16;
-                art_ln(ppx, ppy, xx, Q8(yc) - v, art_c, 0);
-                ppx = xx;
-                ppy = Q8(yc) - v;
-            }
         }
     }
     art_title(hawk ? ICON_HAWK : ICON_SONGBIRD, hawk ? "HAWK" : "SONGBIRD");
