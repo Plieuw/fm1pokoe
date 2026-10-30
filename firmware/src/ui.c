@@ -40,7 +40,8 @@
  *            loads the preset (program 1 the first)
  *   PRESETS  on the FX page: the FX presets (a resonator / waveguide with its knobs), on SHIMMER: the shimmer
  *            presets; elsewhere the sound presets (on KARMA: the tempo)
- *   LFO      the TAPE page (tape.c; again: back HOME): a four-track reel-to-reel. KNOB 1..4 the tracks' levels,
+ *   LFO      the TAPE page (tape.c): a four-track reel-to-reel. KNOB 1..4: a blank track's knob arms it, a recorded
+ *            one's is its level (the armed one shows ARM; ALGORITHM arms a recorded one to record it again),
  *            ALGORITHM the armed track, SELECT the LENGTH (1, 2, 4, 8, 16 beats), PRESETS the BPM (the tape's speed
  *            and pitch follow it), PLAY the transport, REC one pass on the armed track (with PLAY held: erase it);
  *            LFO again: its SPEED menu: KNOB 1 the global BPM, KNOB 2 the SPEED in the harmonic series' ratios
@@ -1170,9 +1171,16 @@ static void ui_draw(void)
             str_cpy(a, "1 TRACK 1", sizeof a);
             a[0] = a[8] = (char)('1' + i);
             fmt_int(v, sys.tape_lv[i]);
-            str_cpy(b, v, sizeof b);
+            str_cpy(b, tape.has[i] ? v : "EMPTY", sizeof b);
             if (i == sys.tape_arm % 4u)
-                ui_cat(b, sizeof b, tape.rec ? "  REC" : "  ARM");
+            {
+                if (tape.rec)
+                    str_cpy(b, "REC", sizeof b);
+                else if (tape.has[i])
+                    ui_cat(b, sizeof b, "  ARM");
+                else
+                    str_cpy(b, "ARMED", sizeof b);
+            }
             ui_val_c = i == sys.tape_arm % 4u ? T_ACCENT : 0;
             ui_cell(CELL[i], a, b);
         }
@@ -1793,11 +1801,20 @@ static void ui_input(void)
             } else
                 ui_say("TAPE BLANK: RECORD FIRST");
         }
-    } else if (sys.page == 12u) {                /* TAPE: the faders */
-        knob(&sys.tape_lv[0], EN_K1, 0);
-        knob(&sys.tape_lv[1], EN_K2, 1);
-        knob(&sys.tape_lv[2], EN_K3, 2);
-        knob(&sys.tape_lv[3], EN_K4, 3);
+    } else if (sys.page == 12u) {                /* TAPE: a blank track's knob arms it; a recorded one's is its fader */
+        static const uint8_t KN[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
+        uint32_t k;
+        for (k = 0; k < 4u; k++) {
+            if (tape.has[k] && !(tape.rec && k == sys.tape_arm % 4u))
+                knob(&sys.tape_lv[k], KN[k], k);
+            else if (ui_enc(KN[k]) != 0 && sys.tape_arm != k && !tape.rec) {
+                sys.tape_arm = (uint8_t)k;
+                str_cpy(t, "ARMED TRACK ", sizeof t);
+                fmt_int(v, (int32_t)k + 1);
+                ui_cat(t, sizeof t, v);
+                ui_say(t);
+            }
+        }
     } else if (sys.page == 11u) {
         if ((s = ui_enc(EN_K1)) != 0) {
             sys.mw_target = (uint8_t)clamp((int32_t)sys.mw_target + s, 0, FEG_NT - 1);

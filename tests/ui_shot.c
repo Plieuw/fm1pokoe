@@ -247,8 +247,9 @@ int main(int argc, char **argv)
     sys.basis = 0;
     edges = btn_bit(B_LFO);              /* the TAPE page: recording track 2 under a note */
     ui_input();
-    enc_steps[panel.enc[EN_ALGO]] = 1;
+    enc_steps[panel.enc[EN_K2]] = 1;     /* (the blank track 2's knob arms it) */
     ui_input();
+    if (sys.tape_arm != 1u) { printf("TAPE: KNOB 2 did not arm track 2\n"); bad = 1; }
     edges = btn_bit(B_REC);
     ui_input();
     synth_note_on(55, 110);

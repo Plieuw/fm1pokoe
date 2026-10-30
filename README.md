@@ -269,8 +269,8 @@ hetzelfde aantal tellen. Lo-fi zoals tape: 11 kHz, 8-bit mu-law, de hoogte rolt 
 
 | Bediening | Functie |
 | --- | --- |
-| KNOB 1..4 | het volume van spoor 1..4 (de faders) |
-| ALGORITHM | het spoor dat REC opneemt (ARM) |
+| KNOB 1..4 | een leeg spoor: draaien = dat spoor armen (ARMED); een opgenomen spoor: zijn volume (de fader) |
+| ALGORITHM | ook armen, voor een spoor dat al is opgenomen (om het opnieuw op te nemen) |
 | SELECT | LENGTH van de lus: 1 tel, 2 tellen, 1 maat, 2 maten, 4 maten (zo lang als de band past: ~3,6 s; anders korter) |
 | PRESETS | de BPM (dezelfde als ARP en KARMA): snelheid en toonhoogte van de band volgen |
 | PLAY | de band starten (vanaf het begin van de lus) / stoppen |
