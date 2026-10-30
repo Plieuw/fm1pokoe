@@ -445,11 +445,31 @@ static void ui_cell(uint32_t i, const char *label, const char *value)
     lcd_sync();
 }
 
+/* the status line; a button with more than one page (HOME: + MOD, ENV: + MOD ENV, FX: + SHIMMER) shows its layers as
+ * small blocks in the right corner: the page shown filled in the theme's orange, the other an empty outline */
 static void ui_status(const char *s)
 {
-    if (!ui_changed(T_STATUS, s, ""))
+    static const uint8_t LAYERS[12] = {1, 1, 1, 2, 2, 2, 0, 0, 0, 0, 0, 0};   /* each page: its layer (1, 2; 0 none) */
+    uint32_t pg = sys.page < 12u ? sys.page : 0u, l = LAYERS[pg];
+    char sig[2] = {(char)('0' + l), 0};
+    if (!ui_changed(T_STATUS, s, sig))
         return;
-    draw_text_line(0, 223, 240, &AF_S, s, T_MID, T_BG, 1);
+    if (!l) {
+        draw_text_line(0, 223, 240, &AF_S, s, T_MID, T_BG, 1);
+        return;
+    }
+    draw_text_line(0, 223, 216, &AF_S, s, T_MID, T_BG, 1);
+    cv_begin(24, AF_S.h, T_BG);
+    {
+        uint32_t i, y = (AF_S.h - 7u) / 2u;
+        for (i = 0; i < 2u; i++) {
+            if (i + 1u == l)
+                cv_rect((int32_t)(4u + i * 10u), (int32_t)y, 7, 7, T_THEME);
+            else
+                cv_frame((int32_t)(4u + i * 10u), (int32_t)y, 7, 7, T_MID);
+        }
+    }
+    cv_blit(216, 223);
 }
 
 /* -------------------------------------------------------------- plot --- */
