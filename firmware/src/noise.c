@@ -306,6 +306,8 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
                      wv = sys.mod_wave & 127u;
             for (i = 0; i < n; i++) {
                 int32_t dv = dd + ((dh * (int32_t)fk[i]) >> 15), f;
+                if (voice[k].vfm)                /* (velocity: a soft note's FM shallower) */
+                    dv = (dv * (256 - (int32_t)voice[k].vfm)) >> 8;
                 dv = dv > 24193 ? 24193 : dv;
                 f = 65536 + ((np_wave(S->mph, wv) * dv) >> 13);
                 S->mph += mi;

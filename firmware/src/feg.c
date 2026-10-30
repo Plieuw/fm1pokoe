@@ -221,3 +221,27 @@ static void feg_block(uint32_t n, uint32_t note_ons)
         feg.pos = (uint8_t)idx;
     }
 }
+
+/* the mod wheel (MIDI CC 1, the EDIT page): it moves a parameter of FREE EG's list up from where it is, DEPTH how far
+ * (127: the wheel up takes it to 127); the parameter given back when the wheel is down. FREE EG on the same one wins */
+static struct { uint8_t on, target, base; } mwd;
+static void mw_block(void)
+{
+    uint32_t m = sys.mw & 127u, d = sys.mw_depth & 127u, t = sys.mw_target % FEG_NT;
+    volatile uint8_t *f;
+    if (mwd.on && (mwd.target != t || !m || !d)) {   /* (down, off, or another target: given back) */
+        *feg_field(mwd.target) = mwd.base;
+        mwd.on = 0;
+    }
+    if (!m || !d)
+        return;
+    f = feg_field(t);
+    if (feg.playing && feg.target == t)
+        return;
+    if (!mwd.on) {
+        mwd.on = 1;
+        mwd.target = (uint8_t)t;
+        mwd.base = *f;
+    }
+    *f = (uint8_t)(mwd.base + (127u - mwd.base) * m * d / (127u * 127u));
+}

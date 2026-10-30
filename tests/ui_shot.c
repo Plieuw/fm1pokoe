@@ -78,6 +78,7 @@ static void midi_out_event(uint32_t pkt) { (void)pkt; }   /* (usb.c: not in this
 #include "../firmware/src/panel.c"
 #include "../firmware/src/synth.c"
 static volatile uint8_t keys_panic_req;   /* (keys.c: not in this test) */
+static volatile uint8_t keys_prog_req;
 #include "../firmware/src/ui.c"
 
 static int32_t abuf_[2 * CTL];
@@ -192,6 +193,14 @@ int main(int argc, char **argv)
     ui_input();
     sys.orbit = 0;
     sys.basis = 0;
+    edges = btn_bit(B_EDIT);             /* the EDIT page: the mod wheel half up, velocity BRIGHT */
+    ui_input();
+    sys.mw = 64; sys.vel_to = 1; sys.last_vel = 90;
+    frames(2);
+    bad |= shot(dir, "e_edit");
+    sys.mw = 0; sys.vel_to = 0;
+    edges = btn_bit(B_EDIT);
+    ui_input();
     synth_kill();
     sys.page = 0;
     ui_force = 1;

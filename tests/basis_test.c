@@ -154,6 +154,15 @@ static void wav_hdr(FILE *f, uint32_t frames)
     fwrite("data", 1, 4, f); v = frames * 4; fwrite(&v, 4, 1, f);
 }
 
+static voice_t *voice_of(uint32_t note)
+{
+    uint32_t k;
+    for (k = 0; k < NVOICE; k++)
+        if (voice[k].stage != ST_OFF && voice[k].note == note)
+            return &voice[k];
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (getenv("SIZES"))
@@ -868,6 +877,48 @@ int main(int argc, char **argv)
         sys.midi_usb = 3;
         run_ms(500);
         check("MIDI page: TRS / USB in on and off, RX channel, TX channel, USB out off", okk);
+    }
+    {   /* the mod wheel (CC 1) moves the EDIT page's parameter and gives it back; program change asks for a preset */
+        int okk = 1;
+        uint8_t base;
+        sys.mw_target = 8; sys.mw_depth = 127; sys.mod_depth = 20;
+        base = sys.mod_depth;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 127);
+        run_ms(10);
+        okk &= sys.mod_depth == 127;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 64);
+        run_ms(10);
+        okk &= sys.mod_depth > base && sys.mod_depth < 127;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
+        run_ms(10);
+        okk &= sys.mod_depth == base;
+        sys.mw_depth = 0;                                            /* depth 0: the wheel does nothing */
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 127);
+        run_ms(10);
+        okk &= sys.mod_depth == base;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
+        sys.mw_depth = 127;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xC0, 3, 0);
+        run_ms(10);
+        okk &= keys_prog_req == 4;
+        keys_prog_req = 0;
+        check("mod wheel moves MOD DEPTH and gives it back; program change asks for preset 4", okk);
+    }
+    {   /* velocity on the sound: BRIGHT closes a soft note's gate, FM makes its depth shallower; OFF changes nothing */
+        int okk = 1;
+        synth_kill();
+        sys.vel_to = 0;
+        synth_note_on(60, 20);
+        okk &= voice_of(60) && voice_of(60)->vbr == 0u && voice_of(60)->vfm == 0u;
+        synth_kill();
+        sys.vel_to = 3; sys.vel_amt = 127;
+        synth_note_on(60, 20);
+        okk &= voice_of(60) && voice_of(60)->vbr > 150u && voice_of(60)->vfm > 150u;
+        synth_note_on(64, 127);
+        okk &= voice_of(64) && voice_of(64)->vbr == 0u;
+        synth_kill();
+        sys.vel_to = 0;
+        check("velocity: soft notes darker and less FM when on, unchanged when OFF", okk);
     }
 
     /* the arpeggiator: on its own clock (120 BPM, 1/16: 8 steps a second) UP plays the held chord low to high over

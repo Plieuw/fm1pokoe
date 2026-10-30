@@ -57,7 +57,9 @@ static volatile struct {
     uint8_t midi_trs, midi_usb, midi_rx, midi_tx;   /* keys.c, GLO page: TRS in on; USB 0 off 1 in 2 out 3 both; rx 0 omni
                                                   * 1..16; tx channel 0..15 */
     uint8_t feg_val, feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts;   /* feg.c: FREE EG (REC) */
-    uint8_t k_on, k_ge, k_latch, k_m[4];   /* karma.c: KARMA (SEQ): on, the GE, LATCH, its four realtime controls */
+    uint8_t k_on, k_ge, k_latch, k_m[4];
+    uint8_t mw, mw_target, mw_depth;   /* keys.c: MIDI CC 1 (the mod wheel), the parameter it moves (feg.c's list), how far */
+    uint8_t vel_to, vel_amt;     /* synth.c: velocity also on the sound: 0 off, 1 BRIGHT (the gate), 2 FM, 3 both; how much */   /* karma.c: KARMA (SEQ): on, the GE, LATCH, its four realtime controls */
     uint16_t menv_view;          /* the newest voice's FM depth now (DEPTH + HEIGHT x envelope), 0..32767 (ui.c) */
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
          .ring = 50, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1,
@@ -69,4 +71,5 @@ static volatile struct {
          .arp_on = 0, .arp_type = 0, .arp_bpm = 120, .arp_div = 7, .arp_gate = 80, .arp_swing = 0, .arp_hold = 0,
          .midi_trs = 1, .midi_usb = 3, .midi_rx = 0, .midi_tx = 0,
          .feg_val = 64, .feg_len = 9, .feg_depth = 127, .feg_target = 0, .feg_on = 0, .feg_has = 0, .feg_npts = 0,
-         .k_on = 0, .k_ge = 0, .k_latch = 0, .k_m = {64, 64, 64, 64}};
+         .k_on = 0, .k_ge = 0, .k_latch = 0, .k_m = {64, 64, 64, 64},
+         .mw = 0, .mw_target = 8, .mw_depth = 127, .vel_to = 0, .vel_amt = 64};

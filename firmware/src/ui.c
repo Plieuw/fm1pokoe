@@ -38,6 +38,9 @@
  *   SEQ      the KARMA page (karma.c; again: back HOME; PLAY starts it, its LED lit while on): ALGORITHM the GE (the phrase
  *            generator), KNOB 1..4 its four realtime controls (named per GE: DENSITY, RANGE, REPEAT ...), SELECT LATCH,
  *            PRESETS the tempo (the ARP page's BPM: one for all)
+ *   EDIT     the EDIT page (again: back HOME): KNOB 1 the MOD WHEEL's parameter (MIDI CC 1; FREE EG's list), KNOB 2
+ *            its DEPTH, KNOB 3 VELOCITY on the sound (OFF, BRIGHT, FM, BOTH), KNOB 4 how much; MIDI program change
+ *            loads the preset (program 1 the first)
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -138,6 +141,7 @@ static const preset_t PRESETS[] = {
 static void preset_load(uint32_t i)
 {
     const preset_t *p = &PRESETS[i % NPRESETS];
+    mwd.on = 0;                                         /* (the mod wheel takes the new value as its base) */
     sys.preset = (uint8_t)(i % NPRESETS);
     sys.chaos = p->chaos;
     sys.shape = p->shape;
@@ -195,7 +199,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485541u      /* "CHUA": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485542u      /* "CHUA": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -209,6 +213,7 @@ typedef struct {
     uint8_t midi_trs, midi_usb, midi_rx, midi_tx;
     uint8_t feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts, feg_curve[FEG_N];
     uint8_t k_on, k_ge, k_latch, k_m[4];
+    uint8_t mw_target, mw_depth, vel_to, vel_amt;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -280,6 +285,10 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.k_on = (uint8_t)(s.k_on != 0 && !sys.arp_on);
         sys.k_ge = (uint8_t)(s.k_ge % KGE_N);
         sys.k_latch = (uint8_t)(s.k_latch != 0);
+        sys.mw_target = (uint8_t)(s.mw_target % FEG_NT);
+        sys.mw_depth = (uint8_t)(s.mw_depth & 127u);
+        sys.vel_to = (uint8_t)(s.vel_to & 3u);
+        sys.vel_amt = (uint8_t)(s.vel_amt & 127u);
         for (uint32_t i = 0; i < 4u; i++)
             sys.k_m[i] = (uint8_t)(s.k_m[i] & 127u);
     }
@@ -351,6 +360,10 @@ static int settings_save(void)     /* 0 = saved */
     s.k_on = sys.k_on;
     s.k_ge = sys.k_ge;
     s.k_latch = sys.k_latch;
+    s.mw_target = sys.mw_target;
+    s.mw_depth = sys.mw_depth;
+    s.vel_to = sys.vel_to;
+    s.vel_amt = sys.vel_amt;
     for (uint32_t i = 0; i < 4u; i++)
         s.k_m[i] = sys.k_m[i];
     return st_save(OBJ_SETTINGS, &s, sizeof s);
@@ -912,6 +925,31 @@ static void draw_pan(void)
     cv_blit(0, PLOT_Y);
 }
 
+/* the EDIT page's picture: the mod wheel now and the parameter it moves, the last velocity and what it does */
+static const char *const VEL_TO_NAME[4] = {"OFF", "BRIGHT", "FM", "BRIGHT + FM"};
+static void draw_edit(void)
+{
+    const int32_t x0 = 8, w = 224, h = 14;
+    int32_t mw = (int32_t)(sys.mw & 127u), vel = sys.last_vel;
+    char a[40];
+    cv_begin(240, PLOT_H, T_BG);
+    cv_text(x0, 6, &AF_S, "MOD WHEEL (CC 1)", T_DIM);
+    cv_frame(x0, 24, w, h, T_LINE);
+    if (mw)
+        cv_rect(x0 + 1, 25, (w - 2) * mw / 127, h - 2, FEG_FM(sys.mw_target) ? T_FM : T_THEME);
+    str_cpy(a, "MOVES ", sizeof a);
+    ui_cat(a, sizeof a, FEG_T_NAME[sys.mw_target % FEG_NT]);
+    cv_text(x0, 42, &AF_S, a, FEG_FM(sys.mw_target) ? T_FM : T_MID);
+    cv_text(x0, 66, &AF_S, "LAST VELOCITY", T_DIM);
+    cv_frame(x0, 84, w, h, T_LINE);
+    if (vel && sys.last_note < 128u)
+        cv_rect(x0 + 1, 85, (w - 2) * vel / 127, h - 2, T_THEME);
+    str_cpy(a, "ON THE SOUND: ", sizeof a);
+    ui_cat(a, sizeof a, VEL_TO_NAME[sys.vel_to & 3u]);
+    cv_text(x0, 102, &AF_S, a, T_MID);
+    cv_blit(0, PLOT_Y);
+}
+
 /* the MIDI page's picture: where notes come in and go out, and the clock */
 static void draw_midi(void)
 {
@@ -1086,7 +1124,16 @@ static void ui_draw(void)
     ui_head(a, b);
 
     ui_val_c = sys.page == 4u || sys.page == 5u ? T_FM : 0;   /* (the FM pages: their values green) */
-    if (sys.page == 10u) {
+    if (sys.page == 11u) {
+        ui_val_c = FEG_FM(sys.mw_target) ? T_FM : 0;
+        ui_cell(T_C1, "1 MOD WHEEL", FEG_T_NAME[sys.mw_target % FEG_NT]);
+        ui_val_c = 0;
+        fmt_int(v, sys.mw_depth);
+        ui_cell(T_C2, "2 DEPTH", v);
+        ui_cell(T_C3, "3 VELOCITY", VEL_TO_NAME[sys.vel_to & 3u]);
+        fmt_int(v, sys.vel_amt);
+        ui_cell(T_C4, "4 AMOUNT", sys.vel_to ? v : "-");
+    } else if (sys.page == 10u) {
         if (sys.basis)
             fmt_int(v, sys.basis);
         else
@@ -1398,6 +1445,8 @@ static void ui_draw(void)
         draw_karma();
     else if (sys.page == 10u)
         draw_pan();
+    else if (sys.page == 11u)
+        draw_edit();
     else
         draw_plot();
     ui_force = 0;
@@ -1511,6 +1560,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_GLO]);
     if (sys.page == 10u)
         led_on(nl, panel.btn[B_SCL]);
+    if (sys.page == 11u)
+        led_on(nl, panel.btn[B_EDIT]);
     if (sys.k_on || sys.page == 9u)
         led_on(nl, panel.btn[B_SEQ]);
     if (sys.arp_on || sys.k_on) {                       /* PLAY: lit (and its green) while the ARP or KARMA runs */
@@ -1576,6 +1627,13 @@ static void ui_input(void)
     uint32_t pressed = fm1_input_edges(0), b;
     int32_t s;
     char t[24], v[12];
+    if (keys_prog_req) {                                /* MIDI program change: that preset */
+        uint32_t pg = keys_prog_req - 1u;
+        keys_prog_req = 0;
+        preset_load(pg);
+        str_cpy(t, PRESETS[sys.preset % NPRESETS].name, sizeof t);
+        ui_say(t);
+    }
     for (b = 0; b < NB; b++) {
         if (!(pressed & btn_bit(b)))
             continue;
@@ -1633,6 +1691,10 @@ static void ui_input(void)
                 ui_say("STOP");
             }
             break;
+        case B_EDIT:                                    /* the EDIT page (mod wheel, velocity) and back */
+            sys.page = sys.page == 11u ? 0u : 11u;
+            ui_force = 1;
+            break;
         case B_SCL:                                     /* the PAN page (BASIS, ORBIT) and back */
             sys.page = sys.page == 10u ? 0u : 10u;
             ui_force = 1;
@@ -1649,7 +1711,18 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 10u) {
+    if (sys.page == 11u) {
+        if ((s = ui_enc(EN_K1)) != 0) {
+            sys.mw_target = (uint8_t)clamp((int32_t)sys.mw_target + s, 0, FEG_NT - 1);
+            ui_hot = 0; ui_hot_ms = fm1_ms;
+        }
+        knob(&sys.mw_depth, EN_K2, 1);
+        if ((s = ui_enc(EN_K3)) != 0) {
+            sys.vel_to = (uint8_t)clamp((int32_t)sys.vel_to + (s > 0 ? 1 : -1), 0, 3);
+            ui_hot = 2; ui_hot_ms = fm1_ms;
+        }
+        knob(&sys.vel_amt, EN_K4, 3);
+    } else if (sys.page == 10u) {
         knob(&sys.basis, EN_K1, 0);
         knob(&sys.orbit, EN_K2, 1);
     } else if (sys.page == 9u) {

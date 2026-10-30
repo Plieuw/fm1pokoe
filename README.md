@@ -51,10 +51,11 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | PLAY | start en stopt de ARP of KARMA: op de ARP-pagina de ARP, op de SEQ-pagina KARMA, op andere pagina's de laatste van de twee die je opende. Brandt (ook groen) zolang er een speelt |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
+| EDIT | de EDIT-pagina (nog een keer: terug naar HOME): KNOB 1 welke parameter het MOD WHEEL (MIDI CC 1) beweegt (de lijst van FREE EG), KNOB 2 hoe ver (DEPTH; wiel omhoog = tot 127, wiel omlaag = de oude waarde terug), KNOB 3 VELOCITY op de klank (OFF, BRIGHT: zacht = donkerder, FM: zacht = minder FM, BRIGHT + FM), KNOB 4 hoeveel |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
 | Snel draaien | elke knop en encoder (KNOB 1–4, SELECT, ALGORITHM, PRESETS) versnelt tot 4×, net als BPM (van 0 naar 127 in één zwaai); één klik blijft één stap |
 | MASTER | volume |
-| MIDI in (USB en TRS) | note on/off op het RX-kanaal (of elk: OMNI), CC 123 = all notes off; clock voor de arpeggiator |
+| MIDI in (USB en TRS) | note on/off op het RX-kanaal (of elk: OMNI), CC 1 = mod wheel (zie EDIT), CC 123 = all notes off, program change = preset (program 1 = de eerste); clock voor de arpeggiator |
 | USB | class-compliant MIDI + USB-audio-ingang (opnemen in je DAW) |
 | OCT- + OCT+ 5 s ingedrukt | UBOOT (update-modus) |
 

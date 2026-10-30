@@ -217,6 +217,7 @@ typedef struct {
     uint16_t amp;                /* velocity, Q15 */
     uint8_t note, stage, fresh;  /* fresh: the DC blocker starts at the first sample */
     uint8_t lpg_n;               /* frames until the next coefficient update */
+    uint8_t vbr, vfm;            /* velocity on the sound (EDIT): taken off the gate's opening, the FM depth, /255 (0: none) */
     uint8_t osc;                 /* the oscillator its state belongs to (sys.osc when it started; a change restarts it) */
     uint8_t rz;                  /* the FX resonator it feeds (resonator.c: the one tuned to its note) */
     int16_t pan;                 /* its place in the stereo field at BASIS 127, Q15 (- left): VOICE_PAN (KARMA: its own) */
@@ -306,6 +307,13 @@ static void synth_note_on(uint32_t note, uint32_t vel)
     }
     v->inc = note_inc(note);
     v->amp = (uint16_t)(vel * 258u);                /* 127 -> 32766 */
+    {   /* velocity on the sound (the EDIT page): a soft note's gate opens less (darker), its FM shallower */
+        uint32_t cut = (uint32_t)(sys.vel_amt & 127u) * (127u - (vel > 127u ? 127u : vel)) * 2u / 127u;   /* 0 .. 254 */
+        if (cut > 250u)
+            cut = 250u;
+        v->vbr = (uint8_t)(sys.vel_to & 1u ? cut : 0u);
+        v->vfm = (uint8_t)(sys.vel_to & 2u ? cut : 0u);
+    }
     v->stage = ST_ATTACK;                           /* (a retrigger: the attack from where the envelope is) */
     v->age = ++voice_clock;
     sys.last_note = (uint8_t)note;
@@ -378,7 +386,11 @@ static int env_frame(voice_t *v)
  * Fine enough for the lowest cutoff (g ~ 0.0018: g^2 ~ 850 in Q28), where the ring's decay is slowest */
 static void lpg_coefs(voice_t *v)
 {
-    int64_t g = (int64_t)LPG_G[v->ctl >> 22 > 255u ? 255u : v->ctl >> 22] << 4, k = (int64_t)eg.k << 4;
+    uint32_t c = v->ctl >> 22 > 255u ? 255u : v->ctl >> 22;
+    int64_t g, k = (int64_t)eg.k << 4;
+    if (v->vbr)                                         /* (velocity: a soft note's gate opens less) */
+        c = c * (255u - v->vbr) / 255u;
+    g = (int64_t)LPG_G[c] << 4;
     uint32_t d = (uint32_t)((1 << 28) + ((g * (g + k)) >> 28));               /* 1 + g (g + k): 1 .. ~8, Q28 */
     v->a1 = (int32_t)(((1u << 31) / (d >> 13)) << 12);                         /* 1 / d (32-bit division) */
     v->a2 = (int32_t)((g * v->a1) >> 28);

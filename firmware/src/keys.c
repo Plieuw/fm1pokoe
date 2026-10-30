@@ -19,6 +19,7 @@
 
 static volatile uint8_t kb_boot_hold;            /* set from power-on to the end of the splash (main.c): keys silent */
 static volatile uint8_t keys_panic_req;
+static volatile uint8_t keys_prog_req;           /* a MIDI program change: its number + 1 (ui.c loads the preset) */
 static uint32_t kb_prev;                         /* fm1_in.notes at the last block */
 static uint8_t kb_note[NKEYS];                   /* the note key k started (KB_SILENT: none) */
 static uint8_t kb_ch[NKEYS];                     /* the MIDI channel its note on went out on (its off: the same) */
@@ -162,6 +163,10 @@ static void midi_in_block(void)
             note_end(d1);
         else if (st == 0xB0u && (d1 == 123u || d1 == 120u))
             keys_all_off();
+        else if (st == 0xB0u && d1 == 1u)        /* the mod wheel: its parameter (feg.c mw_block, the EDIT page) */
+            sys.mw = (uint8_t)d2;
+        else if (st == 0xC0u)                    /* program change: the preset (ui.c, the main loop) */
+            keys_prog_req = (uint8_t)(d1 + 1u);
         else if (((pkt >> 8) & 0xFFu) >= 0xF8u)   /* realtime: the clock for the arpeggiator */
             arp_midi_rt((pkt >> 8) & 0xFFu);
         /* add here: CC -> parameters, pitch bend ... */
@@ -187,5 +192,6 @@ static void keys_block(void)
     midi_in_block();
     arp_block(CTL);
     karma_block(CTL);
-    feg_block(CTL, voice_clock);                 /* (voice_clock: the note ons, the arpeggiator's too) */
+    feg_block(CTL, voice_clock);
+    mw_block();                 /* (voice_clock: the note ons, the arpeggiator's too) */
 }
