@@ -234,16 +234,15 @@ Rings en DaisySP (Emilie Gillet, Electrosmith; MIT) die Felucca al had (`phys_ds
 | STRING | een Karplus-Strong-snaar | onder ~32 een gebogen kam (sitar), daarboven dispersie (piano) | — |
 
 KNOB 2 BRIGHTNESS, KNOB 3 DAMPING (zoals Rings: rechtsom langer), KNOB 4 MIX (0 = uit, dan rekent er niets). Het
-scherm tekent het model als plaat uit een akoestiek- of anatomieboek (dunne lijnen, doorsneden gearceerd, bewegende
-vormen gestippeld, ernaast een grafiek van wat het model doet), bewegend met het geluid: MODAL een klok in halve
-doorsnede met zijn (2,0)-mode, naast de echte partials van de resonator als staafdiagram op een log-frequentie-as;
-SYMP de bespeelde snaar en elke resonantie als snaar van zijn lengte (1/f), meeslingerend; STRING de eigentrillingen
-n = 1..4 vanaf het tokkelpunt met hun knopen, en hun som; THROAT een mediane doorsnede van het hoofd (neusholte,
-gehemelte, zacht gehemelte, tong in de stand van de VOWEL, tanden, lippen, kaak die opengaat met het volume,
-strottenhoofd met trillende stembanden, wervels; per dier de snuit, hoektanden, de tandplaat van de koe, de slurf),
-met ernaast de oppervlaktefunctie A(x) van de buis van glottis tot lippen; FLUTE het kopstuk in doorsnede met de
-luchtstraal over de rand en daaronder de staande drukgolf; SYRINX en HAWK de syrinx van voren (luchtpijpringen,
-bronchiën, de labia links en rechts) met ernaast de twee stemmen als golfvorm.
+scherm tekent het model als 3D-draadmodel in vectorstijl (dunne lijnen in perspectief, langzaam draaiend, de
+achterkant gestippeld), met linksboven een pictogram en de naam (de klok, de snaar, de sitar, de fluit, de zangvogel,
+de havik, en bij THROAT het dier: kat, aap, mens, hond, wolf, koe, leeuw, olifant) en ernaast een grafiek, bewegend met
+het geluid: MODAL een draaiende klok in zijn (2,0)-trilling met de stille knooplijnen, naast de echte partials van de
+resonator; SYMP de bespeelde snaar met daarachter elke resonantie als snaar van zijn lengte (1/f); STRING de
+eigentrillingen n = 1..4 achter elkaar en hun som vooraan; THROAT het spraakkanaal als buis (stembanden omhoog, de bocht,
+naar de lippen) met de echte oppervlaktefunctie van de VOWEL en de lengte van het dier, plus A(x); FLUTE de boring als
+buis met de staande golf in zijn ringen, de luchtstraal over het mondgat en de drukgolf eronder; SYRINX en HAWK de
+luchtpijp met de syrinx en de twee bronchiën als buizen, de labia trillend, met ernaast de twee stemmen.
 
 **De waveguides (FX, achter de resonatoren).** Draai op de FX-pagina verder met ALGORITHM: na MODAL, SYMP STRING en
 STRING komen drie waveguides, eigen code (naar de klassieke modellen: het vocal tract van Kelly en Lochbaum, de fluit
