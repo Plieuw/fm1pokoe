@@ -306,7 +306,7 @@ ringen (HALL). De ringen van binnen naar buiten zijn de galmstaart van nu naar e
 was: het geluid stroomt naar buiten door het patroon; elke knop werkt over zijn hele bereik zichtbaar mee: SIZE de grootte van het
 raam (en 4..7 ringen), DECAY hoe ver de ringen terug in de staart reiken (0,8..7,6 s), SHIMMER hoeveel stappen de
 buitenste ringen klimmen (0..3, elk met meer en fijnere elementen in de verhouding van het INTERVAL), TONE hoe fel de
-buitenkant blijft, MIX hoe fel het geheel is. Het ornament draait mee op de BPM (of de MIDI clock): een zestiende slag per tel, een hele slag in vier maten, de ringen om en om de andere kant op, de buitenste langzamer. De uitgang is nu stereo; met de shimmer uit blijft hij mono en bit voor bit hetzelfde.
+buitenkant blijft, MIX hoe fel het geheel is. Het ornament beweegt op de BPM (of de MIDI clock): elke ring stapt één element verder op de onderverdeling van de tel, de binnenste op de kwarten, dan de achtsten, de buitenste op de zestienden, met een snelle zachte beweging en dan stil; de ringen om en om de andere kant op. De uitgang is nu stereo; met de shimmer uit blijft hij mono en bit voor bit hetzelfde.
 
 Het scherm toont de toestand (x, y, z) van de nieuwste stem; speelt er niets, dan een "spookcircuit" dat op de huidige
 instellingen meedraait. Dat spookcircuit levert ook de beginstand van nieuwe stemmen (al op de attractor, met een kleine

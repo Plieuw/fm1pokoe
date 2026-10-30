@@ -625,8 +625,7 @@ static void orn_lobe(int32_t rc, uint32_t th, int32_t rl, uint16_t c)
         py = sy;
     }
 }
-/* the ornament turns with the tempo: a sixteenth of a turn a beat (a turn in four bars), the rings in alternate
- * directions, the outer ones slower; the tempo the BPM's or the MIDI clock's */
+/* the ornament moves with the tempo (the BPM's or the MIDI clock's): its rings step on the beat's subdivisions */
 static uint32_t orn_beat, orn_ms;
 static void art_shimmer(const uint8_t *hist, uint32_t nh)
 {
@@ -634,7 +633,7 @@ static void art_shimmer(const uint8_t *hist, uint32_t nh)
         uint32_t d = fm1_ms - orn_ms, bpm = arp_bpm_now();
         orn_ms = fm1_ms;
         d = d > 200u ? 200u : d;                                 /* (after a pause: no jump) */
-        orn_beat += d * (bpm ? bpm : 120u) * 4474u;              /* (2^32 / 16 / 60000 a ms a BPM) */
+        orn_beat += d * (bpm ? bpm : 120u) * 1118u / 1024u;     /* (beats, Q16: 65536 / 60000 a ms a BPM) */
     }
     static const uint8_t RATIO8[SI_COUNT] = {16, 12, 24, 32};    /* the interval's ratio x 8 */
     static const uint8_t FOLD[SS_COUNT] = {6, 8, 12, 8};
@@ -671,7 +670,7 @@ static void art_shimmer(const uint8_t *hist, uint32_t nh)
     for (k = 0; k < NR; k++) {                                   /* the rings: the tail, now (inside) to earlier */
         uint32_t age = k * SP + SP / 2u, n, climb;
         int32_t lv, a, ri = Q8(8) + (R - Q8(8)) * (int32_t)k / (int32_t)NR, ro = Q8(8) + (R - Q8(8)) * (int32_t)(k + 1u) / (int32_t)NR;
-        uint32_t rot = (k & 1u ? 1u : (uint32_t)-1) * (orn_beat >> (k >> 1));   /* (the outer ones slower) */
+        uint32_t rot = 0;
         uint16_t c;
         lv = age < nh ? hist[nh - 1u - age] : 0;
         a = lv * (int32_t)(127u * NR - k * (127u - tone)) / (int32_t)(127u * NR);   /* (TONE: the outer ones) */
@@ -682,6 +681,14 @@ static void art_shimmer(const uint8_t *hist, uint32_t nh)
         for (j = 0; j < climb && n < 40u; j++)
             n = n * RATIO8[sys.sh_interval % SI_COUNT] / 8u;
         n = n < 3u ? 3u : n > 48u ? 48u : n;
+        {   /* each ring steps one of its elements on the beat's subdivisions: the inner on the quarters, then eighths,
+             * the outer on sixteenths; a quick eased move at each, then still; the rings in alternate directions */
+            uint32_t sub = 1u << ((k >> 1) > 2u ? 2u : (k >> 1)), pos = orn_beat * sub, f = pos & 0xFFFFu, e;
+            e = f >= 16384u ? 65536u : (f * f >> 14) * (3u * 16384u - 2u * f) >> 14 << 2;   /* smoothstep, Q16 */
+            e = e > 65536u ? 65536u : e;
+            rot = ((pos >> 16) * (0xFFFFFFFFu / n)) + (uint32_t)(((uint64_t)e * (0xFFFFFFFFu / n)) >> 16);
+            rot = k & 1u ? rot : (uint32_t)-rot;
+        }
         if (sp == SS_CATHEDRAL) {                                /* the rose: a ring of lobes, its tracery */
             int32_t rc = (ri + ro) / 2, rl = (ro - ri) / 2;
             int32_t lim = (int32_t)((uint32_t)(rc >> 8) * 290u / n) << 8;   /* (pi rc / n, a little less) */
