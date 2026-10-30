@@ -91,4 +91,5 @@
 
 /* -------------------------------------------------------- UI, main --- */
 #include "ui.c"
+#include "remote.c"              /* the screen, the state and the panel over USB-MIDI SysEx (tools/fm1_remote.py) */
 #include "main.c"

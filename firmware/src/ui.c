@@ -1688,9 +1688,10 @@ static void knob(volatile uint8_t *p, uint32_t role, uint32_t cell)
 static uint8_t play_last;                        /* PLAY outside the ARP / KARMA pages: 0 the ARP, 1 KARMA (the last opened) */
 static void ui_input(void)
 {
-    uint32_t pressed = fm1_input_edges(0), b;
+    uint32_t pressed = fm1_input_edges(0) | rm_btn, b;
     int32_t s;
     char t[24], v[12];
+    rm_btn = 0;
     if (keys_prog_req) {                                /* MIDI program change: that preset */
         uint32_t pg = keys_prog_req - 1u;
         keys_prog_req = 0;

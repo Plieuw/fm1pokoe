@@ -31,9 +31,14 @@ static uint32_t panel_btn_of(uint32_t matrix_id)        /* label of a matrix but
 
 static uint32_t btn_bit(uint32_t label) { return 1u << panel.btn[label]; }   /* in fm1_in.buttons / the edges */
 
+static uint32_t rm_btn;                          /* remote.c: buttons pressed over USB (btn_bit), for ui_input */
+static int8_t rm_turn[NE];                       /* remote.c: detents turned over USB, per encoder */
 static int32_t panel_enc(uint32_t role)                 /* detents turned since the last call, + = clockwise */
 {
-    return fm1_enc_take(panel.enc[role]) * panel.dir[role];
+    int32_t r = role < NE ? rm_turn[role] : 0;
+    if (r)
+        rm_turn[role] = 0;
+    return fm1_enc_take(panel.enc[role]) * panel.dir[role] + r;
 }
 
 /* PLAY's second, green LED: not in the key matrix, found at column 8, row PA9 (bit 1) */

@@ -284,6 +284,7 @@ static void fm1_main(void)
         }
 #endif
 #if FELUCCA_OTA
+        rm_service();                                   /* remote.c: the screen, the state, the panel over USB */
         ota_service();                                  /* M-UPGRADE handshake */
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
@@ -305,6 +306,7 @@ static void fm1_main(void)
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                      /* ~60 UI frames/s at most */
 #if FELUCCA_OTA
+            rm_service();
             ota_service();
 #endif
         }

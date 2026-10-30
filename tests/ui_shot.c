@@ -80,6 +80,30 @@ static void midi_out_event(uint32_t pkt) { (void)pkt; }   /* (usb.c: not in this
 static volatile uint8_t keys_panic_req;   /* (keys.c: not in this test) */
 static volatile uint8_t keys_prog_req;
 #include "../firmware/src/ui.c"
+/* remote.c over a fake USB: frames in from rm_in, messages out into rm_log */
+#define FELUCCA_OTA 1
+#define FELUCCA_ID "FM-1_900"
+static uint8_t rm_inbuf[64];
+static uint32_t rm_inlen, rm_inready;
+static uint8_t rm_log[80000];
+static uint32_t rm_logn, rm_msgs;
+static int ota_frame_get(const uint8_t **p, uint32_t *n) { if (!rm_inready) return 0; *p = rm_inbuf; *n = rm_inlen; return 1; }
+static void ota_frame_done(void) { rm_inready = 0; }
+static int ota_wire_send(const uint8_t *p, uint32_t n)
+{
+    if (rm_logn + n <= sizeof rm_log) { memcpy(rm_log + rm_logn, p, n); rm_logn += n; }
+    rm_msgs++;
+    return 0;
+}
+#include "../firmware/src/remote.c"
+static void rm_cmd(const uint8_t *b, uint32_t n)       /* one host message (without F0 / F7), handled */
+{
+    memcpy(rm_inbuf, b, n);
+    rm_inlen = n;
+    rm_inready = 1;
+    rm_logn = rm_msgs = 0;
+    rm_service();
+}
 
 static int32_t abuf_[2 * CTL];
 static void run_ms(uint32_t ms)                  /* the audio for ms, the clock with it */
@@ -181,6 +205,51 @@ int main(int argc, char **argv)
     uint32_t i;
     char name[32];
     palette_set(UI_PALETTE);
+    {   /* REMOTE: PING, a BUTTON (the ARP page), STATE, a TURN, SCREEN (the plot, back as it is), not ours ignored */
+        static const uint8_t PING[] = {0x7D, 0x43, 0x48, 0x05}, BTN[] = {0x7D, 0x43, 0x48, 0x03, B_ARP},
+                             ST[] = {0x7D, 0x43, 0x48, 0x02}, TURN[] = {0x7D, 0x43, 0x48, 0x04, EN_K3, 64 + 5},
+                             SCR[] = {0x7D, 0x43, 0x48, 0x01}, OTHER[] = {0x00, 0x59, 0x11};
+        int ok = 1;
+        uint32_t y = 0, k, rows = 0;
+        rm_cmd(PING, sizeof PING);
+        ok &= rm_msgs == 1u && rm_log[4] == 0x51 && !memcmp(rm_log + 5, "FM-1_900", 8);
+        rm_cmd(BTN, sizeof BTN);
+        ui_input();
+        ok &= sys.page == 6u;
+        frames(2);
+        rm_cmd(ST, sizeof ST);
+        rm_log[rm_logn < sizeof rm_log ? rm_logn : sizeof rm_log - 1u] = 0;
+        ok &= rm_msgs == 1u && rm_log[4] == 0x50 && strstr((char *)rm_log + 5, "PAGE 6") && strstr((char *)rm_log + 5, "BPM ");
+        {
+            uint8_t g0 = sys.arp_gate;
+            rm_cmd(TURN, sizeof TURN);
+            ui_input();
+            ok &= sys.arp_gate > g0;
+        }
+        frames(2);
+        rm_cmd(SCR, sizeof SCR);
+        ok &= rm_msgs == (PLOT_H + 3u) / 4u + 1u;
+        for (k = 0; k + 6u < rm_logn && ok; ) {             /* each message: unpack, compare with the canvas */
+            uint32_t e = k + 5u, o = 0, i;
+            static uint8_t un[2000];
+            if (rm_log[k + 4] == 0x42) { rows = rm_log[k + 5] | rm_log[k + 6] << 7; break; }
+            while (rm_log[e] != 0xF7) {
+                uint8_t hi = rm_log[e++];
+                for (i = 0; i < 7u && rm_log[e] != 0xF7; i++)
+                    un[o++] = (uint8_t)(rm_log[e++] | ((hi >> i) & 1u) << 7);
+            }
+            y = un[0];
+            for (i = 0; 1u + 2u * i + 1u < o; i++)
+                ok &= (uint16_t)(un[1 + 2 * i] | un[2 + 2 * i] << 8) == cv_px[y * 240u + i];
+            k = e + 1u;
+        }
+        ok &= rows == (uint32_t)PLOT_H;
+        rm_cmd(OTHER, sizeof OTHER);
+        ok &= rm_msgs == 0u && rm_inready;                  /* (left for the update's handshake) */
+        rm_inready = 0;
+        sys.page = 0; sys.arp_gate = 64;
+        if (!ok) { printf("REMOTE: PING / BUTTON / STATE / TURN / SCREEN failed (msgs %u, page %u)\n", rm_msgs, sys.page); bad = 1; }
+    }
     tape_init();
     bad |= preset_levels();
 

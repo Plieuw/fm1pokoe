@@ -291,6 +291,12 @@ START zet de band terug naar het begin van de lus. Opnemen vervangt wat er op he
 hoor je live. Het scherm toont de recorder in 3D: de spoelen draaien zo snel als de band loopt, de wikkels groeien en
 krimpen over de lus, en op de band bij de kop lichten de vier sporen op met hun geluid (het ARM-spoor gestippeld).
 
+**Op afstand (USB).** Een computer kan de FM-1 over USB-MIDI bekijken en bespelen (firmware/src/remote.c,
+tools/fm1_remote.py; SysEx F0 7D 43 48 ...): `ping`, `state` (de pagina, de tekst op het scherm, preset, BPM, belasting,
+tape, FX), `screen out.png` (het plaatje), `button REC`, `turn "KNOB 1" 5`, `note 60 100 0.5`, `cc 1 64`, `program 12`,
+`watch 10 map/` (elke halve seconde een plaatje). Nodig: `pip3 install mido python-rtmidi Pillow`. De USB-audio-ingang
+kan daarnaast met de gewone systeemtools worden opgenomen (ffmpeg of sox).
+
 **De shimmer reverb (FX, tweede scherm).** Een stereo galm (4 vertragingslijnen met een Householder-matrix) met een
 toonhoogteverschuiver in de terugkoppeling. Elke ronde door de galm (60–110 ms) schuift een deel van de staart een
 interval omhoog en gaat terug de galm in, met behoud van energie: de staart klimt, de lage octaven vervagen terwijl de
