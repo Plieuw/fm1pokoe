@@ -257,6 +257,26 @@ int main(int argc, char **argv)
     synth_note_off(55);
     frames(40);
     bad |= shot(dir, "k_tape_play");
+    edges = btn_bit(B_LFO);              /* its SPEED menu: 3/4 (a fourth down): the BPM follows, the speed exact */
+    ui_input();
+    {
+        uint32_t bpm0 = sys.arp_bpm;
+        enc_steps[panel.enc[EN_K2]] = -5;
+        ui_input();
+        frames(3);
+        if (sys.tape_spd != 7u || sys.arp_bpm != (bpm0 * 3u + 2u) / 4u || tape.speed != 3072u) {
+            printf("TAPE SPEED 3/4: spd %u bpm %u (from %u) speed %u\n", sys.tape_spd, sys.arp_bpm, bpm0, tape.speed);
+            bad = 1;
+        }
+        bad |= shot(dir, "k_tape_speed");
+        sys.arp_bpm = (uint8_t)bpm0;
+        frames(2);
+        if (tape.lock_q12 || tape.speed != 4096u) {
+            printf("TAPE SPEED: the BPM back, not free again (speed %u)\n", tape.speed);
+            bad = 1;
+        }
+        sys.tape_spd = 12;
+    }
     edges = btn_bit(B_PLAY);
     ui_input();
     frames(2);

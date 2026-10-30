@@ -42,7 +42,9 @@
  *            presets; elsewhere the sound presets (on KARMA: the tempo)
  *   LFO      the TAPE page (tape.c; again: back HOME): a four-track reel-to-reel. KNOB 1..4 the tracks' levels,
  *            ALGORITHM the armed track, SELECT the LENGTH (1, 2, 4, 8, 16 beats), PRESETS the BPM (the tape's speed
- *            and pitch follow it), PLAY the transport, REC one pass on the armed track (with PLAY held: erase it)
+ *            and pitch follow it), PLAY the transport, REC one pass on the armed track (with PLAY held: erase it);
+ *            LFO again: its SPEED menu: KNOB 1 the global BPM, KNOB 2 the SPEED in the harmonic series' ratios
+ *            (1/2 .. 2/1, each a step of the chromatic scale; the BPM follows), KNOB 3 the tape's tempo, KNOB 4 the pitch
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -316,7 +318,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485545u      /* "CHUA": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485546u      /* "CHUA": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -330,7 +332,7 @@ typedef struct {
     uint8_t feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts, feg_curve[FEG_N];
     uint8_t k_on, k_ge, k_latch, k_m[4];
     uint8_t mw_target, mw_depth, vel_to, vel_amt;
-    uint8_t tape_lv[4], tape_len, tape_arm, sh_space;
+    uint8_t tape_lv[4], tape_len, tape_arm, sh_space, tape_spd;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -407,6 +409,7 @@ static void settings_boot(void)    /* power-on, before the audio */
             sys.tape_lv[i] = (uint8_t)(s.tape_lv[i] & 127u);
         sys.tape_len = (uint8_t)(s.tape_len % 5u);
         sys.tape_arm = (uint8_t)(s.tape_arm & 3u);
+        sys.tape_spd = (uint8_t)(s.tape_spd % TAPE_NSPD);
         for (uint32_t i = 0; i < 4u; i++)
             sys.k_m[i] = (uint8_t)(s.k_m[i] & 127u);
     }
@@ -483,6 +486,7 @@ static int settings_save(void)     /* 0 = saved */
         s.tape_lv[i] = sys.tape_lv[i];
     s.tape_len = sys.tape_len;
     s.tape_arm = sys.tape_arm;
+    s.tape_spd = sys.tape_spd;
     for (uint32_t i = 0; i < 4u; i++)
         s.k_m[i] = sys.k_m[i];
     return st_save(OBJ_SETTINGS, &s, sizeof s);
@@ -568,8 +572,8 @@ static void ui_cell(uint32_t i, const char *label, const char *value)
  * small blocks in the right corner: the page shown filled in the theme's orange, the other an empty outline */
 static void ui_status(const char *s)
 {
-    static const uint8_t LAYERS[12] = {0, 1, 1, 2, 0, 2, 0, 0, 0, 0, 0, 0};   /* each page: its layer (1, 2; 0 none) */
-    uint32_t pg = sys.page < 12u ? sys.page : 0u, l = LAYERS[pg];
+    static const uint8_t LAYERS[14] = {0, 1, 1, 2, 0, 2, 0, 0, 0, 0, 0, 0, 1, 2};   /* each page: its layer (1, 2; 0 none) */
+    uint32_t pg = sys.page < 14u ? sys.page : 0u, l = LAYERS[pg];
     char sig[2] = {(char)('0' + l), 0};
     if (!ui_changed(T_STATUS, s, sig))
         return;
@@ -1128,7 +1132,39 @@ static void ui_draw(void)
     ui_head(a, b);
 
     ui_val_c = sys.page == 5u ? T_FM : 0;   /* (the MOD ENV: its values green) */
-    if (sys.page == 12u) {                       /* TAPE: the tracks' faders; the armed one marked */
+    if (sys.page == 13u) {                       /* TAPE's SPEED: the BPM, the ratio, the tape's own tempo, the pitch */
+        const uint8_t *q = TAPE_SPD[sys.tape_spd % TAPE_NSPD];
+        int32_t st = (int32_t)(sys.tape_spd % TAPE_NSPD) - 12, c = tape_cents(tape.speed);
+        fmt_int(v, (int32_t)arp_bpm_now());
+        str_cpy(b, arp_ext() ? "EXT " : "", sizeof b);
+        ui_cat(b, sizeof b, v);
+        ui_cell(T_C1, "1 BPM", b);
+        fmt_int(v, q[0]);
+        str_cpy(b, v, sizeof b);
+        ui_cat(b, sizeof b, "/");
+        fmt_int(v, q[1]);
+        ui_cat(b, sizeof b, v);
+        ui_cat(b, sizeof b, st > 0 ? "  +" : "  ");
+        fmt_int(v, st);
+        ui_cat(b, sizeof b, v);
+        ui_val_c = tape.lock_q12 ? T_ACCENT : 0;
+        ui_cell(T_C2, "2 SPEED", b);
+        ui_val_c = 0;
+        if (tape.spb) {
+            fmt_int(v, (int32_t)((2646000u * 2u / tape.spb + 1u) / 2u));
+            ui_cell(T_C3, "3 TAPE BPM", v);
+        } else
+            ui_cell(T_C3, "3 TAPE BPM", "BLANK");
+        str_cpy(b, c > 0 ? "+" : c < 0 ? "-" : "", sizeof b);
+        c = ((c < 0 ? -c : c) + 5) / 10;                         /* (tenths of a semitone, rounded) */
+        fmt_int(v, c / 10);
+        ui_cat(b, sizeof b, v);
+        ui_cat(b, sizeof b, ".");
+        v[0] = (char)('0' + c % 10); v[1] = 0;
+        ui_cat(b, sizeof b, v);
+        ui_cat(b, sizeof b, " ST");
+        ui_cell(T_C4, "4 PITCH", b);
+    } else if (sys.page == 12u) {                /* TAPE: the tracks' faders; the armed one marked */
         static const uint8_t CELL[4] = {T_C1, T_C2, T_C3, T_C4};
         for (uint32_t i = 0; i < 4u; i++) {
             str_cpy(a, "1 TRACK 1", sizeof a);
@@ -1372,7 +1408,7 @@ static void ui_draw(void)
             static const char *const C2[4] = {"MIDI   2ND CORE OFF", "MIDI   2ND CORE ALL", "MIDI   2ND CORE VOICES",
                                               "MIDI   2ND CORE FX"};
             str_cpy(a, C2[sys.cpu2 & 3u], sizeof a);
-        } else if (sys.page == 12u) {            /* TAPE: the transport, the LENGTH, the speed */
+        } else if (sys.page == 12u || sys.page == 13u) {   /* TAPE: the transport, the LENGTH, the speed */
             static const char *const LN[5] = {"1 BEAT", "2 BEATS", "1 BAR", "2 BARS", "4 BARS"};
             uint32_t sp = (tape.speed * 100u + 2048u) / 4096u;
             str_cpy(a, tape.rec ? "TAPE REC  " : tape.playing ? "TAPE PLAY  " : "TAPE STOP  ", sizeof a);
@@ -1451,7 +1487,7 @@ static void ui_draw(void)
         draw_pan();
     else if (sys.page == 11u)
         draw_edit();
-    else if (sys.page == 12u) {
+    else if (sys.page == 12u || sys.page == 13u) {
         art_t++;
         art_c = T_THEME;
         art_c2 = ux_mix(T_BG, art_c, 75);
@@ -1575,7 +1611,7 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_SCL]);
     if (sys.page == 11u)
         led_on(nl, panel.btn[B_EDIT]);
-    if (sys.page == 12u || tape.rec || (tape.playing && (fm1_ms & 512u)))
+    if (sys.page == 12u || sys.page == 13u || tape.rec || (tape.playing && (fm1_ms & 512u)))
         led_on(nl, panel.btn[B_LFO]);
     if (sys.k_on || sys.page == 9u)
         led_on(nl, panel.btn[B_SEQ]);
@@ -1675,7 +1711,7 @@ static void ui_input(void)
             ui_force = 1;
             break;
         case B_REC:                                     /* the FREE EG page; there: record (and stop) */
-            if (sys.page == 12u) {                      /* TAPE: record the armed track (PLAY held: erase it) */
+            if (sys.page == 12u || sys.page == 13u) {   /* TAPE: record the armed track (PLAY held: erase it) */
                 int er = (fm1_in.buttons & btn_bit(B_PLAY)) != 0u;
                 tape.req = er ? 3u : 2u;
                 str_cpy(t, er ? "ERASED TRACK " : tape.rec ? "REC STOP TRACK " : "REC TRACK ", sizeof t);
@@ -1702,7 +1738,7 @@ static void ui_input(void)
             break;
         case B_PLAY:                                    /* start / stop: the ARP or KARMA (the page's, else the last
                                                          * one opened); what runs stops (the other one off) */
-            if (sys.page == 12u) {                      /* TAPE: its transport */
+            if (sys.page == 12u || sys.page == 13u) {   /* TAPE: its transport */
                 tape.req = 1;
                 ui_say(tape.playing ? "TAPE STOP" : "TAPE PLAY");
             } else if (sys.page == 6u || (sys.page != 9u && !play_last && !sys.k_on)) {
@@ -1717,7 +1753,7 @@ static void ui_input(void)
             }
             break;
         case B_LFO:                                     /* the TAPE page and back */
-            sys.page = sys.page == 12u ? 0u : 12u;
+            sys.page = sys.page == 12u ? 13u : sys.page == 13u ? 0u : 12u;   /* (TAPE, its SPEED, HOME) */
             ui_force = 1;
             break;
         case B_EDIT:                                    /* the EDIT page (mod wheel, velocity) and back */
@@ -1740,7 +1776,24 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 12u) {                       /* TAPE: the faders */
+    if (sys.page == 13u) {                       /* TAPE's second menu: the global BPM, the SPEED */
+        if ((s = ui_enc(EN_K1)) != 0) {
+            sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
+            ui_hot = 0; ui_hot_ms = fm1_ms;
+        }
+        if ((s = ui_enc(EN_K2)) != 0) {
+            sys.tape_spd = (uint8_t)clamp((int32_t)sys.tape_spd + s, 0, TAPE_NSPD - 1);
+            ui_hot = 1; ui_hot_ms = fm1_ms;
+            if (tape.spb) {                      /* the tempo the ratio gives: the global BPM follows, the speed exact */
+                const uint8_t *q = TAPE_SPD[sys.tape_spd % TAPE_NSPD];
+                uint32_t b = (2646000u * q[0] / q[1] * 2u / tape.spb + 1u) / 2u;
+                sys.arp_bpm = (uint8_t)(b < 40u ? 40u : b > 250u ? 250u : b);
+                tape.lock_q12 = 4096u * q[0] / q[1];
+                tape.lock_bpm = sys.arp_bpm;
+            } else
+                ui_say("TAPE BLANK: RECORD FIRST");
+        }
+    } else if (sys.page == 12u) {                /* TAPE: the faders */
         knob(&sys.tape_lv[0], EN_K1, 0);
         knob(&sys.tape_lv[1], EN_K2, 1);
         knob(&sys.tape_lv[2], EN_K3, 2);
@@ -1916,7 +1969,7 @@ static void ui_input(void)
             ui_cat(t, sizeof t, " CIRCUIT");
         ui_say(t);
     }
-    if ((s = ui_enc(EN_PRESET)) != 0 && (sys.page == 9u || sys.page == 12u)) {   /* KARMA, TAPE: PRESETS is the BPM */
+    if ((s = ui_enc(EN_PRESET)) != 0 && (sys.page == 9u || sys.page == 12u || sys.page == 13u)) {   /* KARMA, TAPE: PRESETS is the BPM */
         sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
         str_cpy(t, arp_ext() ? "MIDI CLOCK: BPM " : "BPM ", sizeof t);
         fmt_int(v, sys.arp_bpm);

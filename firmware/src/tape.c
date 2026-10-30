@@ -28,12 +28,32 @@ static struct {
     uint32_t inc;                                /* the head's step an output sample, Q16 (speed / TAPE_DIV) */
     uint32_t speed;                              /* Q12: 4096 = the tempo it was recorded at */
     uint32_t rec_left, cell, starts;
+    uint32_t lock_q12, lock_bpm;                 /* a SPEED chosen: exactly this ratio while the BPM stays lock_bpm */
     int32_t acc, accn, lp, lvl[TAPE_NT];
     int32_t meter[TAPE_NT];                      /* each track's level for the screen, 0..32767 */
     uint8_t playing, rec, has[TAPE_NT];
     volatile uint8_t req;                        /* from the UI: 1 play/stop, 2 rec, 3 erase the armed track */
 } tape;
 
+/* SPEED (the TAPE page's second menu): the tape's speed in ratios of the harmonic series (5-limit just intonation),
+ * each landing on a step of the chromatic scale: -12 .. +12 semitones, 1/2 (half speed) .. 2/1 (double) */
+#define TAPE_NSPD 25
+static const uint8_t TAPE_SPD[TAPE_NSPD][2] = {
+    {1, 2}, {8, 15}, {9, 16}, {3, 5}, {5, 8}, {2, 3}, {45, 64}, {3, 4}, {4, 5}, {5, 6}, {9, 10}, {15, 16},
+    {1, 1}, {16, 15}, {9, 8}, {6, 5}, {5, 4}, {4, 3}, {45, 32}, {3, 2}, {8, 5}, {5, 3}, {9, 5}, {15, 8}, {2, 1},
+};
+/* the pitch of a speed (Q12) in cents: 1200 log2 (log2 of 1 + f ~ f + 0.3466 f (1 - f): within ~5 cents) */
+static int32_t tape_cents(uint32_t q12)
+{
+    int32_t oct = 0, f;
+    if (!q12)
+        return 0;
+    while (q12 >= 8192u) { q12 >>= 1; oct++; }
+    while (q12 < 4096u) { q12 <<= 1; oct--; }
+    f = (int32_t)q12 - 4096;                                     /* Q12, 0 .. 1 */
+    f = f + (f * (4096 - f) >> 12) * 1420 / 4096;
+    return oct * 1200 + f * 1200 / 4096;
+}
 static int32_t tape_beats(void)                  /* the LENGTH in beats */
 {
     static const uint8_t B[5] = {1, 2, 4, 8, 16};
@@ -123,7 +143,12 @@ static void tape_block(void)
     }
     if (tape.spb) {
         tape.len = tape_cells(tape.spb);
-        tape.speed = tape.spb * 4096u / (now ? now : 1u);   /* (tape.spb < 2^17: no overflow) */
+        if (tape.lock_q12 && !arp_ext() && sys.arp_bpm == tape.lock_bpm)
+            tape.speed = tape.lock_q12;          /* (a SPEED's ratio, exact: in tune) */
+        else {
+            tape.lock_q12 = 0;                   /* (the BPM turned: free varispeed again) */
+            tape.speed = tape.spb * 4096u / (now ? now : 1u);   /* (tape.spb < 2^17: no overflow) */
+        }
         tape.speed = tape.speed < 1024u ? 1024u : tape.speed > 16384u ? 16384u : tape.speed;
     } else {
         tape.len = tape_cells(now);
