@@ -240,8 +240,8 @@ de havik, en bij THROAT het dier: kat, aap, mens, hond, wolf, koe, leeuw, olifan
 het geluid: MODAL een draaiende klok in zijn (2,0)-trilling met de stille knooplijnen, naast de echte partials van de
 resonator; SYMP de bespeelde snaar met daarachter elke resonantie als snaar van zijn lengte (1/f); STRING de
 eigentrillingen n = 1..4 achter elkaar en hun som vooraan; THROAT het spraakkanaal als buis (stembanden omhoog, de bocht,
-naar de lippen) met de echte oppervlaktefunctie van de VOWEL en de lengte van het dier, plus A(x); FLUTE de boring als
-buis met de staande golf in zijn ringen, de luchtstraal over het mondgat en de drukgolf eronder; SYRINX en HAWK de
+naar de lippen) met de echte oppervlaktefunctie van de VOWEL en de lengte van het dier, plus A(x); FLUTE de fluit zelf (kopstuk,
+middenstuk, voetstuk, kleppen boven de toongaten, lipplaat) met de staande golf erin gestippeld, de luchtstraal over het mondgat en de drukgolf eronder; SYRINX en HAWK de
 luchtpijp met de syrinx en de twee bronchiën als buizen, de labia trillend, met ernaast de twee stemmen.
 
 **De waveguides (FX, achter de resonatoren).** Draai op de FX-pagina verder met ALGORITHM: na MODAL, SYMP STRING en

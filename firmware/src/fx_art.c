@@ -10,7 +10,8 @@
  *   STRING   the normal modes n = 1..4 one behind the other (weighted by the pluck at POSITION), their sum in front
  *   THROAT   the vocal tract as a tube (glottis up, the bend, forward to the lips): its width along it the model's
  *            area function at the VOWEL, its length the animal's; the vocal folds beating, the lips opening; A(x)
- *   FLUTE    the bore as a tube, its rings swelling with the standing wave (one, two, three half waves: the JET
+ *   FLUTE    the flute (crown, head joint, body, foot, the keys over the tone holes, the lip plate), the standing
+ *            wave inside dashed (one, two, three half waves: the JET
  *            overblowing), the embouchure, the jet bending across its edge; below the pressure along the bore
  *   SYRINX   the trachea down to the syrinx, the two bronchi forking, the labia beating each with its own voice;
  *            beside it the two voices' traces (TWO VOICE: the second apart)
@@ -234,13 +235,13 @@ static void art_bell(void)
     const uint32_t NM = 16u, NP = 48u;
     int32_t amp = art_lv * 15 * art_sin(art_t * 0x2E000000u) / 32768;   /* the (2,0) mode, Q12 of the radius */
     uint32_t i, j, k;
-    a3_view(art_t * 0x00A00000u, (uint32_t)-ART_DEG(18), 62, 75);
+    a3_view(art_t * 0x00A00000u, (uint32_t)-ART_DEG(18), 62, 72);
     for (i = 0; i < NM; i++) {                                   /* the meridians */
         uint32_t th = i * (0xFFFFFFFFu / NM);
         v3_t prev = {0, 0, 0};
         for (j = 0; j < 9u; j++) {
-            int32_t d = 4096 + amp * art_cos(2u * th) / 32768 * BELL_O[j][1] / 78, r = BELL_O[j][0] * 300 * d / 4096;
-            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 300, r * (art_sin(th) >> 7) >> 8);
+            int32_t d = 4096 + amp * art_cos(2u * th) / 32768 * BELL_O[j][1] / 78, r = BELL_O[j][0] * 216 * d / 4096;
+            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 232, r * (art_sin(th) >> 7) >> 8);
             if (j)
                 a3_seg(prev, p, 0, art_c2);
             prev = p;
@@ -250,8 +251,8 @@ static void art_bell(void)
         v3_t prev = {0, 0, 0};
         for (k = 0; k <= NP; k++) {
             uint32_t th = k * (0xFFFFFFFFu / NP);
-            int32_t d = 4096 + amp * art_cos(2u * th) / 32768 * BELL_O[j][1] / 78, r = BELL_O[j][0] * 300 * d / 4096;
-            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 300, r * (art_sin(th) >> 7) >> 8);
+            int32_t d = 4096 + amp * art_cos(2u * th) / 32768 * BELL_O[j][1] / 78, r = BELL_O[j][0] * 216 * d / 4096;
+            v3_t p = a3_rot(r * (art_cos(th) >> 7) >> 8, (BELL_O[j][1] - 44) * 232, r * (art_sin(th) >> 7) >> 8);
             if (k)
                 a3_seg(prev, p, 0, j == 8u ? art_c : art_c2);
             prev = p;
@@ -262,12 +263,12 @@ static void art_bell(void)
         v3_t prev = {0, 0, 0};
         int32_t x0 = 0, y0 = 0, x1, y1, zs = 0;
         for (j = 0; j < 9u; j++)
-            zs += a3_rot(BELL_O[j][0] * (art_cos(th) >> 7) * 300 >> 8, 0, BELL_O[j][0] * (art_sin(th) >> 7) * 300 >> 8).z;
+            zs += a3_rot(BELL_O[j][0] * (art_cos(th) >> 7) * 216 >> 8, 0, BELL_O[j][0] * (art_sin(th) >> 7) * 216 >> 8).z;
         if (zs > 0)
             continue;
         for (j = 0; j < 9u; j++) {
-            v3_t p = a3_rot(BELL_O[j][0] * (art_cos(th) >> 7) * 300 >> 8, (BELL_O[j][1] - 44) * 300,
-                            BELL_O[j][0] * (art_sin(th) >> 7) * 300 >> 8);
+            v3_t p = a3_rot(BELL_O[j][0] * (art_cos(th) >> 7) * 216 >> 8, (BELL_O[j][1] - 44) * 232,
+                            BELL_O[j][0] * (art_sin(th) >> 7) * 216 >> 8);
             a3_proj(p, &x1, &y1);
             if (j)
                 art_ln(x0, y0, x1, y1, art_c, 3u | 2u << 8);
@@ -277,8 +278,8 @@ static void art_bell(void)
     }
     {   /* the axis */
         int32_t x0, y0, x1, y1;
-        a3_proj(a3_rot(0, Q8(-56), 0), &x0, &y0);
-        a3_proj(a3_rot(0, Q8(54), 0), &x1, &y1);
+        a3_proj(a3_rot(0, Q8(-46), 0), &x0, &y0);
+        a3_proj(a3_rot(0, Q8(42), 0), &x1, &y1);
         art_ln(x0, y0, x1, y1, art_c3, 6u | 3u << 8);
     }
     {   /* the partials: a stem plot on a log-frequency axis (40 Hz .. 12 kHz), the model's own */
@@ -494,16 +495,60 @@ static void art_flute(void)
 {
     uint32_t nh = 1u + (sys.fx_struct & 127u) * 3u / 128u, i;
     int32_t px[25], py[25], pr[25], cw = art_cos(art_t * 0x30000000u), sx, sy, sx2, sy2;
-    const int32_t x0 = Q8(-104), x1 = Q8(104), hx = Q8(-70), gy = 100;
+    const int32_t hx = Q8(-80), gy = 100;
     a3_view((uint32_t)ART_DEG(-24) + (uint32_t)(art_sin(art_t * 0x00500000u) * 3000), (uint32_t)-ART_DEG(24), 126, 66);
-    for (i = 0; i <= 24u; i++) {                                 /* the bore, its rings swelling with the pressure */
-        uint32_t u = (uint32_t)(i * nh) * (0x80000000u / 24u);
-        int32_t p = art_lv * cw / 32768 * art_sin(u) / 32768;   /* -256 .. 256 */
-        px[i] = x0 + (x1 - x0) / 24 * (int32_t)i;
-        py[i] = 0;
-        pr[i] = Q8(9) + p * 3;
+    {   /* the flute: crown, head joint, body, foot (rings at the joints, the tenons doubled) */
+        static const int16_t JX[] = {-108, -104, -50, -46, 66, 70, 104};
+        for (i = 0; i < 7u; i++) {
+            px[i] = Q8(JX[i]);
+            py[i] = 0;
+            pr[i] = Q8(i == 0u ? 7 : 8);
+        }
+        a3_tube(px, py, pr, 7, 1, art_c, art_c2);
+        a3_proj(a3_rot(Q8(-112), 0, 0), &sx, &sy);             /* the crown's cap */
+        a3_proj(a3_rot(Q8(-108), 0, 0), &sx2, &sy2);
+        art_ln(sx, sy, sx2, sy2, art_c, 0);
     }
-    a3_tube(px, py, pr, 25, 1, art_c2, art_c3);
+    {   /* the tone holes along the top, each in its key's cup; the keys' axle along the side */
+        int32_t k, j, ox = 0, oy = 0;
+        for (k = 0; k < 9; k++) {
+            int32_t hxk = Q8(-30) + Q8(14) * k + (k > 5 ? Q8(6) : 0), cr = k == 8 ? 4 : 3;
+            for (j = 0; j <= 12; j++) {
+                uint32_t th = (uint32_t)j * (0xFFFFFFFFu / 12u);
+                a3_proj(a3_rot(hxk + (art_cos(th) >> 7) * cr, Q8(-8), (art_sin(th) >> 7) * cr), &sx, &sy);
+                if (j)
+                    art_ln(ox, oy, sx, sy, art_c2, 0);
+                ox = sx; oy = sy;
+            }
+            a3_proj(a3_rot(hxk, Q8(-8), (art_sin(0x40000000u) >> 7) * cr), &sx, &sy);   /* the key's arm */
+            a3_proj(a3_rot(hxk, Q8(-4), Q8(9)), &sx2, &sy2);
+            art_ln(sx, sy, sx2, sy2, art_c3, 0);
+        }
+        a3_proj(a3_rot(Q8(-36), Q8(-4), Q8(9)), &sx, &sy);
+        a3_proj(a3_rot(Q8(102), Q8(-4), Q8(9)), &sx2, &sy2);
+        art_ln(sx, sy, sx2, sy2, art_c2, 0);
+    }
+    {   /* the lip plate around the embouchure */
+        int32_t j, ox = 0, oy = 0;
+        for (j = 0; j <= 16; j++) {
+            uint32_t th = (uint32_t)j * (0xFFFFFFFFu / 16u);
+            a3_proj(a3_rot(hx + (art_cos(th) >> 7) * 9, Q8(-9), (art_sin(th) >> 7) * 6), &sx, &sy);
+            if (j)
+                art_ln(ox, oy, sx, sy, art_c2, 0);
+            ox = sx; oy = sy;
+        }
+    }
+    {   /* inside: the air's standing wave along the bore (dashed), nh half waves */
+        int32_t ox = 0, oy = 0;
+        for (i = 0; i <= 32u; i++) {
+            int32_t x = Q8(-104) + Q8(208) / 32 * (int32_t)i;
+            int32_t d = 5 * art_lv * cw / 32768 * art_sin(i * nh * (0x80000000u / 32u)) / 32768;   /* Q8 */
+            a3_proj(a3_rot(x, d, 0), &sx, &sy);
+            if (i)
+                art_ln(ox, oy, sx, sy, art_c, 2u | 2u << 8);
+            ox = sx; oy = sy;
+        }
+    }
     {   /* the embouchure hole on top, the lips' jet bending across its edge */
         int32_t k, ox = 0, oy = 0;
         for (k = 0; k <= 12; k++) {
