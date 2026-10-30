@@ -7,6 +7,7 @@
   firmware/felucca-VER.fwsc   the package (+ LICENSE, LICENSING.md, LICENSES/: the package holds
                               JieLi SDK files under Apache-2.0, see LICENSING.md)
   webapp/installer/index.html index_pkg.html, self-contained (fm1pkg.js, fm1ota.js, metadata inlined)
+  webapp/remote/index.html    remote.html: the FM-1 over Web MIDI (firmware/src/remote.c) and its USB audio
   src/                        not touched
 
   web/make_site.py build/felucca-X.Y.fwsc X.Y OUT_DIR
@@ -65,6 +66,9 @@ def main(pkg, version, out):
     for old in fw.glob("felucca-*.fwsc"):          # one package: the current one
         old.unlink()
     (inst / "index.html").write_text(html, encoding="utf-8")
+    rem = out / "webapp" / "remote"                # the remote: the screen, the state, the panel, the audio
+    rem.mkdir(parents=True, exist_ok=True)
+    shutil.copy(HERE / "remote.html", rem / "index.html")
     shutil.copy(pkg, fw / name)
     lic = HERE.parent / "LICENSES"                  # the package holds JieLi SDK files (Apache-2.0): their
     (fw / "LICENSES").mkdir(exist_ok=True)          # licence travels next to it, with Felucca's own

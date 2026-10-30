@@ -1,0 +1,162 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FM-1 Remote</title>
+<style>
+:root { --bg: #121110; --panel: #1c1a18; --line: #34302b; --fg: #ece6dc; --mid: #a39b8f; --or: #f5a623; color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 12px 16px; }
+h1 { color: var(--or); font-size: 18px; margin: 0 0 8px; letter-spacing: .04em; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 0 0 10px; }
+h2 { font-size: 13px; color: var(--mid); margin: 0 0 6px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+button, input, select { font: inherit; color: var(--fg); background: #2a2622; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
+button:hover { border-color: var(--or); }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+canvas { image-rendering: pixelated; background: #000; border: 1px solid var(--line); max-width: 100%; }
+pre { margin: 0; white-space: pre-wrap; color: var(--fg); font: 12px/1.35 ui-monospace, monospace; }
+.enc { display: inline-flex; gap: 2px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
+.enc span { min-width: 64px; text-align: center; color: var(--mid); font-size: 12px; }
+#status { color: var(--or); }
+</style>
+</head>
+<body>
+<h1>FM-1 REMOTE</h1>
+<p id="status">Niet verbonden.</p>
+<section>
+  <div class="row">
+    <button id="connect">Verbind (Web MIDI)</button>
+    <button id="ping">Ping</button>
+    <button id="state">State</button>
+    <button id="screen">Screen</button>
+    <label><input type="checkbox" id="live"> Live (elke 0,5 s)</label>
+  </div>
+</section>
+<section>
+  <h2>Scherm (plot)</h2>
+  <canvas id="cv" width="240" height="124" style="width:480px;height:248px"></canvas>
+  <p id="shotinfo" style="color:var(--mid);font-size:12px"></p>
+</section>
+<section>
+  <h2>Toestand</h2>
+  <pre id="statetext">-</pre>
+</section>
+<section>
+  <h2>Knoppen</h2>
+  <div class="row" id="buttons"></div>
+  <h2 style="margin-top:8px">Draaiknoppen</h2>
+  <div class="row" id="encoders"></div>
+</section>
+<section>
+  <h2>Spelen</h2>
+  <div class="row">
+    Noot <input id="note" type="number" value="60" min="0" max="127" style="width:64px">
+    Velocity <input id="vel" type="number" value="100" min="1" max="127" style="width:64px">
+    Duur s <input id="dur" type="number" value="0.5" step="0.1" style="width:64px">
+    <button id="play">Speel</button>
+  </div>
+  <div class="row">Mod wheel <input id="cc1" type="range" min="0" max="127" value="0"> <span id="cc1v">0</span></div>
+  <div class="row">Program <input id="prog" type="number" value="1" min="1" max="128" style="width:64px"> <button id="sendprog">Stuur</button></div>
+</section>
+<section>
+  <h2>Audio (USB-audio-ingang van de FM-1)</h2>
+  <div class="row"><select id="adev"></select><button id="listen">Luister</button><button id="aoff">Stop</button></div>
+  <pre id="ameter">-</pre>
+  <canvas id="spec" width="480" height="120" style="width:480px;height:120px"></canvas>
+</section>
+<script>
+const BUTTONS = ["FX","SCL","ENV","LFO","EDIT","GLO","HOME","SAVE","ARP","SEQ","PLAY","REC","OCT-","OCT+"];
+const ENCODERS = ["SELECT","ALGORITHM","PRESETS","KNOB 1","KNOB 2","KNOB 3","KNOB 4"];
+const HDR = [0x7D, 0x43, 0x48];
+let out = null, inp = null, shot = {}, liveTimer = null;
+const $ = id => document.getElementById(id);
+const say = s => { $("status").textContent = s; };
+
+function sysex(cmd, ...d) { if (!out) { say("Eerst verbinden."); return; } out.send([0xF0, ...HDR, cmd, ...d, 0xF7]); }
+function unpack7(b) { const o = []; for (let i = 0; i < b.length;) { const hi = b[i++]; for (let j = 0; j < 7 && i < b.length; j++) o.push(b[i++] | ((hi >> j) & 1) << 7); } return o; }
+
+function onMsg(e) {
+  const d = e.data;
+  if (d[0] !== 0xF0 || d[1] !== HDR[0] || d[2] !== HDR[1] || d[3] !== HDR[2]) return;
+  const cmd = d[4], body = Array.from(d.slice(5, d.length - 1));
+  if (cmd === 0x51) say("PING: " + String.fromCharCode(...body));
+  else if (cmd === 0x50) $("statetext").textContent = String.fromCharCode(...body);
+  else if (cmd === 0x41) { const u = unpack7(body); const y = u[0]; for (let k = 0; (k + 1) * 480 <= u.length - 1; k++) shot[y + k] = u.slice(1 + k * 480, 1 + (k + 1) * 480); }
+  else if (cmd === 0x42) {
+    const h = body[0] | body[1] << 7;
+    if (!h) { $("shotinfo").textContent = "Geen plaatje op deze pagina."; return; }
+    const cv = $("cv"), ctx = cv.getContext("2d"); cv.height = h; cv.style.height = (h * 2) + "px";
+    const img = ctx.createImageData(240, h);
+    for (let y = 0; y < h; y++) { const row = shot[y]; if (!row) continue;
+      for (let x = 0; x < 240; x++) { const v = row[2 * x] << 8 | row[2 * x + 1], p = (y * 240 + x) * 4;
+        img.data[p] = (v >> 11 & 31) * 255 / 31; img.data[p + 1] = (v >> 5 & 63) * 255 / 63; img.data[p + 2] = (v & 31) * 255 / 31; img.data[p + 3] = 255; } }
+    ctx.putImageData(img, 0, 0); shot = {};
+    $("shotinfo").textContent = "Plaatje " + new Date().toLocaleTimeString();
+  }
+}
+
+$("connect").onclick = async () => {
+  if (!navigator.requestMIDIAccess) { say("Deze browser heeft geen Web MIDI."); return; }
+  try {
+    const m = await navigator.requestMIDIAccess({ sysex: true });
+    out = [...m.outputs.values()].find(p => /FM/i.test(p.name)) || null;
+    inp = [...m.inputs.values()].find(p => /FM/i.test(p.name)) || null;
+    if (!out || !inp) { say("Geen FM-1 gevonden. Poorten: " + [...m.outputs.values()].map(p => p.name).join(", ")); return; }
+    inp.onmidimessage = onMsg;
+    say("Verbonden met " + out.name);
+    sysex(0x05);
+  } catch (e) { say("Geen MIDI-toegang: " + e.message); }
+};
+$("ping").onclick = () => sysex(0x05);
+$("state").onclick = () => sysex(0x02);
+$("screen").onclick = () => sysex(0x01);
+$("live").onchange = e => { clearInterval(liveTimer); if (e.target.checked) liveTimer = setInterval(() => { sysex(0x01); sysex(0x02); }, 500); };
+
+BUTTONS.forEach((n, i) => { const b = document.createElement("button"); b.textContent = n; b.id = "btn-" + n; b.onclick = () => { sysex(0x03, i); setTimeout(() => sysex(0x02), 120); }; $("buttons").append(b); });
+ENCODERS.forEach((n, i) => {
+  const w = document.createElement("span"); w.className = "enc";
+  const mk = (t, s) => { const b = document.createElement("button"); b.textContent = t; b.id = "enc-" + i + (s > 0 ? "-up" + s : "-dn" + (-s)); b.onclick = () => { sysex(0x04, i, 64 + s); setTimeout(() => sysex(0x02), 120); }; return b; };
+  const lab = document.createElement("span"); lab.textContent = n;
+  w.append(mk("−5", -5), mk("−1", -1), lab, mk("+1", 1), mk("+5", 5)); $("encoders").append(w);
+});
+$("play").onclick = () => { if (!out) return say("Eerst verbinden."); const n = +$("note").value, v = +$("vel").value; out.send([0x90, n, v]); setTimeout(() => out.send([0x80, n, 0]), +$("dur").value * 1000); };
+$("cc1").oninput = e => { $("cc1v").textContent = e.target.value; if (out) out.send([0xB0, 1, +e.target.value]); };
+$("sendprog").onclick = () => { if (out) out.send([0xC0, (+$("prog").value - 1) & 127]); };
+
+/* audio: the FM-1's USB audio input, its level and spectrum, as numbers too (for a remote reader) */
+let actx = null, an = null, stream = null, araf = 0;
+async function listDevs() {
+  try { const ds = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+    $("adev").innerHTML = ds.map(d => `<option value="${d.deviceId}" ${/FM/i.test(d.label) ? "selected" : ""}>${d.label || "invoer"}</option>`).join(""); } catch (e) {}
+}
+listDevs();
+$("listen").onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: $("adev").value || undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    await listDevs();
+    actx = new AudioContext(); an = actx.createAnalyser(); an.fftSize = 8192; an.smoothingTimeConstant = 0.5;
+    actx.createMediaStreamSource(stream).connect(an);
+    const t = new Float32Array(an.fftSize), f = new Float32Array(an.frequencyBinCount);
+    let pkHold = -120;
+    const tick = () => {
+      an.getFloatTimeDomainData(t); an.getFloatFrequencyData(f);
+      let pk = 0, ss = 0; for (const v of t) { pk = Math.max(pk, Math.abs(v)); ss += v * v; }
+      const pdb = 20 * Math.log10(pk + 1e-9), rdb = 10 * Math.log10(ss / t.length + 1e-12);
+      pkHold = Math.max(pdb, pkHold - 0.5);
+      let bi = 1; for (let i = 2; i < f.length; i++) if (f[i] > f[bi]) bi = i;
+      const hz = bi * actx.sampleRate / an.fftSize, midi = 69 + 12 * Math.log2(hz / 440);
+      const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"], nn = Math.round(midi);
+      $("ameter").textContent = `piek ${pdb.toFixed(1)} dBFS (vast ${pkHold.toFixed(1)})  rms ${rdb.toFixed(1)} dBFS  ${pk >= 0.999 ? "CLIP" : ""}\n` +
+        `sterkste frequentie ${hz.toFixed(1)} Hz = ${names[(nn % 12 + 12) % 12]}${Math.floor(nn / 12) - 1} ${((midi - nn) * 100).toFixed(0)} cent  (fs ${actx.sampleRate})`;
+      const c = $("spec").getContext("2d"); c.fillStyle = "#000"; c.fillRect(0, 0, 480, 120); c.strokeStyle = "#f5a623"; c.beginPath();
+      for (let x = 0; x < 480; x++) { const hzx = 20 * Math.pow(1000, x / 480), i = Math.min(f.length - 1, Math.round(hzx * an.fftSize / actx.sampleRate)), y = 120 - (f[i] + 110) * 120 / 110; x ? c.lineTo(x, y) : c.moveTo(x, y); }
+      c.stroke(); araf = requestAnimationFrame(tick);
+    };
+    tick(); say("Luisteren naar " + (stream.getAudioTracks()[0]?.label || "invoer"));
+  } catch (e) { say("Geen audio: " + e.message); }
+};
+$("aoff").onclick = () => { cancelAnimationFrame(araf); stream?.getTracks().forEach(t => t.stop()); actx?.close(); actx = null; };
+</script>
+</body>
+</html>
