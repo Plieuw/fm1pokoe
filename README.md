@@ -44,6 +44,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · POSITION (resonator) · TONE (shimmer) |
 | ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
 | PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, PING BELL, PITCH ZAP |
+| PRESETS op FX / SHIMMER | op de FX-pagina gaat de PRESETS-knop door FX-presets (FX OFF, BELL, TUNED BAR, GLASS, SITAR, DRONE STRINGS, PIANO STRING, PLUCKED STRING, CAT, COW, WOLF, TALKING, ELEPHANT, NIGHT FLUTE, OVERBLOWN, BIRD, TWO BIRDS, HAWK), op de SHIMMER-pagina door shimmer-presets (SHIMMER OFF, HEAVEN, OCTAVE HAZE, FIFTHS, SMALL ROOM, VALLEY, TWO OCTAVES, OCT + 5TH CLOUD); de klank zelf blijft staan |
 | ARP | de ARP-pagina; nog een keer: terug naar HOME (het lampje brandt zolang de arpeggiator speelt) |
 | REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
 | SCL | de PAN-pagina (nog een keer: terug naar HOME): KNOB 1 BASIS (stereo-spreiding per noot), KNOB 2 ORBIT (de stemmen bewegen mee met hun plaatje); de stemmen staan getekend waar ze in het stereobeeld klinken |

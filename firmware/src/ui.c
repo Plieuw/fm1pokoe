@@ -38,6 +38,8 @@
  *   EDIT     the EDIT page (again: back HOME): KNOB 1 the MOD WHEEL's parameter (MIDI CC 1; FREE EG's list), KNOB 2
  *            its DEPTH (FREE EG playing the same one: the wheel sets FREE EG's depth), KNOB 3 VELOCITY on the sound (OFF, BRIGHT, FM, BOTH), KNOB 4 how much; MIDI program change
  *            loads the preset (program 1 the first)
+ *   PRESETS  on the FX page: the FX presets (a resonator / waveguide with its knobs), on SHIMMER: the shimmer
+ *            presets; elsewhere the sound presets (on KARMA: the tempo)
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -129,6 +131,33 @@ static const preset_t PRESETS[] = {
      56, 0, 110},
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
+
+/* the FX page's own presets (PRESETS turned there): the resonator / waveguide alone, the sound left as it is */
+typedef struct { const char *name; uint8_t model, st, br, dm, pos, mix; } fx_preset_t;
+static const fx_preset_t FX_PRESETS[] = {
+    {"FX OFF", 0, 70, 90, 100, 24, 0},
+    {"BELL", RZ_MODAL, 70, 100, 110, 12, 100},     {"TUNED BAR", RZ_MODAL, 116, 40, 80, 24, 70},
+    {"GLASS", RZ_MODAL, 100, 127, 120, 40, 80},    {"SITAR", RZ_SYMP, 16, 80, 105, 70, 90},
+    {"DRONE STRINGS", RZ_SYMP, 60, 60, 115, 40, 80}, {"PIANO STRING", RZ_STRING, 100, 70, 96, 20, 85},
+    {"PLUCKED STRING", RZ_STRING, 40, 90, 60, 50, 90}, {"CAT", RZ_THROAT, 8, 70, 60, 80, 127},
+    {"COW", RZ_THROAT, 88, 40, 80, 10, 120},       {"WOLF", RZ_THROAT, 72, 60, 90, 20, 115},
+    {"TALKING", RZ_THROAT, 40, 80, 60, 64, 110},   {"ELEPHANT", RZ_THROAT, 120, 30, 100, 40, 127},
+    {"NIGHT FLUTE", RZ_FLUTE, 30, 70, 90, 50, 127}, {"OVERBLOWN", RZ_FLUTE, 115, 90, 100, 20, 120},
+    {"BIRD", RZ_SYRINX, 90, 70, 60, 15, 127},      {"TWO BIRDS", RZ_SYRINX, 60, 90, 70, 110, 127},
+    {"HAWK", RZ_HAWK, 70, 90, 70, 70, 127},
+};
+#define NFX_PRESETS (sizeof FX_PRESETS / sizeof FX_PRESETS[0])
+/* the SHIMMER page's own presets */
+typedef struct { const char *name; uint8_t size, decay, shimmer, mix, interval, tone; } sh_preset_t;
+static const sh_preset_t SH_PRESETS[] = {
+    {"SHIMMER OFF", 100, 90, 70, 0, SI_OCT, 80},
+    {"HEAVEN", 110, 110, 100, 96, SI_OCT, 100},     {"OCTAVE HAZE", 127, 120, 50, 80, SI_OCT, 80},
+    {"FIFTHS", 90, 110, 120, 100, SI_FIFTH, 110},   {"SMALL ROOM", 60, 60, 20, 60, SI_OCT, 70},
+    {"VALLEY", 110, 100, 40, 35, SI_OCT, 90},       {"TWO OCTAVES", 120, 115, 90, 80, SI_2OCT, 100},
+    {"OCT + 5TH CLOUD", 127, 125, 80, 90, SI_OCT5, 90},
+};
+#define NSH_PRESETS (sizeof SH_PRESETS / sizeof SH_PRESETS[0])
+static uint8_t fx_pre, sh_pre;                   /* the last chosen of each (not saved: the knobs are) */
 
 static void preset_load(uint32_t i)
 {
@@ -1786,6 +1815,28 @@ static void ui_input(void)
         fmt_int(v, sys.arp_bpm);
         ui_cat(t, sizeof t, v);
         ui_say(t);
+    } else if (s && sys.page == 2u) {                   /* FX: PRESETS goes through the FX presets */
+        const fx_preset_t *f;
+        fx_pre = (uint8_t)(((int32_t)fx_pre + (int32_t)NFX_PRESETS * 8 + s) % (int32_t)NFX_PRESETS);
+        f = &FX_PRESETS[fx_pre];
+        sys.fx_mix = 0;                                 /* (the model changed silent, then its knobs, then heard) */
+        sys.fx_model = f->model; sys.fx_struct = f->st; sys.fx_bright = f->br;
+        sys.fx_damp = f->dm; sys.fx_pos = f->pos;
+        sys.fx_mix = f->mix;
+        str_cpy(t, "FX: ", sizeof t);
+        ui_cat(t, sizeof t, f->name);
+        ui_say(t);
+        ui_force = 1;
+    } else if (s && sys.page == 3u) {                   /* SHIMMER: through the shimmer presets */
+        const sh_preset_t *h;
+        sh_pre = (uint8_t)(((int32_t)sh_pre + (int32_t)NSH_PRESETS * 8 + s) % (int32_t)NSH_PRESETS);
+        h = &SH_PRESETS[sh_pre];
+        sys.sh_size = h->size; sys.sh_decay = h->decay; sys.sh_shimmer = h->shimmer;
+        sys.sh_interval = h->interval; sys.sh_tone = h->tone; sys.sh_mix = h->mix;
+        str_cpy(t, "SHIMMER: ", sizeof t);
+        ui_cat(t, sizeof t, h->name);
+        ui_say(t);
+        ui_force = 1;
     } else if (s)
         preset_load((uint32_t)((int32_t)sys.preset + (int32_t)NPRESETS * 8 + s));
 }

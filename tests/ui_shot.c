@@ -229,6 +229,27 @@ int main(int argc, char **argv)
     frames(4);
     bad |= shot(dir, "g_shimmer_off");
     synth_kill();
+    {   /* PRESETS on FX and SHIMMER: their own presets, the sound preset kept */
+        uint8_t pr = sys.preset;
+        sys.page = 2; fx_pre = 0;
+        enc_steps[panel.enc[EN_PRESET]] = 1;
+        ui_input();
+        if (sys.preset != pr || sys.fx_model != RZ_MODAL || sys.fx_mix != 100u) {
+            printf("PRESETS on FX: not the FX preset BELL\n"); bad = 1;
+        }
+        frames(3);
+        bad |= shot(dir, "f_fx_preset");
+        enc_steps[panel.enc[EN_PRESET]] = -1;
+        ui_input();
+        if (sys.fx_mix != 0u) { printf("PRESETS on FX: back to FX OFF\n"); bad = 1; }
+        sys.page = 3; sh_pre = 0;
+        enc_steps[panel.enc[EN_PRESET]] = 3;
+        ui_input();
+        if (sys.preset != pr || sys.sh_interval != SI_FIFTH || sys.sh_mix != 100u) {
+            printf("PRESETS on SHIMMER: not FIFTHS\n"); bad = 1;
+        }
+        sys.sh_mix = 0;
+    }
     sys.page = 0;
     sys.fx_mix = 0;
     ui_force = 1;
