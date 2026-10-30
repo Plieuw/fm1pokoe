@@ -40,6 +40,9 @@
  *            loads the preset (program 1 the first)
  *   PRESETS  on the FX page: the FX presets (a resonator / waveguide with its knobs), on SHIMMER: the shimmer
  *            presets; elsewhere the sound presets (on KARMA: the tempo)
+ *   LFO      the TAPE page (tape.c; again: back HOME): a four-track reel-to-reel. KNOB 1..4 the tracks' levels,
+ *            ALGORITHM the armed track, SELECT the LENGTH (1, 2, 4, 8, 16 beats), PRESETS the BPM (the tape's speed
+ *            and pitch follow it), PLAY the transport, REC one pass on the armed track (with PLAY held: erase it)
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -307,7 +310,7 @@ static int preset_edited(void)
 }
 
 /* ------------------------------------------------------------ settings --- */
-#define SET_MAGIC 0x43485543u      /* "CHUA": bump when the layout changes (older records are then ignored) */
+#define SET_MAGIC 0x43485544u      /* "CHUA": bump when the layout changes (older records are then ignored) */
 typedef struct {
     uint32_t magic;
     int8_t octave;
@@ -321,6 +324,7 @@ typedef struct {
     uint8_t feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts, feg_curve[FEG_N];
     uint8_t k_on, k_ge, k_latch, k_m[4];
     uint8_t mw_target, mw_depth, vel_to, vel_amt;
+    uint8_t tape_lv[4], tape_len, tape_arm;
 } settings_t;
 
 static void settings_boot(void)    /* power-on, before the audio */
@@ -393,6 +397,10 @@ static void settings_boot(void)    /* power-on, before the audio */
         sys.vel_to = (uint8_t)(s.vel_to & 3u);
         sys.vel_amt = (uint8_t)(s.vel_amt & 127u);
         for (uint32_t i = 0; i < 4u; i++)
+            sys.tape_lv[i] = (uint8_t)(s.tape_lv[i] & 127u);
+        sys.tape_len = (uint8_t)(s.tape_len % 5u);
+        sys.tape_arm = (uint8_t)(s.tape_arm & 3u);
+        for (uint32_t i = 0; i < 4u; i++)
             sys.k_m[i] = (uint8_t)(s.k_m[i] & 127u);
     }
 }
@@ -463,6 +471,10 @@ static int settings_save(void)     /* 0 = saved */
     s.mw_depth = sys.mw_depth;
     s.vel_to = sys.vel_to;
     s.vel_amt = sys.vel_amt;
+    for (uint32_t i = 0; i < 4u; i++)
+        s.tape_lv[i] = sys.tape_lv[i];
+    s.tape_len = sys.tape_len;
+    s.tape_arm = sys.tape_arm;
     for (uint32_t i = 0; i < 4u; i++)
         s.k_m[i] = sys.k_m[i];
     return st_save(OBJ_SETTINGS, &s, sizeof s);
@@ -1108,7 +1120,20 @@ static void ui_draw(void)
     ui_head(a, b);
 
     ui_val_c = sys.page == 5u ? T_FM : 0;   /* (the MOD ENV: its values green) */
-    if (sys.page == 11u) {
+    if (sys.page == 12u) {                       /* TAPE: the tracks' faders; the armed one marked */
+        static const uint8_t CELL[4] = {T_C1, T_C2, T_C3, T_C4};
+        for (uint32_t i = 0; i < 4u; i++) {
+            str_cpy(a, "1 TRACK 1", sizeof a);
+            a[0] = a[8] = (char)('1' + i);
+            fmt_int(v, sys.tape_lv[i]);
+            str_cpy(b, v, sizeof b);
+            if (i == sys.tape_arm % 4u)
+                ui_cat(b, sizeof b, tape.rec ? "  REC" : "  ARM");
+            ui_val_c = i == sys.tape_arm % 4u ? T_ACCENT : 0;
+            ui_cell(CELL[i], a, b);
+        }
+        ui_val_c = 0;
+    } else if (sys.page == 11u) {
         ui_val_c = FEG_FM(sys.mw_target) ? T_FM : 0;
         ui_cell(T_C1, "1 MOD WHEEL", FEG_T_NAME[sys.mw_target % FEG_NT]);
         ui_val_c = 0;
@@ -1337,6 +1362,17 @@ static void ui_draw(void)
             static const char *const C2[4] = {"MIDI   2ND CORE OFF", "MIDI   2ND CORE ALL", "MIDI   2ND CORE VOICES",
                                               "MIDI   2ND CORE FX"};
             str_cpy(a, C2[sys.cpu2 & 3u], sizeof a);
+        } else if (sys.page == 12u) {            /* TAPE: the transport, the LENGTH, the speed */
+            static const char *const LN[5] = {"1 BEAT", "2 BEATS", "1 BAR", "2 BARS", "4 BARS"};
+            uint32_t sp = (tape.speed * 100u + 2048u) / 4096u;
+            str_cpy(a, tape.rec ? "TAPE REC  " : tape.playing ? "TAPE PLAY  " : "TAPE STOP  ", sizeof a);
+            ui_cat(a, sizeof a, LN[sys.tape_len % 5u]);
+            ui_cat(a, sizeof a, "  x");
+            fmt_int(v, (int32_t)(sp / 100u));
+            ui_cat(a, sizeof a, v);
+            ui_cat(a, sizeof a, ".");
+            v[0] = (char)('0' + sp / 10u % 10u); v[1] = (char)('0' + sp % 10u); v[2] = 0;
+            ui_cat(a, sizeof a, v);
         } else if (sys.page == 6u) {             /* ARP: on or off, the pattern, HOLD */
             str_cpy(a, sys.arp_on ? "ARP ON  " : "ARP OFF  ", sizeof a);
             ui_cat(a, sizeof a, arp_type_name(sys.arp_type));
@@ -1405,6 +1441,15 @@ static void ui_draw(void)
         draw_pan();
     else if (sys.page == 11u)
         draw_edit();
+    else if (sys.page == 12u) {
+        art_t++;
+        art_c = T_THEME;
+        art_c2 = ux_mix(T_BG, art_c, 75);
+        art_c3 = ux_mix(T_BG, art_c, 45);
+        cv_begin(240, PLOT_H, T_BG);
+        art_tape();
+        cv_blit(0, PLOT_Y);
+    }
     else
         draw_plot();
     ui_force = 0;
@@ -1520,6 +1565,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_SCL]);
     if (sys.page == 11u)
         led_on(nl, panel.btn[B_EDIT]);
+    if (sys.page == 12u || tape.rec || (tape.playing && (fm1_ms & 512u)))
+        led_on(nl, panel.btn[B_LFO]);
     if (sys.k_on || sys.page == 9u)
         led_on(nl, panel.btn[B_SEQ]);
     if (sys.arp_on || sys.k_on) {                       /* PLAY: lit (and its green) while the ARP or KARMA runs */
@@ -1618,7 +1665,14 @@ static void ui_input(void)
             ui_force = 1;
             break;
         case B_REC:                                     /* the FREE EG page; there: record (and stop) */
-            if (sys.page == 8u) {
+            if (sys.page == 12u) {                      /* TAPE: record the armed track (PLAY held: erase it) */
+                int er = (fm1_in.buttons & btn_bit(B_PLAY)) != 0u;
+                tape.req = er ? 3u : 2u;
+                str_cpy(t, er ? "ERASED TRACK " : tape.rec ? "REC STOP TRACK " : "REC TRACK ", sizeof t);
+                fmt_int(v, (int32_t)(sys.tape_arm % 4u) + 1);
+                ui_cat(t, sizeof t, v);
+                ui_say(t);
+            } else if (sys.page == 8u) {
                 feg_req = feg.rec ? 2u : 1u;            /* (done by the audio ISR, at its next block) */
                 ui_say(feg.rec ? "RECORDED" : "RECORDING");
             } else {
@@ -1638,7 +1692,10 @@ static void ui_input(void)
             break;
         case B_PLAY:                                    /* start / stop: the ARP or KARMA (the page's, else the last
                                                          * one opened); what runs stops (the other one off) */
-            if (sys.page == 6u || (sys.page != 9u && !play_last && !sys.k_on)) {
+            if (sys.page == 12u) {                      /* TAPE: its transport */
+                tape.req = 1;
+                ui_say(tape.playing ? "TAPE STOP" : "TAPE PLAY");
+            } else if (sys.page == 6u || (sys.page != 9u && !play_last && !sys.k_on)) {
                 sys.arp_on = (uint8_t)!sys.arp_on;
                 ui_say(sys.arp_on ? (sys.k_on ? "ARP ON, KARMA OFF" : "ARP ON") : "ARP OFF");
             } else if (sys.page == 9u || (play_last && !sys.arp_on)) {
@@ -1648,6 +1705,10 @@ static void ui_input(void)
                 sys.arp_on = sys.k_on = 0;
                 ui_say("STOP");
             }
+            break;
+        case B_LFO:                                     /* the TAPE page and back */
+            sys.page = sys.page == 12u ? 0u : 12u;
+            ui_force = 1;
             break;
         case B_EDIT:                                    /* the EDIT page (mod wheel, velocity) and back */
             sys.page = sys.page == 11u ? 0u : 11u;
@@ -1669,7 +1730,12 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 11u) {
+    if (sys.page == 12u) {                       /* TAPE: the faders */
+        knob(&sys.tape_lv[0], EN_K1, 0);
+        knob(&sys.tape_lv[1], EN_K2, 1);
+        knob(&sys.tape_lv[2], EN_K3, 2);
+        knob(&sys.tape_lv[3], EN_K4, 3);
+    } else if (sys.page == 11u) {
         if ((s = ui_enc(EN_K1)) != 0) {
             sys.mw_target = (uint8_t)clamp((int32_t)sys.mw_target + s, 0, FEG_NT - 1);
             ui_hot = 0; ui_hot_ms = fm1_ms;
@@ -1761,7 +1827,13 @@ static void ui_input(void)
         knob(&sys.sustain, EN_K3, 2);
         knob(&sys.release, EN_K4, 3);
     }
-    if ((s = ui_enc(EN_SELECT)) != 0 && sys.page == 0u) {   /* HOME: SELECT turns the view */
+    if ((s = ui_enc(EN_SELECT)) != 0 && sys.page == 12u) {  /* TAPE: the LENGTH */
+        static const char *const LN[5] = {"1 BEAT", "2 BEATS", "1 BAR", "2 BARS", "4 BARS"};
+        sys.tape_len = (uint8_t)clamp((int32_t)sys.tape_len + (s > 0 ? 1 : -1), 0, 4);
+        str_cpy(t, "LENGTH ", sizeof t);
+        ui_cat(t, sizeof t, LN[sys.tape_len % 5u]);
+        ui_say(t);
+    } else if (s && sys.page == 0u) {           /* HOME: SELECT turns the view */
         sys.view = (uint8_t)((sys.view + V_COUNT * 8 + s) % V_COUNT);
         str_cpy(t, "VIEW ", sizeof t);
         ui_cat(t, sizeof t, VIEW_NAME[sys.view]);
@@ -1794,7 +1866,13 @@ static void ui_input(void)
             fx_pos_text(t, sizeof t, 0);
         ui_say(t);
     }
-    if ((s = ui_enc(EN_ALGO)) != 0 && sys.page == 3u) {
+    if ((s = ui_enc(EN_ALGO)) != 0 && sys.page == 12u) {   /* TAPE: the armed track */
+        sys.tape_arm = (uint8_t)clamp((int32_t)sys.tape_arm + (s > 0 ? 1 : -1), 0, 3);
+        str_cpy(t, "ARMED TRACK ", sizeof t);
+        fmt_int(v, (int32_t)sys.tape_arm + 1);
+        ui_cat(t, sizeof t, v);
+        ui_say(t);
+    } else if (s && sys.page == 3u) {
         sys.sh_interval = (uint8_t)((sys.sh_interval + SI_COUNT * 8 + s) % SI_COUNT);
         str_cpy(t, "INTERVAL ", sizeof t);
         ui_cat(t, sizeof t, SH_INTERVAL_NAME[sys.sh_interval]);
@@ -1824,7 +1902,7 @@ static void ui_input(void)
             ui_cat(t, sizeof t, " CIRCUIT");
         ui_say(t);
     }
-    if ((s = ui_enc(EN_PRESET)) != 0 && sys.page == 9u) {   /* KARMA: PRESETS is the tempo (the ARP page's BPM) */
+    if ((s = ui_enc(EN_PRESET)) != 0 && (sys.page == 9u || sys.page == 12u)) {   /* KARMA, TAPE: PRESETS is the BPM */
         sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
         str_cpy(t, arp_ext() ? "MIDI CLOCK: BPM " : "BPM ", sizeof t);
         fmt_int(v, sys.arp_bpm);

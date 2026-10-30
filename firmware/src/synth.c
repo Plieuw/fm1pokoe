@@ -597,6 +597,7 @@ static void c1_voices(uint32_t arg)              /* arg: the voices (bit k = voi
             voice_mix(&voice[k], n, c1_bus, c1_dl, c1_dr, &c1_restarts);
 }
 
+static void tape_run(int32_t *l, int32_t *r, uint32_t n);   /* (tape.c, below: the tape under the output) */
 static void synth_render(int32_t *out, uint32_t n)
 {
     uint32_t i, k, busy = 0, newest = 0, mask = 0, own = 0;
@@ -698,8 +699,13 @@ static void synth_render(int32_t *out, uint32_t n)
         for (i = 0; i < n; i++) {
             l[i] -= (int32_t)(((int64_t)dl[i] * sh_dry) >> 15);
             r[i] -= (int32_t)(((int64_t)dr[i] * sh_dry) >> 15);
-            out[2u * i] = clamp(soft_clip(l[i]) * m >> 12, -32767, 32767);
-            out[2u * i + 1u] = clamp(soft_clip(r[i]) * m >> 12, -32767, 32767);
+            l[i] = soft_clip(l[i]) * m >> 12;
+            r[i] = soft_clip(r[i]) * m >> 12;
+        }
+        tape_run(l, r, n);                              /* (the tape: recorded from it, played under it) */
+        for (i = 0; i < n; i++) {
+            out[2u * i] = clamp(l[i], -32767, 32767);
+            out[2u * i + 1u] = clamp(r[i], -32767, 32767);
         }
     }
     sys.voices = (uint8_t)busy;
@@ -708,3 +714,4 @@ static void synth_render(int32_t *out, uint32_t n)
 #include "arp.c"                                 /* the arpeggiator (keys.c drives it) */
 #include "karma.c"                               /* KARMA: the phrase generator (SEQ) */
 #include "feg.c"                                 /* FREE EG: a knob recorded, played onto a parameter */
+#include "tape.c"                                /* TAPE: the four-track reel-to-reel (LFO) */

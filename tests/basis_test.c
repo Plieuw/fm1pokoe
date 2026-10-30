@@ -913,6 +913,47 @@ int main(int argc, char **argv)
         if (!okk) printf("   (fx_struct %u playing %u)\n", sys.fx_struct, feg.playing);
         check("mod wheel on FREE EG's parameter sets FREE EG's depth", okk);
     }
+    {   /* TAPE: a pass recorded on track 1 plays back under the synth; its level; the speed with the BPM; erased */
+        int okk = 1;
+        uint32_t j, b;
+        int32_t pk;
+#define TAPE_PEAK(ms) do { pk = 0; for (b = 0; b < (ms) * FS / 1000u / CTL; b++) { block(); \
+            for (j = 0; j < 2u * CTL; j++) pk = buf[j] > pk ? buf[j] : -buf[j] > pk ? -buf[j] : pk; } } while (0)
+        tape_init();
+        synth_kill(); keys_all_off(); run_ms(300);
+        sys.arp_bpm = 120; sys.tape_len = 2; sys.tape_arm = 0; sys.tape_lv[0] = 127;
+        sys.fx_mix = 0; sys.sh_mix = 0;
+        tape.req = 2;
+        run_ms(5);
+        okk &= tape.playing && tape.rec && tape.spb == 2646000u / 120u && tape.len == 22050u;
+        synth_note_on(60, 110);
+        run_ms(800);
+        synth_note_off(60);
+        run_ms(1400);                                            /* (a pass: 2 s) */
+        okk &= !tape.rec && tape.has[0];
+        synth_kill();
+        TAPE_PEAK(2000);
+        okk &= pk > 1000;                                        /* the note, from the tape */
+        if (!okk) printf("   (tape: playing %u rec %u spb %u len %u peak %d)\n", tape.playing, tape.rec, tape.spb, tape.len, pk);
+        sys.tape_lv[0] = 0;
+        run_ms(10);
+        TAPE_PEAK(1000);
+        okk &= pk < 50;                                          /* its fader down: silent */
+        sys.tape_lv[0] = 127; sys.arp_bpm = 60;
+        run_ms(10);
+        okk &= tape.speed >= 2040u && tape.speed <= 2056u && tape.len == 22050u;   /* half the tempo: half the speed */
+        tape.req = 3;                                            /* erased: blank again, silent */
+        run_ms(10);
+        okk &= !tape.spb && !tape.has[0];
+        TAPE_PEAK(500);
+        okk &= pk < 50;
+        tape.req = 1;
+        run_ms(10);
+        okk &= !tape.playing;
+        sys.arp_bpm = 120; sys.tape_lv[0] = 100;
+#undef TAPE_PEAK
+        check("TAPE: recorded, played back, its fader, varispeed with the BPM, erased, stopped", okk);
+    }
     {   /* velocity on the sound: BRIGHT closes a soft note's gate, FM makes its depth shallower; OFF changes nothing */
         int okk = 1;
         synth_kill();

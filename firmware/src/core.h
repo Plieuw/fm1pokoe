@@ -58,7 +58,8 @@ static volatile struct {
     uint8_t feg_val, feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts;   /* feg.c: FREE EG (REC) */
     uint8_t k_on, k_ge, k_latch, k_m[4];
     uint8_t mw, mw_target, mw_depth;   /* keys.c: MIDI CC 1 (the mod wheel), the parameter it moves (feg.c's list), how far */
-    uint8_t mw_seen;             /* a mod wheel has sent (until then it leaves FREE EG's depth alone) */
+    uint8_t mw_seen;
+    uint8_t tape_lv[4], tape_len, tape_arm;   /* tape.c: the tracks' levels, LENGTH (1 2 4 8 16 beats), the armed track */             /* a mod wheel has sent (until then it leaves FREE EG's depth alone) */
     uint8_t vel_to, vel_amt;     /* synth.c: velocity also on the sound: 0 off, 1 BRIGHT (the gate), 2 FM, 3 both; how much */   /* karma.c: KARMA (SEQ): on, the GE, LATCH, its four realtime controls */
     uint16_t menv_view;          /* the newest voice's MOD ENV pitch sweep now, 0..32767 = 3 octaves (ui.c) */
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
@@ -72,4 +73,5 @@ static volatile struct {
          .midi_trs = 1, .midi_usb = 3, .midi_rx = 0, .midi_tx = 0,
          .feg_val = 64, .feg_len = 9, .feg_depth = 127, .feg_target = 0, .feg_on = 0, .feg_has = 0, .feg_npts = 0,
          .k_on = 0, .k_ge = 0, .k_latch = 0, .k_m = {64, 64, 64, 64},
-         .mw = 0, .mw_target = 0, .mw_depth = 127, .vel_to = 0, .vel_amt = 64};
+         .mw = 0, .mw_target = 0, .mw_depth = 127, .vel_to = 0, .vel_amt = 64,
+         .tape_lv = {100, 100, 100, 100}, .tape_len = 2, .tape_arm = 0};

@@ -86,6 +86,7 @@ static void run_ms(uint32_t ms)                  /* the audio for ms, the clock 
 {
     uint32_t n = ms * FS / 1000u / CTL + 1u;
     while (n--) {
+        tape_block();                            /* (keys.c's part of the interrupt: the tape's transport) */
         synth_render(abuf_, CTL);
         fm1_ms_frac += CTL;
         while (fm1_ms_frac >= FS / 1000u) {
@@ -180,6 +181,7 @@ int main(int argc, char **argv)
     uint32_t i;
     char name[32];
     palette_set(UI_PALETTE);
+    tape_init();
     bad |= preset_levels();
 
     draw_splash();
@@ -243,6 +245,24 @@ int main(int argc, char **argv)
     ui_input();
     sys.orbit = 0;
     sys.basis = 0;
+    edges = btn_bit(B_LFO);              /* the TAPE page: recording track 2 under a note */
+    ui_input();
+    enc_steps[panel.enc[EN_ALGO]] = 1;
+    ui_input();
+    edges = btn_bit(B_REC);
+    ui_input();
+    synth_note_on(55, 110);
+    frames(20);
+    bad |= shot(dir, "k_tape_rec");
+    synth_note_off(55);
+    frames(40);
+    bad |= shot(dir, "k_tape_play");
+    edges = btn_bit(B_PLAY);
+    ui_input();
+    frames(2);
+    edges = btn_bit(B_LFO);
+    ui_input();
+    synth_kill();
     edges = btn_bit(B_EDIT);             /* the EDIT page: the mod wheel half up, velocity BRIGHT */
     ui_input();
     sys.mw = 64; sys.vel_to = 1; sys.last_vel = 90;

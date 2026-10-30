@@ -221,6 +221,7 @@ static void fm1_main(void)
     fm1_input_init();
     fm1_adc_init();
     keys_init();
+    tape_init();
     master_boot();
     kb_boot_hold = 1;                               /* no notes from the keys under the splash */
 #if FELUCCA_CPU2

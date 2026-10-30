@@ -53,6 +53,7 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | (blokjes rechtsonder) | knoppen met twee pagina's (ENV + MOD ENV, FX + SHIMMER) tonen rechtsonder twee blokjes: de pagina waar je bent oranje gevuld, de andere een leeg vakje |
+| LFO | de TAPE-pagina (nog een keer: terug naar HOME): een 4-sporen bandrecorder (reel-to-reel), zie hieronder |
 | EDIT | de EDIT-pagina (nog een keer: terug naar HOME): KNOB 1 welke parameter het MOD WHEEL (MIDI CC 1) beweegt (de lijst van FREE EG), KNOB 2 hoe ver (DEPTH; wiel omhoog = tot 127, wiel omlaag = de oude waarde terug; speelt FREE EG op dezelfde parameter, dan regelt het wiel de diepte van FREE EG: wiel omlaag = stil, omhoog = FREE EG's DEPTH; pas zodra er een mod wheel binnenkomt), KNOB 3 VELOCITY op de klank (OFF, BRIGHT: zacht = donkerder, SWEEP: zacht = minder MOD ENV-sweep, BRIGHT + SWEEP), KNOB 4 hoeveel |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
 | Snel draaien | elke knop en encoder (KNOB 1–4, SELECT, ALGORITHM, PRESETS) versnelt tot 4×, net als BPM (van 0 naar 127 in één zwaai); één klik blijft één stap |
@@ -260,6 +261,25 @@ KNOB 2 BRIGHTNESS (mondopening/snavel/demping van de hoogte), KNOB 3 DAMPING (ho
 Combineer gerust: een noise-programma als adem in de FLUTE (PAN NOISE FLUTE), de pure cyclus in een kattenkeel (CAT
 MEOW), een wolf met shimmer (WOLF HOWL). Nieuwe presets: CAT MEOW, COW MOO, WOLF HOWL, TALKING CHAOS, ELEPHANT, NIGHT
 FLUTE, OVERBLOWN, PAN NOISE FLUTE, BIRD SONG, TWO BIRDS, HAWK CRY.
+
+**TAPE (LFO).** Een 4-sporen bandrecorder met een tapelus, opgenomen van de eigen uitgang van de synth en eronder
+afgespeeld. De band loopt op het tempo waarop hij is opgenomen: verander je de BPM (of het MIDI-clocktempo), dan loopt
+hij sneller of langzamer en gaat de toonhoogte mee, zoals bij varispeed op een echte bandrecorder; de lus blijft
+hetzelfde aantal tellen. Lo-fi zoals tape: 11 kHz, 8-bit mu-law, de hoogte rolt af rond 5 kHz.
+
+| Bediening | Functie |
+| --- | --- |
+| KNOB 1..4 | het volume van spoor 1..4 (de faders) |
+| ALGORITHM | het spoor dat REC opneemt (ARM) |
+| SELECT | LENGTH van de lus: 1 tel, 2 tellen, 1 maat, 2 maten, 4 maten (zo lang als de band past: ~3,6 s; anders korter) |
+| PRESETS | de BPM (dezelfde als ARP en KARMA): snelheid en toonhoogte van de band volgen |
+| PLAY | de band starten (vanaf het begin van de lus) / stoppen |
+| REC | één ronde opnemen op het ARM-spoor (de band start als hij stilstaat); nog een keer: stoppen. Met PLAY ingedrukt: het ARM-spoor wissen |
+
+De eerste opname op een lege band legt zijn tempo vast; zijn alle vier sporen gewist, dan is de band weer leeg. MIDI
+START zet de band terug naar het begin van de lus. Opnemen vervangt wat er op het spoor stond; het spoor dat je opneemt
+hoor je live. Het scherm toont de recorder in 3D: de spoelen draaien zo snel als de band loopt, de wikkels groeien en
+krimpen over de lus, en op de band bij de kop lichten de vier sporen op met hun geluid (het ARM-spoor gestippeld).
 
 **De shimmer reverb (FX, tweede scherm).** Een stereo galm (4 vertragingslijnen met een Householder-matrix) met een
 toonhoogteverschuiver in de terugkoppeling. Elke ronde door de galm (60–110 ms) schuift een deel van de staart een

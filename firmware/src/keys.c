@@ -195,5 +195,6 @@ static void keys_block(void)
     arp_block(CTL);
     karma_block(CTL);
     feg_block(CTL, voice_clock);
-    mw_block();                 /* (voice_clock: the note ons, the arpeggiator's too) */
+    mw_block();
+    tape_block();                 /* (voice_clock: the note ons, the arpeggiator's too) */
 }
