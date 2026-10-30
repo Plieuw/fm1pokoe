@@ -39,7 +39,7 @@
  *            generator), KNOB 1..4 its four realtime controls (named per GE: DENSITY, RANGE, REPEAT ...), SELECT LATCH,
  *            PRESETS the tempo (the ARP page's BPM: one for all)
  *   EDIT     the EDIT page (again: back HOME): KNOB 1 the MOD WHEEL's parameter (MIDI CC 1; FREE EG's list), KNOB 2
- *            its DEPTH, KNOB 3 VELOCITY on the sound (OFF, BRIGHT, FM, BOTH), KNOB 4 how much; MIDI program change
+ *            its DEPTH (FREE EG playing the same one: the wheel sets FREE EG's depth), KNOB 3 VELOCITY on the sound (OFF, BRIGHT, FM, BOTH), KNOB 4 how much; MIDI program change
  *            loads the preset (program 1 the first)
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
@@ -937,8 +937,13 @@ static void draw_edit(void)
     cv_frame(x0, 24, w, h, T_LINE);
     if (mw)
         cv_rect(x0 + 1, 25, (w - 2) * mw / 127, h - 2, FEG_FM(sys.mw_target) ? T_FM : T_THEME);
-    str_cpy(a, "MOVES ", sizeof a);
-    ui_cat(a, sizeof a, FEG_T_NAME[sys.mw_target % FEG_NT]);
+    if (feg.playing && feg.target == sys.mw_target % FEG_NT) {
+        str_cpy(a, "FREE EG DEPTH ON ", sizeof a);
+        ui_cat(a, sizeof a, FEG_T_NAME[sys.mw_target % FEG_NT]);
+    } else {
+        str_cpy(a, "MOVES ", sizeof a);
+        ui_cat(a, sizeof a, FEG_T_NAME[sys.mw_target % FEG_NT]);
+    }
     cv_text(x0, 42, &AF_S, a, FEG_FM(sys.mw_target) ? T_FM : T_MID);
     cv_text(x0, 66, &AF_S, "LAST VELOCITY", T_DIM);
     cv_frame(x0, 84, w, h, T_LINE);

@@ -904,6 +904,29 @@ int main(int argc, char **argv)
         keys_prog_req = 0;
         check("mod wheel moves MOD DEPTH and gives it back; program change asks for preset 4", okk);
     }
+    {   /* FREE EG playing the wheel's parameter: the wheel sets FREE EG's depth (down: still at the base) */
+        int okk = 1, k;
+        uint8_t base = 30;
+        for (k = 0; k < FEG_N; k++)
+            feg.curve[k] = 120;
+        sys.mod_depth = base; sys.feg_target = 8; sys.feg_depth = 127; sys.feg_len = 9;
+        sys.feg_has = 1; sys.feg_on = 1; sys.mw_target = 8; sys.mw_depth = 127;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
+        run_ms(20);
+        okk &= feg.playing && sys.mod_depth == base;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 127);
+        run_ms(20);
+        okk &= sys.mod_depth == 120;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 64);
+        run_ms(20);
+        okk &= sys.mod_depth > base + 30 && sys.mod_depth < 90;
+        midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
+        sys.feg_on = 0;
+        run_ms(20);
+        okk &= !feg.playing && sys.mod_depth == base;
+        if (!okk) printf("   (mod_depth %u playing %u)\n", sys.mod_depth, feg.playing);
+        check("mod wheel on FREE EG's parameter sets FREE EG's depth", okk);
+    }
     {   /* velocity on the sound: BRIGHT closes a soft note's gate, FM makes its depth shallower; OFF changes nothing */
         int okk = 1;
         synth_kill();

@@ -215,7 +215,12 @@ static void feg_block(uint32_t n, uint32_t note_ons)
         if (!len && idx + 1u >= sys.feg_npts)
             b = a;                               /* (NOTE: the last point holds) */
         v = a + (((b - a) * (int32_t)f8) >> 8);
-        v = feg.base + (v - feg.base) * (int32_t)(sys.feg_depth & 127u) / 127;
+        {   /* (the mod wheel on the same parameter: it sets how deep, 0 still .. DEPTH x the EDIT page's DEPTH) */
+            int32_t d = (int32_t)(sys.feg_depth & 127u), md = (int32_t)(sys.mw_depth & 127u);
+            if (md && sys.mw_target % FEG_NT == feg.target)
+                d = d * (int32_t)(sys.mw & 127u) * md / (127 * 127);
+            v = feg.base + (v - feg.base) * d / 127;
+        }
         f = feg_field(feg.target);
         *f = (uint8_t)(v < 0 ? 0 : v > 127 ? 127 : v);
         feg.pos = (uint8_t)idx;
@@ -223,7 +228,7 @@ static void feg_block(uint32_t n, uint32_t note_ons)
 }
 
 /* the mod wheel (MIDI CC 1, the EDIT page): it moves a parameter of FREE EG's list up from where it is, DEPTH how far
- * (127: the wheel up takes it to 127); the parameter given back when the wheel is down. FREE EG on the same one wins */
+ * (127: the wheel up takes it to 127); the parameter given back when the wheel is down. FREE EG playing the same one: the wheel sets FREE EG's depth instead (feg_block) */
 static struct { uint8_t on, target, base; } mwd;
 static void mw_block(void)
 {
