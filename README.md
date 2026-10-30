@@ -46,14 +46,14 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | PRESETS | 128 presets (program change 0..127 kiest ze). circuit, noise, dieren en FX: DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, CAT MEOW, COW MOO, WOLF HOWL, TALKING CHAOS, ELEPHANT, NIGHT FLUTE, OVERBLOWN, PAN NOISE FLUTE, BIRD SONG, TWO BIRDS, HAWK CRY, PING BELL, PITCH ZAP; bas: SUB SCROLL, DEEP SWITCH, RUBBER BASS, GROWL BASS, OUTER BASS, PLUCK BASS, CYCLE SUB, FM BASS, SQUARE BASS, ZAP BASS, WOOD BASS, ACID SPIRAL; lead: SCROLL LEAD, CRISIS LEAD, PURE LEAD, SPIRAL LEAD, RASP LEAD, SYNC SCREAM, RADIO LEAD, ATARI LEAD, WHISTLE LEAD, OVERDRIVE, GLIDE BIRD, SHIMMER LEAD; pad: CHAOS PAD, PERIOD PAD, GLASS PAD, STRING PAD, DARK PAD, FIFTH PAD, CLUSTER PAD, PARTIAL PAD, PHASE PAD, PRIME PAD, WARM CYCLE PAD, CHOIR CHAOS, FROZEN SCROLL, NIGHT SKY; keys en plucks: CHAOS KEYS, E-PIANO SCROLL, HARPSI CHAOS, CLAV GATE, KOTO, HARP, MARIMBA, KALIMBA, MUSIC BOX, CELESTA, STEEL DRUM, SITAR PLUCK; bellen en metaal: TEMPLE BELL, TUBULAR, GONG, CRYSTAL, METAL CLUSTER, FM BELLS, PING CHIME, BROKEN BELL; drums: CHAOS KICK, NOISE SNARE, CLOSED HAT, OPEN HAT, TOM DROP, RIM CLICK, CONGA, COWBELL, CLAP, ZAP DRUM, WOOD BLOCK, 808 BOOM; texturen: RWALK FLANGE, CROSS MOD, RESONOISE, GLITCH RAIN, GRAIN STORM, BASURILLA, LFSR DUST, WAKING, PSH BLIPS, ARRAY ROCKS, EXISTENTIAL, WHO KNOWS, RWALK DRIFT; dieren: KITTEN, LION ROAR, CROW, OWL HOOT, DOVE COO, EAGLE, WHALE SONG, SIREN RISE |
 | PRESETS op FX / SHIMMER | op de FX-pagina gaat de PRESETS-knop door FX-presets (FX OFF, BELL, TUNED BAR, GLASS, SITAR, DRONE STRINGS, PIANO STRING, PLUCKED STRING, CAT, COW, WOLF, TALKING, ELEPHANT, NIGHT FLUTE, OVERBLOWN, BIRD, TWO BIRDS, HAWK), op de SHIMMER-pagina door shimmer-presets (SHIMMER OFF, HEAVEN, OCTAVE HAZE, FIFTHS, SMALL ROOM, VALLEY, TWO OCTAVES, OCT + 5TH CLOUD); de klank zelf blijft staan |
 | ARP | de ARP-pagina; nog een keer: terug naar HOME (het lampje brandt zolang de arpeggiator speelt) |
-| REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
+| REC | de TAPE-pagina (bandrecorder); daar: opnemen. Op de FREE EG-pagina neemt REC FREE EG op (bij NOTE nog een keer om te stoppen) |
 | SCL | de PAN-pagina (nog een keer: terug naar HOME): KNOB 1 BASIS (stereo-spreiding per noot), KNOB 2 ORBIT (de stemmen bewegen mee met hun plaatje); de stemmen staan getekend waar ze in het stereobeeld klinken |
 | SEQ | de KARMA-pagina (de frasegenerator); nog een keer: terug naar HOME (het lampje brandt zolang KARMA speelt) |
 | PLAY | start en stopt de ARP of KARMA: op de ARP-pagina de ARP, op de SEQ-pagina KARMA, op andere pagina's de laatste van de twee die je opende. Brandt (ook groen) zolang er een speelt |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
 | (blokjes rechtsonder) | knoppen met twee pagina's (ENV + MOD ENV, FX + SHIMMER) tonen rechtsonder twee blokjes: de pagina waar je bent oranje gevuld, de andere een leeg vakje |
-| LFO | de TAPE-pagina (nog een keer: terug naar HOME): een 4-sporen bandrecorder (reel-to-reel), zie hieronder |
+| LFO | de FREE EG-pagina (nog een keer: terug naar HOME); daar neemt REC op |
 | EDIT | de EDIT-pagina (nog een keer: terug naar HOME): KNOB 1 welke parameter het MOD WHEEL (MIDI CC 1) beweegt (de lijst van FREE EG), KNOB 2 hoe ver (DEPTH; wiel omhoog = tot 127, wiel omlaag = de oude waarde terug; speelt FREE EG op dezelfde parameter, dan regelt het wiel de diepte van FREE EG: wiel omlaag = stil, omhoog = FREE EG's DEPTH; pas zodra er een mod wheel binnenkomt), KNOB 3 VELOCITY op de klank (OFF, BRIGHT: zacht = donkerder, SWEEP: zacht = minder MOD ENV-sweep, BRIGHT + SWEEP), KNOB 4 hoeveel |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
 | Snel draaien | elke knop en encoder (KNOB 1–4, SELECT, ALGORITHM, PRESETS) versnelt tot 4×, net als BPM (van 0 naar 127 in één zwaai); één klik blijft één stap |
@@ -133,7 +133,7 @@ SWEEP van de DJX. De Data List geeft van 16–30 alleen de naam en één regel c
 stappen zijn mijn invulling van die beschrijvingen ("moving filter" bij TEKK ECHO als een velocity-zwaai). Het scherm
 toont de laatste 32 stappen als een rol.
 
-**FREE EG (REC).** Neemt een knopbeweging op en speelt die af op een parameter, zoals de Free EG van de AN1x. REC
+**FREE EG (LFO).** Neemt een knopbeweging op en speelt die af op een parameter, zoals de Free EG van de AN1x. LFO
 opent de pagina; daar zet KNOB 4 het doel (TARGET: CHAOS, SHAPE, RING, NOISE X/Y, MOD ENV HEIGHT, FX STRUCTURE/BRIGHTNESS/
 DAMPING/MIX, SHIMMER, BASIS, ORBIT, ARP GATE/SWING, KARMA K1..K4, ...), KNOB 2 de lengte en KNOB 3 de diepte. Druk REC en draai aan
 KNOB 1: de beweging wordt opgenomen (128 punten) en je hoort hem meteen op het doel. SELECT rechtsom speelt hem af
@@ -262,7 +262,7 @@ Combineer gerust: een noise-programma als adem in de FLUTE (PAN NOISE FLUTE), de
 MEOW), een wolf met shimmer (WOLF HOWL). Nieuwe presets: CAT MEOW, COW MOO, WOLF HOWL, TALKING CHAOS, ELEPHANT, NIGHT
 FLUTE, OVERBLOWN, PAN NOISE FLUTE, BIRD SONG, TWO BIRDS, HAWK CRY.
 
-**TAPE (LFO).** Een 4-sporen bandrecorder met een tapelus, opgenomen van de eigen uitgang van de synth en eronder
+**TAPE (REC).** Een 4-sporen bandrecorder met een tapelus, opgenomen van de eigen uitgang van de synth en eronder
 afgespeeld. De band loopt op het tempo waarop hij is opgenomen: verander je de BPM (of het MIDI-clocktempo), dan loopt
 hij sneller of langzamer en gaat de toonhoogte mee, zoals bij varispeed op een echte bandrecorder; de lus blijft
 hetzelfde aantal tellen. Lo-fi zoals tape: 11 kHz, 8-bit mu-law, de hoogte rolt af rond 5 kHz.
@@ -271,19 +271,20 @@ hetzelfde aantal tellen. Lo-fi zoals tape: 11 kHz, 8-bit mu-law, de hoogte rolt 
 | --- | --- |
 | KNOB 1..4 | een leeg spoor: draaien = dat spoor armen (ARMED); een opgenomen spoor: zijn volume (de fader) |
 | ALGORITHM | ook armen, voor een spoor dat al is opgenomen (om het opnieuw op te nemen) |
-| SELECT | LENGTH van de lus: 1 tel, 2 tellen, 1 maat, 2 maten, 4 maten (zo lang als de band past: ~3,6 s; anders korter) |
+| SELECT | wisselt tussen de twee menu's: TAPE (links) en SPEED (rechts) |
 | PRESETS | de BPM (dezelfde als ARP en KARMA): snelheid en toonhoogte van de band volgen |
 | PLAY | de band starten (vanaf het begin van de lus) / stoppen |
 | REC | één ronde opnemen op het ARM-spoor (de band start als hij stilstaat); nog een keer: stoppen. Met PLAY ingedrukt: het ARM-spoor wissen |
 
-**SPEED (LFO, tweede keer).** Druk nog een keer op LFO op de TAPE-pagina: het SPEED-menu (nog een keer: terug naar
-HOME). KNOB 1 de globale BPM (40..250; ARP, KARMA en de band volgen; vrije varispeed). KNOB 2 SPEED: de snelheid van de
+**SPEED (REC, SELECT rechtsom).** Draai SELECT rechtsom op de TAPE-pagina: het SPEED-menu (linksom: terug naar TAPE;
+REC en PLAY werken hier ook). KNOB 1 de globale BPM (40..250; ARP, KARMA en de band volgen; vrije varispeed). KNOB 2 SPEED: de snelheid van de
 band in verhoudingen uit de boventoonreeks (reine stemming), elk op een stap van de chromatische toonladder: 1/2 (half
 speed, -12), 8/15, 9/16, 3/5, 5/8, 2/3 (-7), 45/64, 3/4 (-5), 4/5, 5/6, 9/10, 15/16, 1/1, 16/15, 9/8, 6/5, 5/4 (+4),
 4/3, 45/32, 3/2 (+7), 8/5, 5/3, 9/5, 15/8, 2/1 (dubbel, +12). Kies je er een, dan springt de globale BPM naar het tempo
 dat daarbij hoort (het tempo van de band x de verhouding) en loopt de band precies op die verhouding: zuiver op de
-toon en in de maat met ARP en KARMA (draai je daarna aan de BPM, dan is het weer vrije varispeed). KNOB 3 toont het
-tempo waarop de band is opgenomen, KNOB 4 de toonhoogte nu in halve tonen.
+toon en in de maat met ARP en KARMA (draai je daarna aan de BPM, dan is het weer vrije varispeed).
+KNOB 3 LENGTH van de lus: 1 tel, 2 tellen, 1 maat, 2 maten, 4 maten (zo lang als de band past: ~3,6 s; anders korter);
+KNOB 4 de toonhoogte nu in halve tonen; onderin staat het tempo waarop de band is opgenomen.
 
 De eerste opname op een lege band legt zijn tempo vast; zijn alle vier sporen gewist, dan is de band weer leeg. MIDI
 START zet de band terug naar het begin van de lus. Opnemen vervangt wat er op het spoor stond; het spoor dat je opneemt

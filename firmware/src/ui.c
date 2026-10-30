@@ -30,7 +30,7 @@
  *            one runs)
  *   ARP      (the ARP button; again: back HOME; its LED lit while on) the arpeggiator (arp.c): KNOB 1 BPM (EXT under
  *            MIDI clock), KNOB 2 SUBDIVIDE, KNOB 3 GATE, KNOB 4 SWING; ALGORITHM the pattern, SELECT HOLD
- *   REC      the FREE EG page (feg.c): KNOB 1 the knob recorded, KNOB 2 LENGTH (NOTE, 1..8 STEPS, 1..4 BARS),
+ *   LFO      the FREE EG page (feg.c): KNOB 1 the knob recorded, KNOB 2 LENGTH (NOTE, 1..8 STEPS, 1..4 BARS),
  *            KNOB 3 DEPTH, KNOB 4 the TARGET; SELECT PLAY; REC again there: record (NOTE: REC once more to stop)
  *   SEQ      the KARMA page (karma.c; again: back HOME; PLAY starts it, its LED lit while on): ALGORITHM the GE (the phrase
  *            generator), KNOB 1..4 its four realtime controls (named per GE: DENSITY, RANGE, REPEAT ...), SELECT LATCH,
@@ -40,12 +40,12 @@
  *            loads the preset (program 1 the first)
  *   PRESETS  on the FX page: the FX presets (a resonator / waveguide with its knobs), on SHIMMER: the shimmer
  *            presets; elsewhere the sound presets (on KARMA: the tempo)
- *   LFO      the TAPE page (tape.c): a four-track reel-to-reel. KNOB 1..4: a blank track's knob arms it, a recorded
- *            one's is its level (the armed one shows ARM; ALGORITHM arms a recorded one to record it again),
- *            ALGORITHM the armed track, SELECT the LENGTH (1, 2, 4, 8, 16 beats), PRESETS the BPM (the tape's speed
- *            and pitch follow it), PLAY the transport, REC one pass on the armed track (with PLAY held: erase it);
- *            LFO again: its SPEED menu: KNOB 1 the global BPM, KNOB 2 the SPEED in the harmonic series' ratios
- *            (1/2 .. 2/1, each a step of the chromatic scale; the BPM follows), KNOB 3 the tape's tempo, KNOB 4 the pitch
+ *   REC      the TAPE page (tape.c; on FREE EG's page: record there): a four-track reel-to-reel. REC there records
+ *            one pass on the armed track (PLAY held: erase it), PLAY the transport, SELECT its two menus: TAPE (KNOB
+ *            1..4: a blank track's knob arms it, a recorded one's is its level; ALGORITHM arms a recorded one) and
+ *            SPEED (KNOB 1 the global BPM, KNOB 2 the SPEED in the harmonic series' ratios, 1/2 .. 2/1, each a
+ *            chromatic step, the BPM following; KNOB 3 the LENGTH, 1 .. 16 beats; KNOB 4 the pitch); PRESETS the BPM
+ *   LFO      the FREE EG page (again: back HOME); REC records there
  *   OCT- / OCT+  octave -3..+3               SAVE       the settings into flash (restored at power-on)
  *   GLO      the MIDI page (again: back HOME): KNOB 1 TRS IN on / off, KNOB 2 USB (OFF, IN, OUT, IN+OUT), KNOB 3 the
  *            RX channel (OMNI, 1..16), KNOB 4 the TX channel; SELECT 2ND CORE on / off (saved at once; from the next
@@ -1151,11 +1151,10 @@ static void ui_draw(void)
         ui_val_c = tape.lock_q12 ? T_ACCENT : 0;
         ui_cell(T_C2, "2 SPEED", b);
         ui_val_c = 0;
-        if (tape.spb) {
-            fmt_int(v, (int32_t)((2646000u * 2u / tape.spb + 1u) / 2u));
-            ui_cell(T_C3, "3 TAPE BPM", v);
-        } else
-            ui_cell(T_C3, "3 TAPE BPM", "BLANK");
+        {
+            static const char *const LN[5] = {"1 BEAT", "2 BEATS", "1 BAR", "2 BARS", "4 BARS"};
+            ui_cell(T_C3, "3 LENGTH", LN[sys.tape_len % 5u]);
+        }
         str_cpy(b, c > 0 ? "+" : c < 0 ? "-" : "", sizeof b);
         c = ((c < 0 ? -c : c) + 5) / 10;                         /* (tenths of a semitone, rounded) */
         fmt_int(v, c / 10);
@@ -1420,7 +1419,12 @@ static void ui_draw(void)
             static const char *const LN[5] = {"1 BEAT", "2 BEATS", "1 BAR", "2 BARS", "4 BARS"};
             uint32_t sp = (tape.speed * 100u + 2048u) / 4096u;
             str_cpy(a, tape.rec ? "TAPE REC  " : tape.playing ? "TAPE PLAY  " : "TAPE STOP  ", sizeof a);
-            ui_cat(a, sizeof a, LN[sys.tape_len % 5u]);
+            if (sys.page == 13u && tape.spb) {   /* (the SPEED menu: the tempo it was recorded at) */
+                fmt_int(v, (int32_t)((2646000u * 2u / tape.spb + 1u) / 2u));
+                ui_cat(a, sizeof a, "AT ");
+                ui_cat(a, sizeof a, v);
+            } else
+                ui_cat(a, sizeof a, LN[sys.tape_len % 5u]);
             ui_cat(a, sizeof a, "  x");
             fmt_int(v, (int32_t)(sp / 100u));
             ui_cat(a, sizeof a, v);
@@ -1619,7 +1623,7 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_SCL]);
     if (sys.page == 11u)
         led_on(nl, panel.btn[B_EDIT]);
-    if (sys.page == 12u || sys.page == 13u || tape.rec || (tape.playing && (fm1_ms & 512u)))
+    if (sys.page == 8u || (sys.feg_on && sys.feg_has))  /* LFO: FREE EG's page, or FREE EG playing */
         led_on(nl, panel.btn[B_LFO]);
     if (sys.k_on || sys.page == 9u)
         led_on(nl, panel.btn[B_SEQ]);
@@ -1627,7 +1631,8 @@ static void ui_leds(void)
         led_on(nl, panel.btn[B_PLAY]);
         nl[LED_PLAY_GREEN_COL] |= (uint8_t)(1u << LED_PLAY_GREEN_ROW);
     }
-    if (sys.page == 8u || (feg.rec && (fm1_ms & 256u)) || (sys.feg_on && sys.feg_has))   /* (blinking: recording) */
+    if (sys.page == 12u || sys.page == 13u || ((tape.rec || feg.rec) && (fm1_ms & 256u)) ||
+        (tape.playing && !tape.rec && (fm1_ms & 512u)))  /* REC: the TAPE's pages; blinking: recording, the tape running */
         led_on(nl, panel.btn[B_REC]);
     if ((sys.page >= 2u && sys.page <= 3u) || sys.fx_mix || sys.sh_mix)   /* (FX lit: its pages, or FX on) */
         led_on(nl, panel.btn[B_FX]);
@@ -1718,7 +1723,7 @@ static void ui_input(void)
             sys.page = sys.page == 2u ? 3u : sys.page == 3u ? 0u : 2u;
             ui_force = 1;
             break;
-        case B_REC:                                     /* the FREE EG page; there: record (and stop) */
+        case B_REC:                                     /* the TAPE page; there (and on FREE EG's): record */
             if (sys.page == 12u || sys.page == 13u) {   /* TAPE: record the armed track (PLAY held: erase it) */
                 int er = (fm1_in.buttons & btn_bit(B_PLAY)) != 0u;
                 tape.req = er ? 3u : 2u;
@@ -1730,7 +1735,7 @@ static void ui_input(void)
                 feg_req = feg.rec ? 2u : 1u;            /* (done by the audio ISR, at its next block) */
                 ui_say(feg.rec ? "RECORDED" : "RECORDING");
             } else {
-                sys.page = 8;
+                sys.page = 12;
                 ui_force = 1;
             }
             break;
@@ -1760,8 +1765,8 @@ static void ui_input(void)
                 ui_say("STOP");
             }
             break;
-        case B_LFO:                                     /* the TAPE page and back */
-            sys.page = sys.page == 12u ? 13u : sys.page == 13u ? 0u : 12u;   /* (TAPE, its SPEED, HOME) */
+        case B_LFO:                                     /* the FREE EG page and back (REC records there) */
+            sys.page = sys.page == 8u ? 0u : 8u;
             ui_force = 1;
             break;
         case B_EDIT:                                    /* the EDIT page (mod wheel, velocity) and back */
@@ -1784,7 +1789,11 @@ static void ui_input(void)
             break;
         }
     }
-    if (sys.page == 13u) {                       /* TAPE's second menu: the global BPM, the SPEED */
+    if (sys.page == 13u) {                       /* TAPE's second menu: the global BPM, the SPEED, the LENGTH */
+        if ((s = ui_enc(EN_K3)) != 0) {
+            sys.tape_len = (uint8_t)clamp((int32_t)sys.tape_len + (s > 0 ? 1 : -1), 0, 4);
+            ui_hot = 2; ui_hot_ms = fm1_ms;
+        }
         if ((s = ui_enc(EN_K1)) != 0) {
             sys.arp_bpm = (uint8_t)clamp((int32_t)sys.arp_bpm + s, 40, 250);
             ui_hot = 0; ui_hot_ms = fm1_ms;
@@ -1907,12 +1916,12 @@ static void ui_input(void)
         knob(&sys.sustain, EN_K3, 2);
         knob(&sys.release, EN_K4, 3);
     }
-    if ((s = ui_enc(EN_SELECT)) != 0 && sys.page == 12u) {  /* TAPE: the LENGTH */
-        static const char *const LN[5] = {"1 BEAT", "2 BEATS", "1 BAR", "2 BARS", "4 BARS"};
-        sys.tape_len = (uint8_t)clamp((int32_t)sys.tape_len + (s > 0 ? 1 : -1), 0, 4);
-        str_cpy(t, "LENGTH ", sizeof t);
-        ui_cat(t, sizeof t, LN[sys.tape_len % 5u]);
-        ui_say(t);
+    if ((s = ui_enc(EN_SELECT)) != 0 && (sys.page == 12u || sys.page == 13u)) {   /* TAPE: its two menus */
+        uint8_t pg = (uint8_t)(s > 0 ? 13u : 12u);
+        if (pg != sys.page) {
+            sys.page = pg;
+            ui_force = 1;
+        }
     } else if (s && sys.page == 0u) {           /* HOME: SELECT turns the view */
         sys.view = (uint8_t)((sys.view + V_COUNT * 8 + s) % V_COUNT);
         str_cpy(t, "VIEW ", sizeof t);

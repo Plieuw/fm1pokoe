@@ -245,7 +245,7 @@ int main(int argc, char **argv)
     ui_input();
     sys.orbit = 0;
     sys.basis = 0;
-    edges = btn_bit(B_LFO);              /* the TAPE page: recording track 2 under a note */
+    edges = btn_bit(B_REC);              /* the TAPE page: recording track 2 under a note */
     ui_input();
     enc_steps[panel.enc[EN_K2]] = 1;     /* (the blank track 2's knob arms it) */
     ui_input();
@@ -258,8 +258,9 @@ int main(int argc, char **argv)
     synth_note_off(55);
     frames(40);
     bad |= shot(dir, "k_tape_play");
-    edges = btn_bit(B_LFO);              /* its SPEED menu: 3/4 (a fourth down): the BPM follows, the speed exact */
+    enc_steps[panel.enc[EN_SELECT]] = 1; /* its SPEED menu: 3/4 (a fourth down): the BPM follows, the speed exact */
     ui_input();
+    if (sys.page != 13u) { printf("TAPE: SELECT did not open the SPEED menu\n"); bad = 1; }
     {
         uint32_t bpm0 = sys.arp_bpm;
         enc_steps[panel.enc[EN_K2]] = -5;
@@ -281,7 +282,7 @@ int main(int argc, char **argv)
     edges = btn_bit(B_PLAY);
     ui_input();
     frames(2);
-    edges = btn_bit(B_LFO);
+    edges = btn_bit(B_HOME);
     ui_input();
     synth_kill();
     edges = btn_bit(B_EDIT);             /* the EDIT page: the mod wheel half up, velocity BRIGHT */
@@ -443,7 +444,7 @@ int main(int argc, char **argv)
     sys.arp_on = 0; sys.arp_hold = 0; sys.page = 0;
     ui_force = 1;
 
-    edges = btn_bit(B_REC);              /* the FREE EG page: a recorded curve playing onto FX DAMPING */
+    edges = btn_bit(B_LFO);              /* the FREE EG page: a recorded curve playing onto FX DAMPING */
     ui_input();
     for (i = 0; i < FEG_N; i++)
         feg.curve[i] = (uint8_t)(64 + plot_sin(i * 2u) / 600 + (int32_t)(i % 32u));

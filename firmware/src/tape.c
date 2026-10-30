@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* TAPE: a four-track reel-to-reel recorder (the LFO button's page). A loop of tape with four tracks side by side, at
+/* TAPE: a four-track reel-to-reel recorder (the REC button's page). A loop of tape with four tracks side by side, at
  * a quarter of the rate (11 kHz, 8-bit mu-law: a tape's lo-fi), recorded from the synth's own output, played under
  * it. The tape runs at the tempo it was recorded at: turn the BPM (or the MIDI clock changes it) and it runs faster
  * or slower, its pitch going with it, as a tape machine's varispeed does; the loop stays the same number of beats.
  *
- *   LENGTH   (SELECT) the loop in beats: 1, 2, 4 (a bar), 8, 16; as long as the tape holds at the tape's tempo
+ *   LENGTH   (the SPEED menu, KNOB 3) the loop in beats: 1, 2, 4 (a bar), 8, 16; as long as the tape holds at the tape's tempo
  *   TRACK    (ALGORITHM) the track REC records (1..4)
- *   LEVELS   KNOB 1..4 each track's level (the mixer's faders)
+ *   LEVELS   KNOB 1..4: a blank track's knob arms it, a recorded one's is its level (the mixer's faders)
  *   BPM      (PRESETS) the tempo (the ARP's): the tape's speed and pitch follow it
  *   PLAY     the transport: start (from the loop's start) / stop
  *   REC      record the armed track for one pass of the loop (starting the tape if it stands); again: stop
