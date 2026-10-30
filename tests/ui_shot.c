@@ -253,30 +253,6 @@ int main(int argc, char **argv)
     sys.view = V_TIME;
     frames(8);
     bad |= shot(dir, "h_noise_time");
-    sys.osc = 14;                        /* the MOD page: off, then the waves at a few ratios and depths */
-    edges = btn_bit(B_HOME);
-    ui_input();
-    frames(4);
-    bad |= shot(dir, "i_mod_off");
-    {
-        static const uint8_t M[4][3] = {{0, 6, 60}, {42, 3, 90}, {85, 9, 110}, {127, 1, 127}};
-        for (i = 0; i < 4u; i++) {
-            sys.mod_wave = M[i][0]; sys.mod_ratio = M[i][1]; sys.mod_depth = M[i][2];
-            ui_event_ms = 0;
-            frames(6);
-            snprintf(name, sizeof name, "i_mod_%u", i);
-            bad |= shot(dir, name);
-        }
-    }
-    sys.mod_wave = 64;                   /* a morph between two */
-    frames(3);
-    bad |= shot(dir, "i_mod_morph");
-    sys.osc = 0;
-    frames(3);
-    bad |= shot(dir, "i_mod_chua");
-    sys.mod_depth = 0;
-    edges = btn_bit(B_HOME);
-    ui_input();
     preset_load(NPRESETS - 1u);          /* the MOD ENV page (ENV twice): PITCH ZAP, a note, its envelope falling */
     edges = btn_bit(B_ENV);
     ui_input();
@@ -287,7 +263,7 @@ int main(int argc, char **argv)
     bad |= shot(dir, "j_menv_strike");
     frames(10);
     bad |= shot(dir, "j_menv_fallen");
-    sys.menv_len = 115; sys.menv_skew = 80; sys.menv_height = 90; sys.mod_depth = 40;
+    sys.menv_len = 115; sys.menv_skew = 80; sys.menv_height = 90;
     ui_event_ms = 0;
     frames(8);
     bad |= shot(dir, "j_menv_slow");
@@ -320,7 +296,7 @@ int main(int argc, char **argv)
     ui_input();
     for (i = 0; i < FEG_N; i++)
         feg.curve[i] = (uint8_t)(64 + plot_sin(i * 2u) / 600 + (int32_t)(i % 32u));
-    sys.feg_has = 1; sys.feg_on = 1; sys.feg_target = 13; sys.feg_len = 10; feg.pos = 40;
+    sys.feg_has = 1; sys.feg_on = 1; sys.feg_target = 10; sys.feg_len = 10; feg.pos = 40;
     ui_event_ms = 0;
     frames(2);
     bad |= shot(dir, "m_feg");

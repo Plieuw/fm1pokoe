@@ -81,7 +81,6 @@ typedef struct {
     int16_t wt[64];                              /* ARRAY ROCKS: the wavetable */
     int32_t hist[16];                            /* the last outputs every 4 samples (the screen's trace) */
     uint32_t hn;
-    uint32_t mph;                                /* the FM oscillator's phase */
     uint32_t menv, mage;                         /* its envelope (0..ENV_MAX), the voice's age it was started for */
     uint8_t mstage;                              /* 0 rising, 1 falling, 2 done */
 } np_t;
@@ -138,31 +137,6 @@ static inline uint32_t np_ratio(int32_t k, int32_t lo_oct, int32_t hi_oct)
 }
 static inline int32_t np_clip(int32_t v) { return v > 32767 ? 32767 : v < -32767 ? -32767 : v; }
 
-/* the FM oscillator's wave at phase ph, Q15: w 0..127 morphs sine (0) -> triangle (42) -> saw (85) -> square (127),
- * each crossfaded into the next; all rise through 0 at phase 0 */
-static uint32_t np_morph(uint32_t w)             /* the knob -> segment << 8 | fraction (0..255): the corners at */
-{                                                /* 0, 42, 85, 127 exactly */
-    w = w > 127u ? 127u : w;
-    return w < 42u ? w * 256u / 42u : w < 85u ? 256u + (w - 42u) * 256u / 43u : w < 127u ? 512u + (w - 85u) * 256u / 42u
-                                                                                       : 768u;
-}
-static int32_t np_wave(uint32_t ph, uint32_t w)
-{
-    int32_t a, b;
-    uint32_t t = np_morph(w), f = t & 255u;
-    switch (t >> 8) {
-    default: a = np_sin(ph); b = np_tri(ph + 0x40000000u); break;
-    case 1: a = np_tri(ph + 0x40000000u); b = np_saw(ph + 0x80000000u); break;
-    case 2: a = np_saw(ph + 0x80000000u); b = np_sq(ph); break;
-    case 3: return np_sq(ph);
-    }
-    return a + (((b - a) * (int32_t)f) >> 8);
-}
-#define NP_NRATIO 16
-static const char *const NP_RATIO_NAME[NP_NRATIO] = {"1/4", "1/2", "3/4", "1", "5/4", "3/2", "2", "5/2", "3", "7/2",
-                                                     "4", "5", "6", "7", "8", "11"};
-static const uint32_t NP_RATIO[NP_NRATIO] = {16384, 32768, 49152, 65536, 81920, 98304, 131072, 163840, 196608,
-                                             229376, 262144, 327680, 393216, 458752, 524288, 720896};   /* Q16 */
 /* a random walker in a box of +-box (Q16): steps of +-step, reflected at the walls */
 static inline void np_walk(int32_t *w, uint32_t *rng, int32_t step, int32_t box)
 {
@@ -258,7 +232,7 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
     int16_t *b = np_buf[k];
     int32_t x = (int32_t)(sys.np_x & 127u) * 258, y = (int32_t)(sys.np_y & 127u) * 258;   /* Q15 0 .. 32766 */
     uint32_t i, j;
-    uint32_t fk[CTL], dep = sys.mod_depth & 127u, hgt = sys.menv_height & 127u, fm = dep | hgt;
+    uint32_t fk[CTL], hgt = sys.menv_height & 127u, fm = hgt;
     if (inc > 0x20000000u)                       /* (an eighth of the rate: room for the ratios above it) */
         inc = 0x20000000u;
     if (n > CTL)
@@ -293,33 +267,21 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
             fk[i] = (uint32_t)np_bend((int32_t)(S->menv >> 15), sys.menv_bend);   /* (Q15, BEND, for the pitch below) */
         }
     }
-    {   /* the FM oscillator (MOD page): DEPTH x its wave, depth^2 x 1.5 (Q14: 0 .. 1.48). The MOD ENV straight on the
-         * pitch (no oscillator, no VCA between): HEIGHT^2 the octaves at its peak (0 .. 3), the sweep down to the note */
-        int32_t dd = (int32_t)(dep * dep * 3u / 2u), hq = (int32_t)(hgt * hgt * 3u * 65536u / 16129u);   /* Q16 oct */
-        if (voice[k].vfm) {                      /* (velocity: a soft note's FM and sweep shallower) */
-            dd = (dd * (256 - (int32_t)voice[k].vfm)) >> 8;
+    {   /* the MOD ENV straight on the pitch (no oscillator, no VCA between): HEIGHT^2 the octaves at its peak
+         * (0 .. 3), the sweep down to the note */
+        int32_t hq = (int32_t)(hgt * hgt * 3u * 65536u / 16129u);   /* Q16 octaves */
+        if (voice[k].vfm)                        /* (velocity: a soft note's sweep shallower) */
             hq = (hq * (256 - (int32_t)voice[k].vfm)) >> 8;
-        }
         if (voice + k == render_tv) {            /* (the screen: the sweep now, 0..32767 of 3 octaves) */
             int32_t r = ((hq >> 2) * np_bend((int32_t)(S->menv >> 15), sys.menv_bend)) >> 13;   /* (Q16 octaves) */
             sys.menv_view = (uint16_t)(r / 6 > 32767 ? 32767 : r / 6);
         }
-        if (fm) {   /* per sample the factor on every audio-rate increment, Q16 */
-            uint32_t mi = np_mul(np_mul(inc, NP_RATIO[sys.mod_ratio % NP_NRATIO]),
-                                 px_exp2(((int32_t)(sys.mod_fine & 127u) - 64) * 1365 / 16)),   /* +-1 semitone */
-                     wv = sys.mod_wave & 127u, pf = 65536u;
+        if (fm) {   /* per sample the factor on every audio-rate increment, Q16 (the envelope is slow: every 4) */
+            uint32_t pf = 65536u;
             for (i = 0; i < n; i++) {
-                uint32_t f = 65536u;
-                if (hq && !(i & 3u))             /* (the envelope is slow: its pitch every 4 samples) */
+                if (!(i & 3u))
                     pf = px_exp2((int32_t)(((int64_t)hq * (int32_t)fk[i]) >> 15));
-                if (dd) {
-                    int32_t g = 65536 + ((np_wave(S->mph, wv) * dd) >> 13);
-                    S->mph += mi;
-                    f = g < 4096 ? 4096u : (uint32_t)g;
-                }
-                if (hq)
-                    f = np_mul(f, pf);
-                fk[i] = f > 0x80000u ? 0x80000u : f;
+                fk[i] = pf > 0x80000u ? 0x80000u : pf;
             }
         }
     }

@@ -350,7 +350,7 @@ int main(int argc, char **argv)
             sys.fx_mix = 0; sys.fx_model = RZ_MODAL; sys.fx_struct = 70; sys.fx_damp = 100;
             c1_mode = mode;
             sys.chaos = 85; sys.shape = 76; sys.output = 32; sys.attack = 2; sys.release = 30; sys.osc = 0;
-            sys.mod_depth = 0; sys.basis = 100; sys.orbit = 90; voice_rr = 0;   /* (BASIS, ORBIT: panned, each core its own) */
+            sys.menv_height = 0; sys.basis = 100; sys.orbit = 90; voice_rr = 0;   /* (BASIS, ORBIT: panned, each core its own) */
             memset(rz_epan, 0, sizeof rz_epan); memset(rz_age, 0, sizeof rz_age);
             for (b = 0; b < 2000u; b++) {
                 if (b % 250u == 0u)
@@ -367,8 +367,7 @@ int main(int argc, char **argv)
                 if (b == 1700u)
                     sys.osc = 14;                /* SINE FM CLUST, */
                 if (b == 1850u) {
-                    sys.mod_depth = 90;          /* the FM oscillator on it */
-                    sys.mod_wave = 70; sys.mod_ratio = 9;
+                    sys.menv_height = 90;        /* the MOD ENV on its pitch */
                 }
                 synth_render(buf, CTL);
                 for (j = 0; j < 2u * CTL; j++) {
@@ -384,7 +383,7 @@ int main(int argc, char **argv)
         c1_mode = 0;
         sys.osc = 0;
         sys.fx_mix = 0;
-        sys.mod_depth = 0;
+        sys.menv_height = 0;
         sys.basis = 0;
         sys.orbit = 0;
         printf("   (blocks with voices on the second core: %u of 2000)\n", blocks);
@@ -464,8 +463,8 @@ int main(int argc, char **argv)
                 synth_kill();
                 sys.osc = (uint8_t)a;
                 sys.np_x = sys.np_y = (uint8_t)(m == 1u ? 0u : 127u);
-                sys.mod_depth = (uint8_t)(m == 2u ? 127u : 0u);
-                sys.mod_ratio = (uint8_t)(m == 2u ? NP_NRATIO - 1u : 0u);
+                sys.menv_height = (uint8_t)(m == 2u ? 127u : 0u);
+                sys.menv_skew = 64;
                 sys.fx_model = (uint8_t)((a + m) % RZ_COUNT);
                 sys.fx_mix = 100;
                 for (b = 0; b < 3u * sizeof NT; b++) {
@@ -479,7 +478,7 @@ int main(int argc, char **argv)
                 }
             }
         synth_kill();
-        sys.osc = 0; sys.np_x = sys.np_y = 64; sys.mod_depth = 0; sys.mod_ratio = 3; sys.fx_mix = 0; sys.fx_model = 0;
+        sys.osc = 0; sys.np_x = sys.np_y = 64; sys.menv_height = 0; sys.menv_skew = 10; sys.fx_mix = 0; sys.fx_model = 0;
         check("every oscillator and FX model over the whole MIDI range, fast retriggers: in bounds", okk);
     }
 
@@ -488,7 +487,7 @@ int main(int argc, char **argv)
     {
         uint32_t okk = 1, b, j, r = 0x13579BDFu;
         static volatile uint8_t *const P[] = {&sys.chaos, &sys.shape, &sys.output, &sys.ring, &sys.np_x, &sys.np_y,
-            &sys.np_level, &sys.mod_wave, &sys.mod_depth, &sys.mod_fine, &sys.menv_len, &sys.menv_skew, &sys.menv_bend,
+            &sys.np_level, &sys.menv_len, &sys.menv_skew, &sys.menv_bend,
             &sys.menv_height, &sys.fx_struct, &sys.fx_bright, &sys.fx_damp, &sys.fx_pos, &sys.fx_mix, &sys.sh_size,
             &sys.sh_decay, &sys.sh_shimmer, &sys.sh_mix, &sys.sh_tone, &sys.basis, &sys.orbit, &sys.attack,
             &sys.decay, &sys.sustain, &sys.release};
@@ -502,7 +501,7 @@ int main(int argc, char **argv)
             r = r * 1664525u + 1013904223u;
             if ((r >> 28) == 0u) sys.osc = (uint8_t)((r >> 8) % (NP_COUNT + 1u));
             if ((r >> 28) == 1u) sys.fx_model = (uint8_t)((r >> 8) % RZ_COUNT);
-            if ((r >> 28) == 2u) sys.mod_ratio = (uint8_t)((r >> 8) % NP_NRATIO);
+            if ((r >> 28) == 2u) sys.menv_height = (uint8_t)((r >> 8) & 127u);
             if ((r >> 28) == 3u) sys.sh_interval = (uint8_t)((r >> 8) % SI_COUNT);
             if ((r >> 28) == 4u) synth_note_on((r >> 8) & 127u, 1u + ((r >> 16) & 126u));
             if ((r >> 28) == 5u) synth_note_off((r >> 8) & 127u);
@@ -516,8 +515,8 @@ int main(int argc, char **argv)
         sys.chaos = 85; sys.shape = 76; sys.output = 0; sys.ring = 50; sys.attack = 6; sys.decay = 80; sys.sustain = 110;
         sys.release = 70; sys.fx_model = 0; sys.fx_struct = 70; sys.fx_bright = 90; sys.fx_damp = 100; sys.fx_pos = 24;
         sys.sh_size = 100; sys.sh_decay = 90; sys.sh_shimmer = 70; sys.sh_interval = 0; sys.sh_tone = 80;
-        sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64; sys.menv_len = 80; sys.menv_skew = 10; sys.menv_bend = 64;
-        sys.fx_mix = 0; sys.sh_mix = 0; sys.basis = 0; sys.orbit = 0; sys.mod_depth = 0; sys.menv_height = 0;
+        sys.menv_len = 80; sys.menv_skew = 10; sys.menv_bend = 64;
+        sys.fx_mix = 0; sys.sh_mix = 0; sys.basis = 0; sys.orbit = 0; sys.menv_height = 0;
         sys.np_x = sys.np_y = sys.np_level = 64; sys.osc = 0;
         check("every sound parameter at random every block, presets, 0..127 notes: in bounds", okk);
     }
@@ -588,25 +587,25 @@ int main(int argc, char **argv)
         check("MOD ENV BEND: straight at 64, ends kept, monotonic, both ways", okk);
     }
 
-    /* the FM oscillator (MOD): at DEPTH 0 its other knobs change nothing, bit for bit; at full DEPTH, every wave and
-     * the lowest and highest ratio, every program changes, sounds and stays bounded without DC */
+    /* the MOD ENV on the pitch: at HEIGHT 0 its other knobs change nothing, bit for bit; at full HEIGHT every program
+     * changes, sounds and stays bounded without DC; a falling AD's effect is gone once it has run */
     {
         static const uint8_t CH[3] = {48, 60, 67};
         static int32_t ref[2 * CTL * 150];
-        uint32_t a, wv, rt, j, b, okk = 1, same = 1, moved = 1;
+        uint32_t a, wv, j, b, okk = 1, same = 1, moved = 1;
         sys.attack = 0; sys.decay = 64; sys.sustain = 127; sys.release = 20; sys.ring = 50;
         sys.fx_mix = 0; sys.sh_mix = 0; sys.np_level = 64; sys.np_x = sys.np_y = 64;
         for (a = 0; a < NP_COUNT; a++) {
-            for (wv = 0; wv < 6u; wv++) {
+            for (wv = 0; wv < 4u; wv++) {
                 double e = 0, dc = 0;
                 int32_t pk = 0;
                 uint32_t diff = 0;
-                synth_kill(); memset(voice, 0, sizeof voice); rng_state = 0x1234567u;
+                synth_kill(); memset(voice, 0, sizeof voice); memset(np_state, 0, sizeof np_state); rng_state = 0x1234567u;
                 sys.osc = (uint8_t)(a + 1u);
-                sys.mod_depth = wv < 2u ? 0 : 127;               /* 0, 1: off (the other knobs moved); 2..5: on */
-                sys.mod_wave = (uint8_t)(wv == 1u ? 127 : (wv - 2u) * 42u + (wv == 5u));
-                sys.mod_ratio = (uint8_t)(wv == 1u ? 15 : wv & 1u ? 0 : NP_NRATIO - 1u);
-                sys.mod_fine = wv == 1u ? 0 : 64;
+                sys.menv_height = wv < 2u ? 0 : 127;             /* 0, 1: off (the other knobs moved); 2, 3: on */
+                sys.menv_len = (uint8_t)(wv == 1u ? 10 : 90);
+                sys.menv_skew = (uint8_t)(wv == 3u ? 100 : wv == 1u ? 127 : 0);
+                sys.menv_bend = (uint8_t)(wv == 1u ? 0 : 64);
                 for (j = 0; j < 3u; j++)
                     synth_note_on(CH[j], 110);
                 for (b = 0; b < 150u; b++) {
@@ -622,57 +621,44 @@ int main(int argc, char **argv)
                 e = sqrt(e / (100.0 * CTL));
                 dc /= 100.0 * CTL;
                 if (wv >= 2u && diff < CTL * 10u)
-                    moved = 0, printf("   FM: %s wave %u changes only %u samples\n", NP_NAME[a], wv, diff);
+                    moved = 0, printf("   MOD ENV: %s %u changes only %u samples\n", NP_NAME[a], wv, diff);
                 if (e < 50 || fabs(dc) > 3000 || pk > 32767) {
-                    printf("   FM: %s wave %u: RMS %.0f DC %.0f peak %d\n", NP_NAME[a], wv, e, dc, pk);
+                    printf("   MOD ENV: %s %u: RMS %.0f DC %.0f peak %d\n", NP_NAME[a], wv, e, dc, pk);
                     okk = 0;
                 }
             }
         }
-        for (rt = 0; rt < 128u; rt++)                            /* the morph: continuous, bounded */
-            for (j = 0; j < 64u; j++) {
-                int32_t w0 = np_wave(j << 26, rt), w1 = np_wave(j << 26, rt + 1u);   /* (the knob turned a step) */
-                okk &= w0 >= -32768 && w0 <= 32767 && (rt == 127u || abs(w1 - w0) < 3000);
-            }
-        {   /* MOD ENV: an AD falling (SKEW 0) with DEPTH 0: the FM's effect fades with it; DEPTH alone: it stays */
-            double ed[2][2];
-            uint32_t m2;
-            for (m2 = 0; m2 < 2u; m2++) {
-                uint32_t ph2;
-                synth_kill(); memset(voice, 0, sizeof voice);
-                sys.osc = 4; sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64;
-                sys.mod_depth = m2 ? 127 : 0; sys.menv_height = m2 ? 0 : 127; sys.menv_len = 60; sys.menv_skew = 0;
-                synth_note_on(60, 110);
-                for (ph2 = 0; ph2 < 2u; ph2++) {         /* how far the voice's sound is from FM-less: early, late */
-                    double dd = 0;
-                    for (b = 0; b < 100u; b++) {
-                        np_t keep;
-                        int32_t o1[CTL], o2[CTL];
-                        uint8_t md = sys.mod_depth, mh = sys.menv_height;
-                        keep = np_state[0];
-                        np_render(0, 3, voice[0].inc, o1, CTL);
-                        np_state[0] = keep;
-                        sys.mod_depth = 0; sys.menv_height = 0;
-                        np_render(0, 3, voice[0].inc, o2, CTL);
-                        sys.mod_depth = md; sys.menv_height = mh;
-                        np_state[0] = keep;
-                        synth_render(buf, CTL);
-                        for (j = 0; j < CTL; j++)
-                            dd += fabs((double)o1[j] - o2[j]);
-                    }
-                    ed[m2][ph2] = dd;
-                    run_ms(600);
+        {   /* a falling AD: its effect early, none late */
+            double ed[2] = {0, 0};
+            uint32_t ph2;
+            synth_kill(); memset(voice, 0, sizeof voice);
+            sys.osc = 4; sys.menv_height = 127; sys.menv_len = 60; sys.menv_skew = 0; sys.menv_bend = 64;
+            synth_note_on(60, 110);
+            for (ph2 = 0; ph2 < 2u; ph2++) {
+                for (b = 0; b < 100u; b++) {
+                    np_t keep;
+                    int32_t o1[CTL], o2[CTL];
+                    keep = np_state[0];
+                    np_render(0, 3, voice[0].inc, o1, CTL);
+                    np_state[0] = keep;
+                    sys.menv_height = 0;
+                    np_render(0, 3, voice[0].inc, o2, CTL);
+                    sys.menv_height = 127;
+                    np_state[0] = keep;
+                    synth_render(buf, CTL);
+                    for (j = 0; j < CTL; j++)
+                        ed[ph2] += fabs((double)o1[j] - o2[j]);
                 }
+                run_ms(600);
             }
-            printf("   (MOD ENV: FM's effect early / late: AD %.0f / %.0f, DEPTH %.0f / %.0f)\n",
-                   ed[0][0], ed[0][1], ed[1][0], ed[1][1]);
-            okk &= ed[0][1] < ed[0][0] / 20 && ed[1][1] > ed[1][0] / 3;
-            sys.menv_len = 80; sys.menv_skew = 10; sys.menv_height = 0; sys.mod_depth = 127;
+            printf("   (MOD ENV: its effect early / late: %.0f / %.0f)\n", ed[0], ed[1]);
+            okk &= ed[0] > 0 && ed[1] < ed[0] / 20;
         }
-        check("FM oscillator: DEPTH 0 bit for bit off", same);
-        check("... full DEPTH, every wave and ratio: each program changes, sounds, bounded, no DC; MOD ENV", okk && moved);
+        sys.menv_len = 80; sys.menv_skew = 10; sys.menv_height = 0; sys.menv_bend = 64;
+        check("MOD ENV: HEIGHT 0 bit for bit off", same);
+        check("... full HEIGHT: each program changes, sounds, bounded, no DC; a falling AD runs out", okk && moved);
         synth_kill();
-        sys.osc = 0; sys.mod_depth = 0; sys.mod_wave = 0; sys.mod_ratio = 3; sys.mod_fine = 64;
+        sys.osc = 0;
     }
 
     /* BASIS: at 0 left = right, bit for bit; at 127 the notes go left, right, half left, half right (the far side
@@ -881,50 +867,50 @@ int main(int argc, char **argv)
     {   /* the mod wheel (CC 1) moves the EDIT page's parameter and gives it back; program change asks for a preset */
         int okk = 1;
         uint8_t base;
-        sys.mw_target = 8; sys.mw_depth = 127; sys.mod_depth = 20;
-        base = sys.mod_depth;
+        sys.mw_target = 8; sys.mw_depth = 127; sys.fx_struct = 20;
+        base = sys.fx_struct;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 127);
         run_ms(10);
-        okk &= sys.mod_depth == 127;
+        okk &= sys.fx_struct == 127;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 64);
         run_ms(10);
-        okk &= sys.mod_depth > base && sys.mod_depth < 127;
+        okk &= sys.fx_struct > base && sys.fx_struct < 127;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
         run_ms(10);
-        okk &= sys.mod_depth == base;
+        okk &= sys.fx_struct == base;
         sys.mw_depth = 0;                                            /* depth 0: the wheel does nothing */
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 127);
         run_ms(10);
-        okk &= sys.mod_depth == base;
+        okk &= sys.fx_struct == base;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
         sys.mw_depth = 127;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xC0, 3, 0);
         run_ms(10);
         okk &= keys_prog_req == 4;
         keys_prog_req = 0;
-        check("mod wheel moves MOD DEPTH and gives it back; program change asks for preset 4", okk);
+        check("mod wheel moves FX STRUCTURE and gives it back; program change asks for preset 4", okk);
     }
     {   /* FREE EG playing the wheel's parameter: the wheel sets FREE EG's depth (down: still at the base) */
         int okk = 1, k;
         uint8_t base = 30;
         for (k = 0; k < FEG_N; k++)
             feg.curve[k] = 120;
-        sys.mod_depth = base; sys.feg_target = 8; sys.feg_depth = 127; sys.feg_len = 9;
+        sys.fx_struct = base; sys.feg_target = 8; sys.feg_depth = 127; sys.feg_len = 9;
         sys.feg_has = 1; sys.feg_on = 1; sys.mw_target = 8; sys.mw_depth = 127;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
         run_ms(20);
-        okk &= feg.playing && sys.mod_depth == base;
+        okk &= feg.playing && sys.fx_struct == base;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 127);
         run_ms(20);
-        okk &= sys.mod_depth == 120;
+        okk &= sys.fx_struct == 120;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 64);
         run_ms(20);
-        okk &= sys.mod_depth > base + 30 && sys.mod_depth < 90;
+        okk &= sys.fx_struct > base + 30 && sys.fx_struct < 90;
         midi_in_source[mi_w % MQ] = 1; midi_in(0xB0, 1, 0);
         sys.feg_on = 0;
         run_ms(20);
-        okk &= !feg.playing && sys.mod_depth == base;
-        if (!okk) printf("   (mod_depth %u playing %u)\n", sys.mod_depth, feg.playing);
+        okk &= !feg.playing && sys.fx_struct == base;
+        if (!okk) printf("   (fx_struct %u playing %u)\n", sys.fx_struct, feg.playing);
         check("mod wheel on FREE EG's parameter sets FREE EG's depth", okk);
     }
     {   /* velocity on the sound: BRIGHT closes a soft note's gate, FM makes its depth shallower; OFF changes nothing */
@@ -1172,8 +1158,8 @@ int main(int argc, char **argv)
         fm1_in.notes = 0;
         sys.midi_tx = 0;
         /* FREE EG: PHRASE (a phrase of PULSE ARP: 16 sixteenths, 2 s) recorded in step with it, KARMA K1 its target */
-        sys.k_ge = 0; sys.feg_len = 13; sys.feg_target = 26; sys.feg_depth = 127; sys.feg_val = 0;
-        KOK(!strcmp(FEG_T_NAME[26], "KARMA K1") && !strcmp(FEG_LEN_NAME[13], "PHRASE"));
+        sys.k_ge = 0; sys.feg_len = 13; sys.feg_target = 23; sys.feg_depth = 127; sys.feg_val = 0;
+        KOK(!strcmp(FEG_T_NAME[23], "KARMA K1") && !strcmp(FEG_LEN_NAME[13], "PHRASE"));
         n0 = kar.triggers;
         for (b = 0; b < 3000u && kar.triggers == n0; b++)   /* (from a phrase's start) */
             run_ms(1);
@@ -1227,7 +1213,7 @@ int main(int argc, char **argv)
             case 1: sys.k_ge = (uint8_t)((r >> 8) % KGE_N); break;
             case 2: sys.k_m[(r >> 8) & 3u] = (uint8_t)((r >> 12) & 127u); break;
             case 3: sys.np_x = (uint8_t)((r >> 8) & 127u); sys.np_y = (uint8_t)((r >> 16) & 127u); break;
-            case 4: sys.mod_depth = (uint8_t)((r >> 8) & 127u); sys.mod_ratio = (uint8_t)((r >> 16) % NP_NRATIO); break;
+            case 4: sys.menv_height = (uint8_t)((r >> 8) & 127u); sys.menv_len = (uint8_t)((r >> 16) & 127u); break;
             case 5: sys.fx_model = (uint8_t)((r >> 8) % RZ_COUNT); break;
             case 6: sys.chaos = (uint8_t)((r >> 8) & 127u); sys.arp_bpm = (uint8_t)(40u + (r >> 16) % 211u); break;
             default: sys.octave = (int8_t)((int32_t)((r >> 8) % 7u) - 3); break;
@@ -1242,7 +1228,7 @@ int main(int argc, char **argv)
         keys_all_off();
         run_ms(500);
         synth_kill();
-        sys.osc = 0; sys.np_x = sys.np_y = 64; sys.mod_depth = 0; sys.mod_ratio = 3; sys.fx_mix = 0; sys.sh_mix = 0;
+        sys.osc = 0; sys.np_x = sys.np_y = 64; sys.menv_height = 0; sys.fx_mix = 0; sys.sh_mix = 0;
         sys.fx_model = 0; sys.chaos = 85; sys.basis = 0; sys.orbit = 0; sys.arp_bpm = 120; sys.k_ge = 0;
         for (j = 0; j < 4u; j++) sys.k_m[j] = 64;
         check("KARMA under turned knobs: every GE, oscillator, FM, FX model at random, 15 s", okk);

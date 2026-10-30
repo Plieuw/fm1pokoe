@@ -36,7 +36,7 @@ enum { NS_CHORD, NS_OCT, NS_SCALE, NS_PENTA };                     /* note serie
 enum { IX_UP, IX_DOWN, IX_UPDOWN, IX_RANDOM, IX_WALK, IX_SPIRAL, IX_DIRECT };   /* index */
 enum { PN_NONE, PN_ALT, PN_RANDOM, PN_SWEEP, PN_PITCH };           /* pan */
 enum { EV_NONE, EV_UP, EV_DOWN, EV_TRI };                          /* env shapes over the phrase */
-enum { ET_RING, ET_BRIGHT, ET_CHAOS, ET_OUTPUT, ET_FXMIX, ET_SHMIX, ET_NOISEX, ET_MODDEPTH };   /* env targets */
+enum { ET_RING, ET_BRIGHT, ET_CHAOS, ET_OUTPUT, ET_FXMIX, ET_SHMIX, ET_NOISEX, ET_MENV };   /* env targets */
 enum { TR_ANY, TR_AKR };                                           /* trigger: any new note, all keys released first */
 /* the realtime controls (what a knob of a GE does; 64 is the GE as written) */
 enum { MC_DENSITY, MC_RANGE, MC_REPEAT, MC_ACCENT, MC_GATE, MC_RANDOM, MC_CLUSTER, MC_TRANSPOSE, MC_ENV, MC_STRUM,
@@ -171,7 +171,7 @@ static volatile uint8_t *k_env_field(uint32_t t)
     case ET_FXMIX: return &sys.fx_mix;
     case ET_SHMIX: return &sys.sh_mix;
     case ET_NOISEX: return &sys.np_x;
-    default: return &sys.mod_depth;
+    default: return &sys.menv_height;
     }
 }
 static void k_env_release(void)                  /* the parameter given back */

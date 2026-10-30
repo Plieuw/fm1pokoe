@@ -38,12 +38,12 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 2 — SHAPE | β 10..34: lage waarden trage, ronde spiralen; hoge waarden snelle, strakke |
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
-| HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING); nog een keer: de MOD-pagina (de FM-oscillator), nog een keer: terug |
+| HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING) |
 | ENV | 1× de ENV-pagina, 2× de MOD ENV (een AD-envelope direct op de toonhoogte), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings en de waveguides (THROAT, FLUTE, SYRINX, HAWK), 2× de shimmer reverb, 3× terug naar HOME |
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · POSITION (resonator) · TONE (shimmer) |
 | ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
-| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, PITCH ZAP |
+| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, PING BELL, PITCH ZAP |
 | ARP | de ARP-pagina; nog een keer: terug naar HOME (het lampje brandt zolang de arpeggiator speelt) |
 | REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
 | SCL | de PAN-pagina (nog een keer: terug naar HOME): KNOB 1 BASIS (stereo-spreiding per noot), KNOB 2 ORBIT (de stemmen bewegen mee met hun plaatje); de stemmen staan getekend waar ze in het stereobeeld klinken |
@@ -51,8 +51,8 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | PLAY | start en stopt de ARP of KARMA: op de ARP-pagina de ARP, op de SEQ-pagina KARMA, op andere pagina's de laatste van de twee die je opende. Brandt (ook groen) zolang er een speelt |
 | OCT- / OCT+ | octaaf −3..+3 |
 | SAVE | alle instellingen in flash (terug na herstart) |
-| (blokjes rechtsonder) | knoppen met twee pagina's (HOME + MOD, ENV + MOD ENV, FX + SHIMMER) tonen rechtsonder twee blokjes: de pagina waar je bent oranje gevuld, de andere een leeg vakje |
-| EDIT | de EDIT-pagina (nog een keer: terug naar HOME): KNOB 1 welke parameter het MOD WHEEL (MIDI CC 1) beweegt (de lijst van FREE EG), KNOB 2 hoe ver (DEPTH; wiel omhoog = tot 127, wiel omlaag = de oude waarde terug; speelt FREE EG op dezelfde parameter, dan regelt het wiel de diepte van FREE EG: wiel omlaag = stil, omhoog = FREE EG's DEPTH), KNOB 3 VELOCITY op de klank (OFF, BRIGHT: zacht = donkerder, FM: zacht = minder FM, BRIGHT + FM), KNOB 4 hoeveel |
+| (blokjes rechtsonder) | knoppen met twee pagina's (ENV + MOD ENV, FX + SHIMMER) tonen rechtsonder twee blokjes: de pagina waar je bent oranje gevuld, de andere een leeg vakje |
+| EDIT | de EDIT-pagina (nog een keer: terug naar HOME): KNOB 1 welke parameter het MOD WHEEL (MIDI CC 1) beweegt (de lijst van FREE EG), KNOB 2 hoe ver (DEPTH; wiel omhoog = tot 127, wiel omlaag = de oude waarde terug; speelt FREE EG op dezelfde parameter, dan regelt het wiel de diepte van FREE EG: wiel omlaag = stil, omhoog = FREE EG's DEPTH; pas zodra er een mod wheel binnenkomt), KNOB 3 VELOCITY op de klank (OFF, BRIGHT: zacht = donkerder, SWEEP: zacht = minder MOD ENV-sweep, BRIGHT + SWEEP), KNOB 4 hoeveel |
 | GLO | de MIDI-pagina (nog een keer: terug naar HOME): KNOB 1 TRS MIDI IN aan/uit, KNOB 2 USB MIDI (OFF, IN, OUT, IN + OUT), KNOB 3 RX-kanaal (OMNI, 1..16), KNOB 4 TX-kanaal (1..16); SELECT de tweede core aan/uit (vanaf de volgende start) |
 | Snel draaien | elke knop en encoder (KNOB 1–4, SELECT, ALGORITHM, PRESETS) versnelt tot 4×, net als BPM (van 0 naar 127 in één zwaai); één klik blijft één stap |
 | MASTER | volume |
@@ -76,19 +76,6 @@ samples eerder, een "attractor" van de ruis; met SELECT op TIME zie je de golfvo
 Ze zijn op hetzelfde niveau gezet als het circuit (bij X = Y = 64, gemeten in de test) en blijven in elke hoek van X en
 Y begrensd en zonder DC.
 
-**De FM-oscillator (MOD).** Druk op HOME terwijl je al op HOME staat: de MOD-pagina. Per stem een extra oscillator
-die de toonhoogte van het noise-programma moduleert (lineaire FM): alle oscillators in het programma bewegen mee, dus
-ook de clusters. Hij werkt op alle 30 programma's, niet op het Chua-circuit.
-
-| Bediening | Functie |
-| --- | --- |
-| KNOB 1 WAVE | de golfvorm, morphend: sine (0) → triangle (42) → saw (85) → square (127) |
-| KNOB 2 RATIO | de frequentie ten opzichte van de noot, in stappen: 1/4, 1/2, 3/4, 1, 5/4, 3/2, 2, 5/2, 3, 7/2, 4, 5, 6, 7, 8, 11 |
-| KNOB 3 DEPTH | hoe diep: 0 = uit (rekent dan niet), 127 = ±150 % van de frequentie (onder nul stopt hij op 1/16) |
-| KNOB 4 FINE | ±1 halve toon ontstemd: langzaam zwevende FM |
-
-Het scherm toont links de golfvorm en rechts een sinus die erdoor gemoduleerd wordt (twee periodes van de noot).
-
 **De MOD ENV (ENV, tweede keer).** Druk op ENV terwijl je al op de ENV-pagina staat: een AD-envelope die
 direct op de toonhoogte van het noise-programma zit (geen oscillator, geen VCA ertussen): de noot begint hoger en
 zakt naar zijn toon (of zwelt omhoog, met SKEW), gestart door elke noot (hij loopt zijn vorm af, ook als je de toets eerder loslaat).
@@ -100,7 +87,7 @@ zakt naar zijn toon (of zwelt omhoog, met SKEW), gestart door elke noot (hij loo
 | KNOB 3 HEIGHT | hoe ver de toon op de piek omhoog gaat, tot +36 halve tonen (3 octaven); 0 = geen envelope |
 | KNOB 4 BEND | de kromming, twee kanten op: in het midden STRAIGHT (recht); rechtsom (+) exponentieel: traag omhoog en dan snel, snel omlaag met een lange staart (een kick- of zap-achtige sweep); linksom (−) logaritmisch: snel omhoog en lang bovenin, dan pas omlaag |
 
-De FM-oscillator (MOD-pagina, DEPTH) staat er los van: die blijft gewoon vaste FM. De MOD ENV duwt alleen de toon
+Er is geen aparte FM-oscillator meer: de MOD ENV is de FM, direct op de toon
 (SKEW 0 en een korte LENGTH: een zap of kick, zie PITCH ZAP; SKEW hoog: een toon die omhoog zwelt). Het scherm toont
 de vorm en rechts hoe ver de nieuwste stem nu omhoog staat.
 Nog een keer ENV: terug naar HOME.
@@ -145,7 +132,7 @@ stappen zijn mijn invulling van die beschrijvingen ("moving filter" bij TEKK ECH
 toont de laatste 32 stappen als een rol.
 
 **FREE EG (REC).** Neemt een knopbeweging op en speelt die af op een parameter, zoals de Free EG van de AN1x. REC
-opent de pagina; daar zet KNOB 4 het doel (TARGET: CHAOS, SHAPE, RING, NOISE X/Y, MOD DEPTH, FX STRUCTURE/BRIGHTNESS/
+opent de pagina; daar zet KNOB 4 het doel (TARGET: CHAOS, SHAPE, RING, NOISE X/Y, MOD ENV HEIGHT, FX STRUCTURE/BRIGHTNESS/
 DAMPING/MIX, SHIMMER, BASIS, ORBIT, ARP GATE/SWING, KARMA K1..K4, ...), KNOB 2 de lengte en KNOB 3 de diepte. Druk REC en draai aan
 KNOB 1: de beweging wordt opgenomen (128 punten) en je hoort hem meteen op het doel. SELECT rechtsom speelt hem af
 (linksom uit: de parameter krijgt zijn oude waarde terug).
@@ -223,7 +210,7 @@ als een rol; onderin de klok en de lengte ("20 x 1/16").
   GLO-pagina), zoals KARMA zijn gegenereerde noten uitstuurt; de toetsen zelf dan niet.
 
 **Elke parameter op één plek.** RING staat alleen op HOME (KNOB 4), BASIS en ORBIT alleen op de PAN-pagina (SCL), de
-oscillator kies je alleen met ALGORITHM op HOME (op de MOD-pagina niet meer).
+oscillator kies je alleen met ALGORITHM op HOME.
 
 **De low pass gate.** Op de ENV-pagina is de gate een rond rood lampje (het LED van een vactrol): het brandt fel als de gate open staat en dimt mee met de envelope; ernaast de cutoff. De ADSR stuurt per stem een low pass gate aan, zoals een vactrol dat doet: de stuurspanning volgt
 de envelope snel omhoog (~2 ms) en trager omlaag (~30 ms), en zet zowel het volume als de cutoff (25 Hz .. 15 kHz). Het

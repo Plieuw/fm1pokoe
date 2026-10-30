@@ -48,7 +48,6 @@ static volatile struct {
     uint8_t sh_size, sh_decay, sh_shimmer, sh_mix, sh_interval, sh_tone;   /* shimmer.c: the shimmer reverb */
     uint8_t osc;                 /* the oscillator: 0 the CHUA circuit, 1 .. 30 a noise program (noise.c: osc - 1) */
     uint8_t np_x, np_y, np_level;   /* noise.c: its X, Y and level, 0..127 */
-    uint8_t mod_wave, mod_ratio, mod_depth, mod_fine;   /* noise.c: the FM oscillator (HOME again: the MOD page) */
     uint8_t menv_len, menv_skew, menv_height;   /* noise.c: its AD envelope (ENV again: the MOD ENV page) */
     uint8_t menv_bend;           /* noise.c: its curve, 0 (bent up: fast, then slow) .. 64 straight .. 127 (bent down) */
     uint8_t basis;               /* synth.c: the voices' stereo spread, 0 (mono) .. 127 (ENV page, SELECT) */
@@ -59,6 +58,7 @@ static volatile struct {
     uint8_t feg_val, feg_len, feg_depth, feg_target, feg_on, feg_has, feg_npts;   /* feg.c: FREE EG (REC) */
     uint8_t k_on, k_ge, k_latch, k_m[4];
     uint8_t mw, mw_target, mw_depth;   /* keys.c: MIDI CC 1 (the mod wheel), the parameter it moves (feg.c's list), how far */
+    uint8_t mw_seen;             /* a mod wheel has sent (until then it leaves FREE EG's depth alone) */
     uint8_t vel_to, vel_amt;     /* synth.c: velocity also on the sound: 0 off, 1 BRIGHT (the gate), 2 FM, 3 both; how much */   /* karma.c: KARMA (SEQ): on, the GE, LATCH, its four realtime controls */
     uint16_t menv_view;          /* the newest voice's MOD ENV pitch sweep now, 0..32767 = 3 octaves (ui.c) */
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
@@ -66,10 +66,10 @@ static volatile struct {
          .fx_model = 0, .fx_struct = 70, .fx_bright = 90, .fx_damp = 100, .fx_pos = 24, .fx_mix = 0,
          .sh_size = 100, .sh_decay = 90, .sh_shimmer = 70, .sh_mix = 0, .sh_interval = 0, .sh_tone = 80,
          .osc = 0, .np_x = 64, .np_y = 64, .np_level = 64,
-         .mod_wave = 0, .mod_ratio = 3, .mod_depth = 0, .mod_fine = 64,
+         
          .menv_len = 80, .menv_skew = 10, .menv_height = 0, .menv_bend = 64, .basis = 0, .orbit = 0,
          .arp_on = 0, .arp_type = 0, .arp_bpm = 120, .arp_div = 7, .arp_gate = 80, .arp_swing = 0, .arp_hold = 0,
          .midi_trs = 1, .midi_usb = 3, .midi_rx = 0, .midi_tx = 0,
          .feg_val = 64, .feg_len = 9, .feg_depth = 127, .feg_target = 0, .feg_on = 0, .feg_has = 0, .feg_npts = 0,
          .k_on = 0, .k_ge = 0, .k_latch = 0, .k_m = {64, 64, 64, 64},
-         .mw = 0, .mw_target = 8, .mw_depth = 127, .vel_to = 0, .vel_amt = 64};
+         .mw = 0, .mw_target = 0, .mw_depth = 127, .vel_to = 0, .vel_amt = 64};

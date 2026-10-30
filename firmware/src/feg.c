@@ -27,11 +27,10 @@ static uint32_t feg_ticks(uint32_t len)          /* MIDI clocks a cycle (24 a qu
 }
 
 /* the parameters it can drive (all 0..127) */
-#define FEG_NT 30
+#define FEG_NT 27
 static const char *const FEG_T_NAME[FEG_NT] = {
-    "CHAOS", "SHAPE", "OUTPUT", "RING", "NOISE X", "NOISE Y", "NOISE LEVEL", "MOD WAVE", "MOD DEPTH", "MOD FINE",
-    "MOD ENV HEIGHT", "FX STRUCTURE", "FX BRIGHTNESS", "FX DAMPING", "FX POSITION", "FX MIX", "SHIMMER SIZE",
-    "SHIMMER DECAY", "SHIMMER", "SHIMMER MIX", "SHIMMER TONE", "BASIS", "ORBIT", "ARP GATE", "ARP SWING", "ENV DECAY",
+    "CHAOS", "SHAPE", "OUTPUT", "RING", "NOISE X", "NOISE Y", "NOISE LEVEL", "MOD ENV HEIGHT", "FX STRUCTURE",
+    "FX BRIGHTNESS", "FX DAMPING", "FX POSITION", "FX MIX", "SHIMMER SIZE", "SHIMMER DECAY", "SHIMMER", "SHIMMER MIX", "SHIMMER TONE", "BASIS", "ORBIT", "ARP GATE", "ARP SWING", "ENV DECAY",
     "KARMA K1", "KARMA K2", "KARMA K3", "KARMA K4",
 };
 static volatile uint8_t *feg_field(uint32_t t)
@@ -44,28 +43,25 @@ static volatile uint8_t *feg_field(uint32_t t)
     case 4: return &sys.np_x;
     case 5: return &sys.np_y;
     case 6: return &sys.np_level;
-    case 7: return &sys.mod_wave;
-    case 8: return &sys.mod_depth;
-    case 9: return &sys.mod_fine;
-    case 10: return &sys.menv_height;
-    case 11: return &sys.fx_struct;
-    case 12: return &sys.fx_bright;
-    case 13: return &sys.fx_damp;
-    case 14: return &sys.fx_pos;
-    case 15: return &sys.fx_mix;
-    case 16: return &sys.sh_size;
-    case 17: return &sys.sh_decay;
-    case 18: return &sys.sh_shimmer;
-    case 19: return &sys.sh_mix;
-    case 20: return &sys.sh_tone;
-    case 21: return &sys.basis;
-    case 22: return &sys.orbit;
-    case 23: return &sys.arp_gate;
-    case 24: return &sys.arp_swing;
-    case 26: return &sys.k_m[0];                 /* KARMA's realtime controls (what each does: its GE) */
-    case 27: return &sys.k_m[1];
-    case 28: return &sys.k_m[2];
-    case 29: return &sys.k_m[3];
+    case 7: return &sys.menv_height;
+    case 8: return &sys.fx_struct;
+    case 9: return &sys.fx_bright;
+    case 10: return &sys.fx_damp;
+    case 11: return &sys.fx_pos;
+    case 12: return &sys.fx_mix;
+    case 13: return &sys.sh_size;
+    case 14: return &sys.sh_decay;
+    case 15: return &sys.sh_shimmer;
+    case 16: return &sys.sh_mix;
+    case 17: return &sys.sh_tone;
+    case 18: return &sys.basis;
+    case 19: return &sys.orbit;
+    case 20: return &sys.arp_gate;
+    case 21: return &sys.arp_swing;
+    case 23: return &sys.k_m[0];                 /* KARMA's realtime controls (what each does: its GE) */
+    case 24: return &sys.k_m[1];
+    case 25: return &sys.k_m[2];
+    case 26: return &sys.k_m[3];
     default: return &sys.decay;
     }
 }
@@ -217,7 +213,7 @@ static void feg_block(uint32_t n, uint32_t note_ons)
         v = a + (((b - a) * (int32_t)f8) >> 8);
         {   /* (the mod wheel on the same parameter: it sets how deep, 0 still .. DEPTH x the EDIT page's DEPTH) */
             int32_t d = (int32_t)(sys.feg_depth & 127u), md = (int32_t)(sys.mw_depth & 127u);
-            if (md && sys.mw_target % FEG_NT == feg.target)
+            if (md && sys.mw_seen && sys.mw_target % FEG_NT == feg.target)
                 d = d * (int32_t)(sys.mw & 127u) * md / (127 * 127);
             v = feg.base + (v - feg.base) * d / 127;
         }

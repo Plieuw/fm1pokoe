@@ -163,8 +163,10 @@ static void midi_in_block(void)
             note_end(d1);
         else if (st == 0xB0u && (d1 == 123u || d1 == 120u))
             keys_all_off();
-        else if (st == 0xB0u && d1 == 1u)        /* the mod wheel: its parameter (feg.c mw_block, the EDIT page) */
+        else if (st == 0xB0u && d1 == 1u) {      /* the mod wheel: its parameter (feg.c mw_block, the EDIT page) */
             sys.mw = (uint8_t)d2;
+            sys.mw_seen = 1;
+        }
         else if (st == 0xC0u)                    /* program change: the preset (ui.c, the main loop) */
             keys_prog_req = (uint8_t)(d1 + 1u);
         else if (((pkt >> 8) & 0xFFu) >= 0xF8u)   /* realtime: the clock for the arpeggiator */
