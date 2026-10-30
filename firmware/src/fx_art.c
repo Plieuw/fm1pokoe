@@ -638,9 +638,15 @@ static void art_shimmer(const uint8_t *hist, uint32_t nh)
     }
     static const uint8_t RATIO8[SI_COUNT] = {16, 12, 24, 32};    /* the interval's ratio x 8 */
     static const uint8_t FOLD[SS_COUNT] = {6, 8, 12, 8};
-    const uint32_t NR = 6u, SP = 7u;                             /* rings, frames of the tail between two */
-    uint32_t sp = sys.sh_space % SS_COUNT, life = 24u + (sys.sh_decay & 127u) * 150u / 127u, k, j;
-    int32_t sx, sy, R = Q8(50);
+    /* the knobs, each across its whole range: SIZE the window (28 .. 52 px) and its rings (4 .. 7); DECAY how far back
+     * the rings reach into the tail (0.8 .. 7.6 s); SHIMMER how many steps the outer rings climb (0 .. 3); TONE how
+     * bright the outer rings stay; MIX how bright it all is */
+    uint32_t size = sys.sh_size & 127u, mixv = sys.sh_mix & 127u, tone = sys.sh_tone & 127u;
+    uint32_t NR = 4u + size * 3u / 127u, span = 20u + (sys.sh_decay & 127u) * 170u / 127u, SP, k, j;
+    uint32_t sp = sys.sh_space % SS_COUNT;
+    int32_t sx, sy, R = Q8(28) + Q8(24) * (int32_t)size / 127;
+    span = span > nh - 1u ? nh - 1u : span;
+    SP = span / NR ? span / NR : 1u;
     a3_view((uint32_t)(art_sin(art_t * 0x00500000u) * 7000), (uint32_t)(art_sin(art_t * 0x00380000u) * 4000), 120, 66);
     /* the frame: a double circle (rose), two squares (the girih's octagram), a square with four gates (mandala) */
     if (sp == SS_CATHEDRAL) {
@@ -663,16 +669,15 @@ static void art_shimmer(const uint8_t *hist, uint32_t nh)
         }
     }
     for (k = 0; k < NR; k++) {                                   /* the rings: the tail, now (inside) to earlier */
-        uint32_t age = k * SP, n, climb;
+        uint32_t age = k * SP + SP / 2u, n, climb;
         int32_t lv, a, ri = Q8(8) + (R - Q8(8)) * (int32_t)k / (int32_t)NR, ro = Q8(8) + (R - Q8(8)) * (int32_t)(k + 1u) / (int32_t)NR;
         uint32_t rot = (k & 1u ? 1u : (uint32_t)-1) * (orn_beat >> (k >> 1));   /* (the outer ones slower) */
         uint16_t c;
         lv = age < nh ? hist[nh - 1u - age] : 0;
-        a = age < life ? lv * (int32_t)(life - age) / (int32_t)life : 0;
-        a = a * (128 + (int32_t)(sys.sh_tone & 127u)) / 255;
-        a = 18 + a * 82 / 255;                                   /* (always faintly there: the pattern itself) */
-        c = ux_mix(T_BG, art_c, a);
-        climb = (age * (sys.sh_shimmer & 127u) / 127u + 12u) / 24u;   /* the steps climbed by then */
+        a = lv * (int32_t)(127u * NR - k * (127u - tone)) / (int32_t)(127u * NR);   /* (TONE: the outer ones) */
+        a = (int32_t)(6u + mixv * 14u / 127u) + a * (int32_t)(30u + mixv * 52u / 127u) / 255;   /* (MIX; faintly there) */
+        c = ux_mix(T_BG, art_c, a > 100 ? 100 : a);
+        climb = (k * (sys.sh_shimmer & 127u) * 3u + 63u * (NR - 1u)) / (127u * (NR - 1u));   /* the steps climbed */
         n = FOLD[sp];
         for (j = 0; j < climb && n < 40u; j++)
             n = n * RATIO8[sys.sh_interval % SI_COUNT] / 8u;

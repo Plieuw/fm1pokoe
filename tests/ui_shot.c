@@ -319,6 +319,20 @@ int main(int argc, char **argv)
         snprintf(name, sizeof name, "g_space_%u", i);
         bad |= shot(dir, name);
     }
+    {   /* the knobs' range on the ornament: small dry, big with shimmer, dark, bright */
+        static const uint8_t K[4][5] = {{0, 0, 0, 20, 30}, {127, 127, 127, 127, 127}, {64, 60, 0, 70, 0},
+                                        {100, 127, 64, 100, 127}};   /* SIZE, DECAY, SHIMMER, MIX, TONE */
+        sys.sh_space = SS_CATHEDRAL;
+        for (i = 0; i < 4u; i++) {
+            sys.sh_size = K[i][0]; sys.sh_decay = K[i][1]; sys.sh_shimmer = K[i][2]; sys.sh_mix = K[i][3]; sys.sh_tone = K[i][4];
+            synth_note_on(48, 110);
+            frames(16);
+            synth_note_off(48);
+            frames(14);
+            snprintf(name, sizeof name, "g_knobs_%u", i);
+            bad |= shot(dir, name);
+        }
+    }
     sys.sh_space = 0;
     sys.sh_mix = 0;
     frames(4);
