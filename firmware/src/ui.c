@@ -765,70 +765,7 @@ static void draw_env(void)
     cv_blit(0, PLOT_Y);
 }
 
-/* the FX page's picture: the resonator's resonances on a log-frequency axis (40 Hz .. 12 kHz; the sympathetic
- * strings marked), and under them its output */
-static void draw_fx(void)
-{
-    const int32_t top = 6, bars = 62, mid = 92, amp = 26;
-    uint32_t i, n = rz_view.n > 16u ? 16u : rz_view.n, w = rz_view.w;
-    uint16_t dim = ux_mix(T_BG, T_THEME, 30);
-    cv_begin(240, PLOT_H, T_BG);
-    cv_rect(8, top + bars, 224, 1, T_LINE);
-    {   /* the axis: 100 Hz, 1 kHz, 10 kHz */
-        static const uint16_t HZ[3] = {100, 1000, 10000};
-        static const char *const HL[3] = {"100", "1k", "10k"};
-        for (i = 0; i < 3u; i++) {
-            /* x = 8 + 224 log(f / 40) / log(300): log2 via the bit length, fine enough for ticks */
-            uint32_t f = HZ[i], l2 = 0, t = f * 256u / 40u;
-            while (t >= 512u) { t >>= 1; l2 += 256u; }
-            l2 += (t - 256u);                                   /* log2(f / 40) Q8, linear between octaves */
-            {
-                int32_t x = 8 + (int32_t)(l2 * 224u / 2106u);   /* log2(300) = 8.23 octaves, Q8 2106 */
-                cv_rect(x, top, 1, bars, T_LINE);
-                if (i < 2u)
-                    cv_text(x + 2, top, &AF_S, HL[i], T_DIM);
-                else
-                    cv_text_r(x - 2, top, &AF_S, HL[i], T_DIM, T_BG);   /* (the last one left of its line) */
-            }
-        }
-    }
-    if (sys.fx_mix)
-        for (i = 0; i < n; i++) {
-            uint32_t f = rz_view.f[i], hz, l2 = 0, t;
-            int32_t x, h;
-            if (!f)
-                continue;
-            hz = (uint32_t)(((uint64_t)f * 44100u) >> 32);
-            if (hz < 40u || hz > 12000u)
-                continue;
-            t = hz * 256u / 40u;
-            while (t >= 512u) { t >>= 1; l2 += 256u; }
-            l2 += t - 256u;
-            x = 8 + (int32_t)(l2 * 224u / 2106u);
-            h = rz_view.a[i] < 0 ? bars : 4 + rz_view.a[i] * (bars - 4) / 32767;
-            cv_rect(x - 1, top + bars - h, 3, h, rz_view.a[i] < 0 ? T_ACCENT : T_THEME);
-        }
-    {   /* the output, the last 224 points, scaled to its peak (which falls back slowly) */
-        static int32_t scale = 2000;
-        int32_t px = 0, py = mid, pk = 0;
-        for (i = 0; i < 224u; i++) {
-            int32_t v = rz_view.wave[(w - 224u + i) & (RZ_WAVE - 1u)];
-            pk = v > pk ? v : -v > pk ? -v : pk;
-        }
-        scale = pk > scale ? pk : scale - (scale - (pk > 500 ? pk : 500)) / 8;
-        for (i = 0; i < 224u; i++) {
-            int32_t v = sys.fx_mix ? rz_view.wave[(w - 224u + i) & (RZ_WAVE - 1u)] : 0;
-            int32_t y = mid - clamp(v * amp / scale, -amp, amp);
-            if (i)
-                cv_line(8 + px, py, 8 + (int32_t)i, y, sys.fx_mix ? T_THEME : dim);
-            px = (int32_t)i;
-            py = y;
-        }
-    }
-    if (!sys.fx_mix)
-        cv_text(96, top + bars / 2 - AF_S.h / 2, &AF_S, "MIX OFF", T_MID);
-    cv_blit(0, PLOT_Y);
-}
+#include "fx_art.c"                              /* the FX page's pictures: each model drawn, moving with its sound */
 
 /* the SHIMMER page's picture: the tail's level over the last ~4 s (one column a UI frame, scrolling left: the riser
  * building and fading), and on the right the interval's staircase: the steps the tail climbs */
@@ -1466,7 +1403,7 @@ static void ui_draw(void)
     if (sys.page == 1u)
         draw_env();
     else if (sys.page == 2u)
-        draw_fx();
+        art_draw();
     else if (sys.page == 3u)
         draw_sh();
     else if (sys.page == 5u)

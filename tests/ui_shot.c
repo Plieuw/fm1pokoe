@@ -260,11 +260,26 @@ int main(int argc, char **argv)
     frames(3);
     bad |= shot(dir, "f_fx_off");
     for (i = 0; i < RZ_COUNT; i++) {
-        static const uint8_t PI_[RZ_COUNT] = {10, 11, 12, 24, 29, 32};   /* RINGS BELL, SITAR DRONE, CHAOS PIANO, */
+        static const uint8_t PI_[RZ_COUNT] = {10, 11, 12, 24, 29, 32, 34};   /* RINGS BELL, SITAR DRONE, CHAOS PIANO, */
         preset_load(PI_[i]);                                             /* CAT MEOW, NIGHT FLUTE, BIRD SONG */
         synth_note_on(48, 100);
         frames(14);
         snprintf(name, sizeof name, "f_fx_%u", i);
+        bad |= shot(dir, name);
+        synth_kill();
+    }
+    preset_load(34);                     /* HAWK CRY */
+    synth_note_on(48, 110);
+    frames(14);
+    bad |= shot(dir, "f_hawk");
+    synth_kill();
+    for (i = 0; i < WA_COUNT; i++) {     /* THROAT: each animal's head, a vowel each */
+        preset_load(24);
+        sys.fx_struct = (uint8_t)(i * 128u / WA_COUNT + 4u);
+        sys.fx_pos = (uint8_t)(i * 18u);
+        synth_note_on(48, 110);
+        frames(14);
+        snprintf(name, sizeof name, "f_throat_%u", i);
         bad |= shot(dir, name);
         synth_kill();
     }

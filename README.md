@@ -234,7 +234,12 @@ Rings en DaisySP (Emilie Gillet, Electrosmith; MIT) die Felucca al had (`phys_ds
 | STRING | een Karplus-Strong-snaar | onder ~32 een gebogen kam (sitar), daarboven dispersie (piano) | — |
 
 KNOB 2 BRIGHTNESS, KNOB 3 DAMPING (zoals Rings: rechtsom langer), KNOB 4 MIX (0 = uit, dan rekent er niets). Het
-scherm toont de resonanties op een frequentie-as (de meeresonerende snaren blauw) en de uitgang eronder.
+scherm tekent het model als simpele oranje lijntekening (zoals in een medisch of natuurkundeboek), bewegend met het
+geluid: MODAL een klok (de wand ademt, de klepel zwaait), SYMP een sitar met meeklinkende snaren, STRING een snaar
+tussen twee kammen (getokkeld op POSITION), THROAT een doorsnede van de kop van het dier met het spraakkanaal (zijn
+breedte is de echte vorm van de VOWEL, de stembanden openen en sluiten, de kaak gaat open met het volume; oren,
+hoorn, manen of slurf per dier), FLUTE de boring met lippen, de luchtstraal over de rand en de staande golf, SYRINX
+en HAWK een vogelkop met de luchtpijp naar de syrinx waar de twee membranen trillen.
 
 **De waveguides (FX, achter de resonatoren).** Draai op de FX-pagina verder met ALGORITHM: na MODAL, SYMP STRING en
 STRING komen drie waveguides, eigen code (naar de klassieke modellen: het vocal tract van Kelly en Lochbaum, de fluit
