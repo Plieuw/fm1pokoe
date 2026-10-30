@@ -60,7 +60,7 @@ static volatile struct {
     uint8_t k_on, k_ge, k_latch, k_m[4];
     uint8_t mw, mw_target, mw_depth;   /* keys.c: MIDI CC 1 (the mod wheel), the parameter it moves (feg.c's list), how far */
     uint8_t vel_to, vel_amt;     /* synth.c: velocity also on the sound: 0 off, 1 BRIGHT (the gate), 2 FM, 3 both; how much */   /* karma.c: KARMA (SEQ): on, the GE, LATCH, its four realtime controls */
-    uint16_t menv_view;          /* the newest voice's FM depth now (DEPTH + HEIGHT x envelope), 0..32767 (ui.c) */
+    uint16_t menv_view;          /* the newest voice's MOD ENV pitch sweep now, 0..32767 = 3 octaves (ui.c) */
 } sys = {.octave = 0, .chaos = 85, .shape = 76, .output = 0, .attack = 6, .decay = 80, .sustain = 110, .release = 70,
          .ring = 50, .master_q12 = 2048, .last_note = 0xFF, .cpu2 = 1,
          .fx_model = 0, .fx_struct = 70, .fx_bright = 90, .fx_damp = 100, .fx_pos = 24, .fx_mix = 0,

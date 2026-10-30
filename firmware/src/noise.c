@@ -290,28 +290,36 @@ static void np_render(uint32_t k, uint32_t alg, uint32_t inc, int32_t *out, uint
                 } else
                     S->menv -= id;
             }
-            fk[i] = (uint32_t)np_bend((int32_t)(S->menv >> 15), sys.menv_bend);   /* (Q15, BEND, for the FM below) */
+            fk[i] = (uint32_t)np_bend((int32_t)(S->menv >> 15), sys.menv_bend);   /* (Q15, BEND, for the pitch below) */
         }
     }
-    {   /* the FM oscillator's depth: DEPTH (always) + HEIGHT x the envelope, each depth^2 x 1.5 (Q14: 0 .. 1.48), at
-         * most 1.48 together */
-        int32_t dd = (int32_t)(dep * dep * 3u / 2u), dh = (int32_t)(hgt * hgt * 3u / 2u);
-        if (voice + k == render_tv) {            /* (the screen: the depth now, 0..32767) */
-            int32_t now = dd + ((dh * np_bend((int32_t)(S->menv >> 15), sys.menv_bend)) >> 15);
-            sys.menv_view = (uint16_t)(now >= 24193 ? 32767 : now * 32767 / 24193);
+    {   /* the FM oscillator (MOD page): DEPTH x its wave, depth^2 x 1.5 (Q14: 0 .. 1.48). The MOD ENV straight on the
+         * pitch (no oscillator, no VCA between): HEIGHT^2 the octaves at its peak (0 .. 3), the sweep down to the note */
+        int32_t dd = (int32_t)(dep * dep * 3u / 2u), hq = (int32_t)(hgt * hgt * 3u * 65536u / 16129u);   /* Q16 oct */
+        if (voice[k].vfm) {                      /* (velocity: a soft note's FM and sweep shallower) */
+            dd = (dd * (256 - (int32_t)voice[k].vfm)) >> 8;
+            hq = (hq * (256 - (int32_t)voice[k].vfm)) >> 8;
+        }
+        if (voice + k == render_tv) {            /* (the screen: the sweep now, 0..32767 of 3 octaves) */
+            int32_t r = ((hq >> 2) * np_bend((int32_t)(S->menv >> 15), sys.menv_bend)) >> 13;   /* (Q16 octaves) */
+            sys.menv_view = (uint16_t)(r / 6 > 32767 ? 32767 : r / 6);
         }
         if (fm) {   /* per sample the factor on every audio-rate increment, Q16 */
             uint32_t mi = np_mul(np_mul(inc, NP_RATIO[sys.mod_ratio % NP_NRATIO]),
                                  px_exp2(((int32_t)(sys.mod_fine & 127u) - 64) * 1365 / 16)),   /* +-1 semitone */
-                     wv = sys.mod_wave & 127u;
+                     wv = sys.mod_wave & 127u, pf = 65536u;
             for (i = 0; i < n; i++) {
-                int32_t dv = dd + ((dh * (int32_t)fk[i]) >> 15), f;
-                if (voice[k].vfm)                /* (velocity: a soft note's FM shallower) */
-                    dv = (dv * (256 - (int32_t)voice[k].vfm)) >> 8;
-                dv = dv > 24193 ? 24193 : dv;
-                f = 65536 + ((np_wave(S->mph, wv) * dv) >> 13);
-                S->mph += mi;
-                fk[i] = f < 4096 ? 4096u : (uint32_t)f;
+                uint32_t f = 65536u;
+                if (hq && !(i & 3u))             /* (the envelope is slow: its pitch every 4 samples) */
+                    pf = px_exp2((int32_t)(((int64_t)hq * (int32_t)fk[i]) >> 15));
+                if (dd) {
+                    int32_t g = 65536 + ((np_wave(S->mph, wv) * dd) >> 13);
+                    S->mph += mi;
+                    f = g < 4096 ? 4096u : (uint32_t)g;
+                }
+                if (hq)
+                    f = np_mul(f, pf);
+                fk[i] = f > 0x80000u ? 0x80000u : f;
             }
         }
     }

@@ -39,11 +39,11 @@ in de chaotische regimes rond die toonhoogte, met de typische subharmonische rui
 | KNOB 3 — OUTPUT | welke spanning je hoort: X (het scrollen, diep), X+Y, Y (de spiraal, helder), Y+Z, Z (rond) |
 | KNOB 4 — RING | resonantie van de low pass gate: 0 geen, 127 Q 6 (een korte, houtachtige ring) |
 | HOME | de oscillator: het circuit (CHAOS, SHAPE, OUTPUT, RING en de attractor) of een noise-programma (X, Y, LEVEL, RING); nog een keer: de MOD-pagina (de FM-oscillator), nog een keer: terug |
-| ENV | 1× de ENV-pagina, 2× de MOD ENV (de AD-envelope van de FM-oscillator), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
+| ENV | 1× de ENV-pagina, 2× de MOD ENV (een AD-envelope direct op de toonhoogte), 3× terug naar HOME. ENV-pagina: KNOB 1–4 = ATTACK, DECAY, SUSTAIN, RELEASE (0,5 ms .. 10 s), met de envelope getekend |
 | FX | de FX-pagina's: 1× de resonatoren van Mutable Instruments Rings en de waveguides (THROAT, FLUTE, SYRINX, HAWK), 2× de shimmer reverb, 3× terug naar HOME |
 | SELECT | weergave op HOME: 3D (draaiend), X-Y, X-Z, Y-Z, TIME · POSITION (resonator) · TONE (shimmer) |
 | ALGORITHM | op HOME de oscillator: CHUA of een van de 30 noise-programma's A0..C9 · het model (resonator of waveguide) · het interval (shimmer) |
-| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, FM PLUCK |
+| PRESETS | DOUBLE SCROLL, RING PLUCK, PURE CYCLE, PERIOD TWO, SPIRAL, BONGO GATE, CRISIS EDGE, OUTER LOOP, SLOW BLOOM, GRIT BASS, RINGS BELL, SITAR DRONE, CHAOS PIANO, BURIED BAR, HEAVEN RISER, OCTAVE CLOUD, FIFTH ASCENT, RADIO OH NO, GRAIN SHOWER, PRIME HATS, FIBONACCI PAD, CLUSTER BELL, SATAN WORKOUT, BITCRUSH WALK, FM BELL CLUSTER, SQUARE GRAINS, SAW RADIO, TRI WOBBLE PAD, PITCH ZAP |
 | ARP | de ARP-pagina; nog een keer: terug naar HOME (het lampje brandt zolang de arpeggiator speelt) |
 | REC | de FREE EG-pagina; nog een keer REC: opnemen (bij NOTE nog een keer om te stoppen) |
 | SCL | de PAN-pagina (nog een keer: terug naar HOME): KNOB 1 BASIS (stereo-spreiding per noot), KNOB 2 ORBIT (de stemmen bewegen mee met hun plaatje); de stemmen staan getekend waar ze in het stereobeeld klinken |
@@ -88,19 +88,20 @@ ook de clusters. Hij werkt op alle 30 programma's, niet op het Chua-circuit.
 
 Het scherm toont links de golfvorm en rechts een sinus die erdoor gemoduleerd wordt (twee periodes van de noot).
 
-**De MOD ENV (ENV, tweede keer).** Druk op ENV terwijl je al op de ENV-pagina staat: een AD-envelope voor de
-FM-oscillator, gestart door elke noot (hij loopt zijn vorm af, ook als je de toets eerder loslaat).
+**De MOD ENV (ENV, tweede keer).** Druk op ENV terwijl je al op de ENV-pagina staat: een AD-envelope die
+direct op de toonhoogte van het noise-programma zit (geen oscillator, geen VCA ertussen): de noot begint hoger en
+zakt naar zijn toon (of zwelt omhoog, met SKEW), gestart door elke noot (hij loopt zijn vorm af, ook als je de toets eerder loslaat).
 
 | Bediening | Functie |
 | --- | --- |
 | KNOB 1 LENGTH | de hele duur, 0,5 ms .. 10 s |
 | KNOB 2 SKEW | waar de piek valt: 0 = meteen (FALL: een aanslag die wegvalt), 64 = in het midden, 127 = aan het eind (RISE: aanzwellen, dan weg) |
-| KNOB 3 HEIGHT | hoeveel FM de envelope toevoegt bovenop DEPTH (0 = geen envelope) |
-| KNOB 4 BEND | de kromming, twee kanten op: in het midden STRAIGHT (recht); rechtsom (+) exponentieel: traag omhoog en dan snel, snel omlaag met een lange staart (een klassieke FM-pluk); linksom (−) logaritmisch: snel omhoog en lang bovenin, dan pas omlaag |
+| KNOB 3 HEIGHT | hoe ver de toon op de piek omhoog gaat, tot +36 halve tonen (3 octaven); 0 = geen envelope |
+| KNOB 4 BEND | de kromming, twee kanten op: in het midden STRAIGHT (recht); rechtsom (+) exponentieel: traag omhoog en dan snel, snel omlaag met een lange staart (een kick- of zap-achtige sweep); linksom (−) logaritmisch: snel omhoog en lang bovenin, dan pas omlaag |
 
-DEPTH (MOD-pagina) is de vaste FM die er altijd is, HEIGHT het deel dat de envelope er bovenop zet: samen zijn ze
-begrensd op het maximum. DEPTH 0 en HEIGHT hoog geeft alleen FM in de envelope (FM PLUCK); DEPTH hoog en HEIGHT 0 is
-vaste FM zoals voorheen. Het scherm toont de vorm boven de DEPTH-lijn en rechts de FM-diepte van de nieuwste stem nu.
+De FM-oscillator (MOD-pagina, DEPTH) staat er los van: die blijft gewoon vaste FM. De MOD ENV duwt alleen de toon
+(SKEW 0 en een korte LENGTH: een zap of kick, zie PITCH ZAP; SKEW hoog: een toon die omhoog zwelt). Het scherm toont
+de vorm en rechts hoe ver de nieuwste stem nu omhoog staat.
 Nog een keer ENV: terug naar HOME.
 
 **BASIS (SCL, KNOB 1).** De stereo-spreiding van de stemmen. Elk van de vier stemmen heeft een vaste plek:

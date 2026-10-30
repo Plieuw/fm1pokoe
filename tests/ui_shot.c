@@ -277,7 +277,7 @@ int main(int argc, char **argv)
     sys.mod_depth = 0;
     edges = btn_bit(B_HOME);
     ui_input();
-    preset_load(NPRESETS - 1u);          /* the MOD ENV page (ENV twice): FM PLUCK, a note, its envelope falling */
+    preset_load(NPRESETS - 1u);          /* the MOD ENV page (ENV twice): PITCH ZAP, a note, its envelope falling */
     edges = btn_bit(B_ENV);
     ui_input();
     edges = btn_bit(B_ENV);

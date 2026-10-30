@@ -13,9 +13,9 @@
  *   MOD      (HOME again) the FM oscillator on the noise programs: KNOB 1 WAVE (sine, triangle, saw, square,
  *            morphing), KNOB 2 RATIO to the note, KNOB 3 DEPTH (always, under the envelope), KNOB 4 FINE;
  *            drawn: its wave and a sine it modulates
- *   MOD ENV  (ENV again) the FM oscillator's AD envelope, started by each note: KNOB 1 LENGTH, KNOB 2 SKEW (where the
- *            peak falls), KNOB 3 HEIGHT (how much FM it adds to DEPTH), KNOB 4 BEND (its curve, both ways); drawn: its
- *            shape over DEPTH, the depth now
+ *   MOD ENV  (ENV again) an AD envelope straight on the noise program's pitch (no oscillator, no VCA), started by
+ *            each note: KNOB 1 LENGTH, KNOB 2 SKEW (where the peak falls), KNOB 3 HEIGHT (the sweep at the peak, up to
+ *            36 semitones), KNOB 4 BEND (its curve, both ways); drawn: its shape, the sweep now
  *   ENV      KNOB 1..4      ATTACK, DECAY, SUSTAIN, RELEASE of the ADSR that drives the low pass gate; the envelope drawn
  *   SCL      the PAN page (again: back HOME): KNOB 1 BASIS: the stereo spread, each note the next place of a cycle
  *            (left, right, half left, ...); KNOB 2 ORBIT: how much each voice's phase moves with its picture (all-passes: the circuit's
@@ -128,13 +128,13 @@ static const preset_t PRESETS[] = {
      110, 100, 40, 35, SI_OCT, 90},
     /* the FM oscillator on them (the MOD page) */
     {"FM BELL CLUSTER", 85, 76, 0, 0, 70, 30, 90, 30, RZ_MODAL, 70, 100, 100, 12, 50,    /* sines FMed at 7/2: */
-     NOSH, NZ(1, 3), 20, 30, 0, 9, 30, 90, 0, 110},                                        /* metal, a strike */
+     NOSH, NZ(1, 3), 20, 30, 0, 9, 90, 30, 0, 14},                                         /* metal, a short ping */
     {"SQUARE GRAINS", 85, 76, 0, 0, 64, 80, 64, 50, NOFX, NOSH, NZ(0, 7), 80, 30, 127, 1, 60},   /* a sub square */
     {"SAW RADIO", 85, 76, 0, 4, 70, 100, 70, 40, NOFX, NOSH, NZ(0, 0), 64, 64, 85, 6, 50},   /* a saw an octave up */
     {"TRI WOBBLE PAD", 85, 76, 0, 80, 96, 110, 100, 40, NOFX,                             /* a slow triangle */
-     110, 100, 80, 70, SI_FIFTH, 90, NZ(1, 7), 40, 50, 42, 0, 20, 118, 90, 90},            /* swelling in */
-    {"FM PLUCK", 85, 76, 0, 0, 64, 40, 64, 40, NOFX, NOSH, NZ(1, 3), 10, 20, 0, 6, 0,    /* the FM falls away */
-     64, 0, 120},                                                                          /* fast: a pluck */
+     110, 100, 80, 70, SI_FIFTH, 90, NZ(1, 7), 40, 50, 42, 0, 60},                         /* swelling in */
+    {"PITCH ZAP", 85, 76, 0, 0, 64, 40, 64, 40, NOFX, NOSH, NZ(1, 3), 10, 20, 0, 6, 0,    /* the MOD ENV on the pitch: */
+     56, 0, 110},                                                                          /* a fast drop, a zap */
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -784,7 +784,7 @@ static void draw_mod(void)
 {
     const int32_t top = 10, h = 40, mid = top + h, w = 104;
     int32_t i, px = 0, py = mid;
-    uint32_t wv = sys.mod_wave & 127u, on = (sys.mod_depth || sys.menv_height) && sys.osc;
+    uint32_t wv = sys.mod_wave & 127u, on = sys.mod_depth && sys.osc;
     cv_begin(240, PLOT_H, T_BG);
     cv_rect(8, mid, w, 1, T_LINE);
     cv_rect(128, mid, w, 1, T_LINE);
@@ -814,8 +814,7 @@ static void draw_mod(void)
         }
     }
     cv_text(8, mid + h + 8, &AF_S, "MOD", T_DIM);
-    cv_text(128, mid + h + 8, &AF_S, !sys.osc ? "CHUA: NO FM" : sys.mod_depth ? "THE NOTE, FM" :
-            sys.menv_height ? "DEPTH 0: ENV ONLY" : "OFF", on ? T_MID : T_DIM);
+    cv_text(128, mid + h + 8, &AF_S, !sys.osc ? "CHUA: NO FM" : sys.mod_depth ? "THE NOTE, FM" : "OFF", on ? T_MID : T_DIM);
     cv_blit(0, PLOT_Y);
 }
 
@@ -1028,23 +1027,20 @@ static void draw_arp(void)
     cv_blit(0, PLOT_Y);
 }
 
-/* the MOD ENV page's picture: the FM depth over the envelope's LENGTH (the time axis: 0.5 ms .. 10 s, log), DEPTH the
- * floor, HEIGHT the peak above it at SKEW, BEND its curve; on the right the newest voice's depth now */
+/* the MOD ENV page's picture: the pitch sweep over the envelope's LENGTH (the time axis: 0.5 ms .. 10 s, log), the
+ * note the floor, HEIGHT the peak (3 octaves the top) at SKEW, BEND its curve; on the right the newest voice's now */
 static void draw_menv(void)
 {
     const int32_t top = 10, bot = PLOT_H - 16, hh = bot - top, x0 = 8;
     int32_t xl = x0 + 20 + (int32_t)(sys.menv_len & 127u) * 170 / 127;           /* (the length's end) */
     int32_t xp = x0 + (xl - x0) * (int32_t)(sys.menv_skew & 127u) / 127;          /* the peak */
-    int32_t dd = (int32_t)((sys.mod_depth & 127u) * (sys.mod_depth & 127u) * 3u / 2u);
-    int32_t dh = (int32_t)((sys.menv_height & 127u) * (sys.menv_height & 127u) * 3u / 2u);
-    int32_t yf = bot - dd * hh / 24193, yp = bot - (dd + dh > 24193 ? 24193 : dd + dh) * hh / 24193;
+    int32_t dh = (int32_t)((sys.menv_height & 127u) * (sys.menv_height & 127u));
+    int32_t yf = bot, yp = bot - dh * hh / 16129;
     int32_t lv = (int32_t)sys.menv_view * hh / 32767;
-    uint32_t on = sys.osc && (sys.mod_depth || sys.menv_height);
+    uint32_t on = sys.osc && sys.menv_height;
     uint16_t c = on ? T_FM : T_DIM;
     cv_begin(240, PLOT_H, T_BG);
     cv_rect(x0, bot, 196, 1, T_LINE);
-    if (dd)
-        cv_rect(x0, yf, 196, 1, ux_mix(T_BG, T_FM, 40));   /* DEPTH: the floor */
     {   /* the rise and the fall, BEND curving them as noise.c does */
         int32_t i, n = xl - x0, px = x0, py = yf;
         for (i = 1; i <= n; i++) {
@@ -1062,7 +1058,7 @@ static void draw_menv(void)
         cv_rect(214, bot - lv + 1, 16, lv - 1 > 0 ? lv - 1 : 1, on ? T_FM : T_DIM);
     cv_text(x0, bot + 3, &AF_S, "NOTE", T_DIM);
     cv_text_r(xl < 60 ? 60 : xl, bot + 3, &AF_S, "END", T_DIM, T_BG);
-    cv_text(206, bot + 3, &AF_S, "FM", T_DIM);
+    cv_text(200, bot + 3, &AF_S, "PITCH", T_DIM);
     cv_blit(0, PLOT_Y);
 }
 
@@ -1221,11 +1217,15 @@ static void ui_draw(void)
                 ui_cat(b, sizeof b, " %");
         }
         ui_cell(T_C2, "2 SKEW", b);
-        if (sys.menv_height)
-            fmt_int(v, sys.menv_height);
-        else
-            str_cpy(v, "OFF", sizeof v);
-        ui_cell(T_C3, "3 HEIGHT", v);
+        if (sys.menv_height) {                       /* (the sweep at the peak, in semitones: HEIGHT^2, 36 the top) */
+            uint32_t h = sys.menv_height & 127u;
+            fmt_int(v, (int32_t)((h * h * 36u + 8064u) / 16129u));
+            str_cpy(b, "+", sizeof b);
+            ui_cat(b, sizeof b, v);
+            ui_cat(b, sizeof b, " ST");
+        } else
+            str_cpy(b, "OFF", sizeof b);
+        ui_cell(T_C3, "3 HEIGHT", b);
         {
             int32_t bd = (int32_t)(sys.menv_bend & 127u) - 64;
             fmt_int(v, bd);
