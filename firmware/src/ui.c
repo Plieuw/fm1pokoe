@@ -767,15 +767,13 @@ static void draw_env(void)
 
 #include "fx_art.c"                              /* the FX page's pictures: each model drawn, moving with its sound */
 
-/* the SHIMMER page's picture: the tail's level over the last ~4 s (one column a UI frame, scrolling left: the riser
- * building and fading), and on the right the interval's staircase: the steps the tail climbs */
+/* the SHIMMER page's picture (fx_art.c art_shimmer): the room in 3D, the tail's wavefronts spreading and climbing;
+ * the tail's level over the last ~4 s (one value a UI frame) is what the wavefronts carry */
 static uint8_t sh_hist[200];
 static uint32_t sh_seen;
 static void draw_sh(void)
 {
-    const int32_t top = 8, bot = PLOT_H - 10, hh = bot - top;
     uint32_t i, w = sh_view.w, pk = 0;
-    static const uint8_t SEMI[SI_COUNT] = {12, 7, 19, 24};
     if (w - sh_seen > SH_ENV)
         sh_seen = w - SH_ENV;
     for (; sh_seen != w; sh_seen++) {
@@ -790,29 +788,16 @@ static void draw_sh(void)
         lv = b > 4u ? (b - 4u) * 20u + (b >= 3u ? ((pk >> (b - 3u)) & 3u) * 5u : 0u) : 0u;
         sh_hist[sizeof sh_hist - 1u] = (uint8_t)(sys.sh_mix ? (lv > 255u ? 255u : lv) : 0u);
     }
-    cv_begin(240, PLOT_H, T_BG);
-    cv_rect(8, bot, 200, 1, T_LINE);
-    for (i = 0; i < sizeof sh_hist; i++) {
-        int32_t h = (int32_t)sh_hist[i] * hh / 255;
-        if (h > 0)
-            cv_rect(8 + (int32_t)i, bot - h, 1, h, i + 40u >= sizeof sh_hist ? T_THEME : ux_mix(T_BG, T_THEME, 55));
-    }
-    {   /* the staircase: four steps of the interval */
-        int32_t x0 = 214, sw = 6, st = (int32_t)SEMI[sys.sh_interval % SI_COUNT] * hh / 60;
-        for (i = 0; i < 4u; i++) {
-            int32_t y = bot - (int32_t)i * st - 2;
-            if (y < top)
-                break;
-            cv_rect(x0 + (int32_t)i * sw, y, sw, 2, sys.sh_mix ? T_ACCENT : T_DIM);
-            if (i)
-                cv_rect(x0 + (int32_t)i * sw, y, 1, st, sys.sh_mix ? T_ACCENT : T_DIM);
-        }
-    }
-    if (!sys.sh_mix) {
+    if (!sys.sh_mix)
         memset(sh_hist, 0, sizeof sh_hist);      /* (off: the history starts again when it is turned on) */
-        cv_rect(8, top, 200, hh, T_BG);
-        cv_text(84, top + hh / 2 - AF_S.h / 2, &AF_S, "MIX OFF", T_MID);
-    }
+    art_t++;
+    art_c = sys.sh_mix ? T_THEME : ux_mix(T_BG, T_THEME, 45);
+    art_c2 = ux_mix(T_BG, art_c, 75);
+    art_c3 = ux_mix(T_BG, art_c, 45);
+    cv_begin(240, PLOT_H, T_BG);
+    art_shimmer(sh_hist, sizeof sh_hist);
+    if (!sys.sh_mix)
+        cv_text(160, 4, &AF_S, "MIX OFF", T_MID);
     cv_blit(0, PLOT_Y);
 }
 

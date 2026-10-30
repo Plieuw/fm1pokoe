@@ -588,6 +588,68 @@ static void art_syrinx(int hawk)
     art_title(hawk ? ICON_HAWK : ICON_SONGBIRD, hawk ? "HAWK" : "SONGBIRD");
 }
 
+/* --------------------------------------------------------------- SHIMMER --- */
+/* the SHIMMER page (ui.c draw_sh): the room as a wire box (SIZE its size), turning; from a source on its floor the
+ * tail's wavefronts spread as rings, each as bright as the tail was when it left (hist: the level, a UI frame each,
+ * the newest last); with SHIMMER they climb, a step of the INTERVAL at a time (the pitch going up); DECAY how long
+ * they last, TONE how bright the far ones stay */
+static void art_shimmer(const uint8_t *hist, uint32_t nh)
+{
+    static const uint8_t SEMI[SI_COUNT] = {12, 7, 19, 24};
+    const uint32_t NR = 12u, SP = 6u;                            /* rings, frames between two */
+    int32_t room = Q8(30 + (int32_t)(sys.sh_size & 127u) * 22 / 127), hgt = Q8(24), fl = Q8(26);
+    int32_t step = (int32_t)SEMI[sys.sh_interval % SI_COUNT] * Q8(3) / 2 * (int32_t)(sys.sh_shimmer & 127u) / 127;
+    uint32_t life = 24u + (sys.sh_decay & 127u) * 150u / 127u, k, e;
+    int32_t sx, sy, sx2, sy2;
+    a3_view((uint32_t)ART_DEG(-30) + art_t * 0x00400000u, (uint32_t)-ART_DEG(20), 120, 72);
+    {   /* the room: floor, ceiling, the corners */
+        static const int8_t C[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+        v3_t f[4], c[4];
+        for (k = 0; k < 4u; k++) {
+            f[k] = a3_rot(C[k][0] * room, fl, C[k][1] * room);
+            c[k] = a3_rot(C[k][0] * room, fl - hgt * 2, C[k][1] * room);
+        }
+        for (k = 0; k < 4u; k++) {
+            a3_seg(f[k], f[(k + 1u) & 3u], 0, art_c2);
+            a3_seg(c[k], c[(k + 1u) & 3u], 0, art_c3);
+            a3_seg(f[k], c[k], 0, art_c3);
+        }
+    }
+    a3_proj(a3_rot(0, fl, 0), &sx, &sy);                         /* the source */
+    art_ring(sx, sy, 2, art_c);
+    for (k = 0; k < NR; k++) {                                   /* the wavefronts, oldest out farthest */
+        uint32_t age = k * SP + art_t % SP, j;
+        int32_t lv, r, y, a;
+        uint16_t c;
+        v3_t prev = {0, 0, 0};
+        if (age >= life || age >= nh)
+            continue;
+        lv = hist[nh - 1u - age];
+        a = lv * (int32_t)(life - age) / (int32_t)life;          /* (fading with DECAY) */
+        a = a * (128 + (int32_t)(sys.sh_tone & 127u)) / 255;     /* (TONE: the far ones brighter) */
+        if (a < 12)
+            continue;
+        r = Q8(4) + (room - Q8(4)) * (int32_t)age / (int32_t)life;
+        y = fl - step * (int32_t)(age / 24u) - Q8(1);            /* (climbing a step every ~1 s) */
+        if (y < fl - hgt * 2)
+            y = fl - hgt * 2;
+        c = ux_mix(T_BG, art_c, a * 100 / 255);
+        for (j = 0; j <= 32u; j++) {
+            uint32_t th = j * (0xFFFFFFFFu / 32u);
+            v3_t p = a3_rot((art_cos(th) >> 7) * (r >> 8), y, (art_sin(th) >> 7) * (r >> 8));
+            if (j)
+                a3_seg(prev, p, a3_rot(0, y, 0).z, c);
+            prev = p;
+        }
+    }
+    e = nh ? hist[nh - 1u] : 0u;                                 /* the newest: a pulse at the source */
+    if (e > 40u) {
+        a3_proj(a3_rot(0, fl - Q8(2), 0), &sx2, &sy2);
+        art_ring(sx2, sy2, 1 + (int32_t)e / 64, art_c);
+    }
+    art_title(ICON_SHIMMER, "SHIMMER");
+}
+
 /* the FX page's picture */
 static void art_draw(void)
 {

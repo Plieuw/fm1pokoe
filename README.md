@@ -275,8 +275,10 @@ hoge aanzwellen, tot TONE de top dempt. Dat is de riser.
 | ALGORITHM | het interval: +OCT, +5TH, +OCT+5TH, +2 OCT |
 | SELECT | TONE: donker (1,5 kHz) tot open (16 kHz) |
 
-Het scherm toont het niveau van de staart over de laatste ~4 seconden (je ziet de riser aanzwellen en wegsterven) en
-rechts de trap van het interval. De uitgang is nu stereo; met de shimmer uit blijft hij mono en bit voor bit hetzelfde.
+Het scherm toont, in dezelfde 3D-stijl als de FX-pagina, de ruimte als draaiende draadkubus (SIZE zijn grootte) met
+linksboven het SHIMMER-pictogram: vanuit een bron op de vloer lopen de golffronten van de staart als ringen naar buiten,
+elk zo fel als de staart was toen hij vertrok; met SHIMMER klimmen ze in stappen van het INTERVAL omhoog, DECAY bepaalt
+hoe lang ze blijven, TONE hoe fel de verre ringen blijven. De uitgang is nu stereo; met de shimmer uit blijft hij mono en bit voor bit hetzelfde.
 
 Het scherm toont de toestand (x, y, z) van de nieuwste stem; speelt er niets, dan een "spookcircuit" dat op de huidige
 instellingen meedraait. Dat spookcircuit levert ook de beginstand van nieuwe stemmen (al op de attractor, met een kleine
